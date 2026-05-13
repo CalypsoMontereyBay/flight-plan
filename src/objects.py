@@ -144,9 +144,63 @@ class Sensor:
 
 class CurrentSunState:
     
-    def __int__(self, azimuth_deg, elevation_ft, zenith_deg, day_of_year):#, currennt_hour, current_minute):
+    def __init__(self, azimuth_deg, elevation_deg, zenith_deg, day_of_year, current_hour, current_minute):
         
         self.azimuth_angle = azimuth_deg
-        self.elevation = elevation_ft
+        self.elevation = elevation_deg
         self.zenith_angle = zenith_deg
         self.current_day = day_of_year #1-365
+        self.current_time_of_day = [current_hour, current_minute] #hours are 00 - 24, mins are 00 - 59
+        
+    
+    # Defining getters for each of the sun state params:
+    
+    @property
+    def get_azimuth(self):
+        return self.azimuth_angle
+    
+    @property
+    def get_elevation(self):
+        return self.elevation
+    
+    @property
+    def get_zenith(self):
+        return self.zenith_angle
+    
+    @property
+    def get_current_day(self):
+        return self.current_day
+    
+    @property
+    def get_current_hour(self):
+        return self.current_time_of_day[0]
+    
+    @property
+    def get_current_minute(self):
+        return self.current_time_of_day[1]
+    
+    # Defining setters for each sun state parameter:
+    
+    def set_azimuth_angle(self, new_azimuth_angle):
+        self.azimuth_angle = new_azimuth_angle
+        return
+    
+    def set_elevation(self, new_elevation):
+        self.elevation = new_elevation
+        return
+    
+    def set_zenith_angle(self, new_zenith_angle):
+        self.zenith_angle = new_zenith_angle
+        return
+    
+    def set_current_day(self, new_day):
+        self.current_day = new_day
+        return
+    
+    def set_current_hour(self, new_hour):
+        self.current_time_of_day[0] = new_hour
+        return
+    def set_current_minute(self, new_minute):
+        self.current_time_of_day[1] = new_minute
+        return
+    
