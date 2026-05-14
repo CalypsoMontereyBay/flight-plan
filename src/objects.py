@@ -4,23 +4,22 @@
     - Each object in this file is meant to be used elsewhere in the project.
 
     - This file contains the following list of objects:
-        - Mission Request (A mission candidate with times, launch and landing points, polygon boundary, etc) **
+        - Mission Request (A mission candidate with times, launch and landing points, polygon boundary, etc)
         - Aircraft (Copter and wing supported, aircraft stats kept here to use in math)
         - Sensor (What kind of sensor is being used, also contains viewing geometry constants)
-        - Weather (An object whose attributes describe the current weather according to an API) **
+        - Weather (An object whose attributes describe the current weather according to an API)
         - SunState (This object describes important factors about the sun, most importantly, zenith and azimuth angles are stored/calculated here)
         - Candidate Plan (Bringing it all together, attributes include the list of waypoints, flight lines, aircraft battery stats, and a score used to rank candidates) **
         - GeoPoint (DESCRIPTION TO BE ADDED SOON) **
-        - WayPoint (DESCRIPTION TO BE ADDED SOON) **
+        - WayPoint (The smallest unit of a mission request, while a candidate plan holds all other params, waypoints build the route stored in a mission request object)
         
 
 '''
 
 #imports:
 from shapely.geometry import Point
-#from typing import Optional
-
-#import datetime
+from typing import Optional
+from datetime import date, time
 
 class Aircraft:
     
@@ -93,39 +92,39 @@ class Aircraft:
     
     
     def set_vehicle_endurance(self, new_endurance):
-        self.vehicle_endurance = new_endurance
+        self._vehicle_endurance = new_endurance
         return
     
     def set_vehicle_wind_rating(self, new_wind_rating):
-        self.vehicle_max_wind_rating = new_wind_rating
+        self._vehicle_max_wind_rating = new_wind_rating
         return
     
     def set_vehicle_climb_speed(self, new_climb_ms):
-        self.vehicle_median_climb_rate = new_climb_ms
+        self._vehicle_median_climb_rate = new_climb_ms
         return
     
     def set_vehicle_descent_speed(self, new_descent_ms):
-        self.vehicle_median_descent_rate = new_descent_ms
+        self._vehicle_median_descent_rate = new_descent_ms
         return
     
     def set_vehicle_turn_radius(self, new_radius):
-        self.turn_radius = new_radius
+        self._turn_radius = new_radius
         return
     
     def set_vehicle_turn_penalty(self, new_penalty_s):
-        self.turn_penalty = new_penalty_s
+        self._turn_penalty = new_penalty_s
         return
     
     def set_vehicle_stall_speed(self, new_stall_speed_ms):
-        self.stall_speed = new_stall_speed_ms
+        self._stall_speed = new_stall_speed_ms
         return
     
     def set_vehicle_cruise_speed(self, new_cruise_speed_ms):
-        self.cruising_speed = new_cruise_speed_ms
+        self._cruising_speed = new_cruise_speed_ms
         return
     
     def set_vehicle_max_ground_speed(self, new_cruise_speed_ms):
-        self.max_ground_speed = 1.5 * new_cruise_speed_ms
+        self._max_ground_speed = 1.5 * new_cruise_speed_ms
         self.set_vehicle_cruise_speed(new_cruise_speed_ms)
         return
         
@@ -174,26 +173,27 @@ class CurrentSunState:
     # Defining setters for each sun state parameter:
     
     def set_azimuth_angle(self, new_azimuth_angle):
-        self.azimuth_angle = new_azimuth_angle
+        self._azimuth_angle = new_azimuth_angle
         return
     
     def set_elevation(self, new_elevation):
-        self.elevation = new_elevation
+        self._elevation = new_elevation
         return
     
     def set_zenith_angle(self, new_zenith_angle):
-        self.zenith_angle = new_zenith_angle
+        self._zenith_angle = new_zenith_angle
         return
     
     def set_current_day(self, new_day):
-        self.current_day = new_day
+        self._current_day = new_day
         return
     
     def set_current_hour(self, new_hour):
-        self.current_time_of_day[0] = new_hour
+        self._current_time_of_day[0] = new_hour
         return
+    
     def set_current_minute(self, new_minute):
-        self.current_time_of_day[1] = new_minute
+        self._current_time_of_day[1] = new_minute
         return
     
     
@@ -217,35 +217,35 @@ class Weather:
                  cloud_cover_pct, wind_speed_ms, wind_direction_deg,
                  wind_gusting_ms, visibility_m, condition_str, source = "STUB"):
         
-        self.latitude = latitude_decimal
-        self.longitude = longitude_decimal
-        self.valid_time = valid_time #TURN INTO LIST WITH VALID HOURS AND MINUTES (MAY REQUIRE STRING PARSER)
-        self.cloud_cover_pct = cloud_cover_pct
-        self.wind_speed_ms = wind_speed_ms
-        self.wind_direction_deg = wind_direction_deg
-        self.wind_gust_speed_ms = wind_gusting_ms
-        self.visibility_m = visibility_m
-        self.condition = condition_str
-        self.data_source = source
+        self._latitude = latitude_decimal
+        self._longitude = longitude_decimal
+        self._valid_time = valid_time #TURN INTO LIST WITH VALID HOURS AND MINUTES (MAY REQUIRE STRING PARSER)
+        self._cloud_cover_pct = cloud_cover_pct
+        self._wind_speed_ms = wind_speed_ms
+        self._wind_direction_deg = wind_direction_deg
+        self._wind_gust_speed_ms = wind_gusting_ms
+        self._visibility_m = visibility_m
+        self._condition = condition_str
+        self._data_source = source
     
     
     #The necessary getters for this object (since most is based on api), are listed below:
     
     @property
     def cloud_cover(self):
-        return self.cloud_cover
+        return self._cloud_cover_pct
     
     @property
     def wind_speed(self):
-        return self.wind_speed
+        return self._wind_speed_ms
     
     @property
     def wind_gusts(self):
-        return self.wind_gusts
+        return self._wind_gust_speed_ms
     
     @property
     def condition(self):
-        return self.condition
+        return self._condition
     
 
 class Waypoint:
@@ -291,17 +291,121 @@ class Waypoint:
         '''
         
         #Allowance to referral to each point as a Shapely point
-        @property
-        def point(self):
-            return Point(self._longitude_decimal, self._latitude_decimal)
+    @property
+    def point(self):
+        return Point(self._longitude_decimal, self._latitude_decimal)
         
 
-        def to_CSV_row(self):
-            return [self._waypoint_id, self._longitude_decimal, self._latitude_decimal, 
-                    self._altitude_m, self._speed_ms, self._heading_deg,
-                    self.action, self.notes, self.target_name]
+    def to_CSV_row(self):
+        return [self._waypoint_id, self._longitude_decimal, self._latitude_decimal, 
+                self._altitude_m, self._speed_ms, self._heading_deg,
+                self.action, self.notes, self.target_name]
     
-        def is_m1_overflight(self):
-            return self.action == "m1_overflight" or self.target_name == "M1"
+    def is_m1_overflight(self):
+        return self.action == "m1_overflight" or self.target_name == "M1"
 
+    
+class MissionRequest:
+    
+    def __init__(self, mission_name, launch_waypoint, land_waypoint, line_length_km, line_spacing_km, grid_width_km, altitude_m, date, require_m1_overflight=True, desired_heading_deg=None, notes=None, included_target_waypoints = None):
+        
+        self._mission_name = mission_name
+        self._launch_waypoint = launch_waypoint
+        self._land_waypoint = land_waypoint
+        self._line_length_km = line_length_km
+        self._line_spacing_km = line_spacing_km
+        self._grid_width_km = grid_width_km
+        self._altitude_m = altitude_m
+        self._date = date
+        self._require_M1_overflight = require_m1_overflight
+        self._desired_heading_deg = desired_heading_deg
+        self._notes = notes
+        self._included_target_waypoints = included_target_waypoints
+        
+        
+    @property
+    def day_of_year(self):
+        return self._date.timetuple().tm_yday
+    @property
+    def launch_point(self):
+        return self._launch_waypoint.point
+    
+    @property
+    def land_point(self):
+        return self._land_waypoint.point
+    
+    @property
+    def target_point(self):
+        return [wp.point for wp in self._included_target_waypoints]
+
+    
+class CandidatePlan:
+    
+    #For V1, these are the only objects we will need passed as parameters:
+    def __init__(self, missionRequest, aircraft, currentSunState, weather, waypoints=None):
+        
+        self._mission_request = missionRequest
+        self._aircraft = aircraft
+        self._currentSunState = currentSunState
+        self._weather = weather
+        
+        if waypoints == None:
+            self._waypoints = []
+            
+        else:
+            self._waypoints = waypoints
+            
+        self._total_distance_km = None
+        self._estimated_duration_min = None
+        self._battery_margin_min = None
+
+        self._passes_over_m1 = False
+        self._is_legal = None
+        self._is_aircraft_feasible = None
+
+        self._score = None
+        self._validation_messages = []
+    
+    #V1 properties for the candidate plan are listed below:
+    
+    @property
+    def mission_request(self):
+        return self._mission_request
+
+    @property
+    def aircraft(self):
+        return self._aircraft
+
+    @property
+    def sun_state(self):
+        return self._currentSunState
+
+    @property
+    def weather(self):
+        return self._weather
+
+    @property
+    def waypoints(self):
+        return self._waypoints
+    
+    '''
+    Below are the methods needed or that will be convenient during the 
+    construction of V1
+    '''
+        
+    def add_waypoint(self, new_waypoint):
+        self._waypoints.append(new_waypoint)
+        return
+        
+    def add_validation_message(self, new_message):
+        self._validation_messages.append(new_message)
+        return
+    
+    def has_m1_overflight(self):
+        for i in range(0, len(self._waypoints)):
+            if self._waypoints[i].is_m1_overflight():
+                return True
+            
+        return False
+        
     
