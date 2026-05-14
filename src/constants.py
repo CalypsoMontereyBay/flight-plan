@@ -61,4 +61,36 @@ BLACKSWIFT_MIN_GROUND_SPEED_ms = 12 #Units = m/s
 BLACKSWIFT_CRUISE_SPEED_ms = 18 #Units = m/s
 
 
+#WEATHER OBJECT AND API CONSTANTS FOR V1 ARE LISTED BELOW:
 
+NWS_BASE_URL = "https://api.weather.gov"
+#NWS_USER_AGENT = 
+
+DEFAULT_CLOUD_COVER = 0 #Units = %
+
+DEFAULT_ZERO_WIND = 0 #Units = m/s
+
+MAX_ACCEPTABLE_WIND = 15 #Units = m/s (Same as UAV wing rating)
+
+CLEAR_SKY_THRESHOLD_PERCENTAGE = 95 #Units = % (When 95% or more of the sky is clear, the engine considers the sky clear)
+
+OVERCAST_SKY_THRESHOLD_PERCENTAGE = 85 #Units = % (When 85% or more of the sky is clouded, the engine considers the sky overcast)
+
+DEFAULT_WIND_DIRECTION_deg = None
+
+DEFAULT_WIND_GUST_ms = 0
+
+DEFAULT_VISIBILITY_m = 16100 #~10 miles (METAR reports max out at +10 SM)
+
+DEFAULT_WEATHER_CONDITION = "clear"
+
+DEFAULT_WEATHER_SOURCE = "V1Stub"
+
+# WAYPOINT DEFAULTS AND ACTION CONSTANTS HERE:
+
+WAYPOINT_ACTION_LAUNCH = "launch"
+WAYPOINT_ACTION_TRANSIT = "transit"
+WAYPOINT_ACTION_SCIENCE = "science"
+WAYPOINT_ACTION_M1_OVERFLIGHT = "m1_overflight"
+WAYPOINT_ACTION_TURN = "turn"
+WAYPOINT_ACTION_LAND = "land"
