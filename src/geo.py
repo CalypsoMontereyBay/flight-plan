@@ -75,7 +75,7 @@ PARAMETER(S): start_point: a Point object that is the point the destination poin
               heading_deg: a heading value that is first normalized but then will serve as the heading data for the destination point.
               distance_km: a distance, Units = km, from the start_point that the destination point will be.
               
-RETURNS: A Waypoint object that has location and heading data different from start_point.
+RETURNS: A Point object that has location and heading data different from start_point.
 '''
     
        
