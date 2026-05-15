@@ -79,7 +79,7 @@ RETURNS: A Point object that has location and heading data different from start_
 '''
     
        
-def destination_point(start_point, heading_deg, distance_km):
+def destination_point(start_point, distance_km): #, heading_deg ):
         
         #normalizing the provided heading value 
         # To be used later when output is a waypoint object
