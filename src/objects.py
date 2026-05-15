@@ -294,7 +294,30 @@ class Waypoint:
     @property
     def point(self):
         return Point(self._longitude_decimal, self._latitude_decimal)
-        
+    
+    @property
+    def latitude(self):
+        return self._latitude_decimal
+    
+    @property
+    def longitude(self):
+        return self._longitude_decimal
+    
+    @property
+    def altitude(self):
+        return self._altitude_m
+    
+    @property
+    def speed(self):
+        return self._speed_ms
+    
+    @property
+    def heading(self):
+        return self._heading_deg
+    
+    @property
+    def waypoint_ID(self):
+        return self._waypoint_id  
 
     def to_CSV_row(self):
         return [self._waypoint_id, self._longitude_decimal, self._latitude_decimal, 
@@ -336,7 +359,32 @@ class MissionRequest:
     
     @property
     def target_point(self):
-        return [wp.point for wp in self._included_target_waypoints]
+        
+        if self._included_target_waypoints is not None:
+            return [wp.point for wp in self._included_target_waypoints]
+        
+        return []
+    
+    @property
+    def line_length(self):
+        return self._line_length_km
+    
+    @property
+    def line_spacing(self):
+        return self._line_spacing_km
+    
+    @property
+    def grid_width(self):
+        return self._grid_width_km
+    
+    @property
+    def altitude(self):
+        return self._altitude_m
+    
+    @property
+    def desired_heading(self):
+        return self._desired_heading_deg
+    
 
     
 class CandidatePlan:
