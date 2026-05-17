@@ -1,98 +1,265 @@
-
-
 '''
-This file contains all the geographic math currently needed for V1 of the flight planning engine.
-It is not designed to be knowledgable of ANY aircraft parameters. Just like a mission request
-object, geo.py is simply concerned with the ROUTE. For now, the functions here also
-assume perfectly legality and other constants according to constants.py.
+Geographic math for Engine V1.
 
-It contains the following functions (descriptions soon to follow):
-
-        1. normalize_heading(heading_deg)
-        2. destination_point(start_lon, start_lat, heading_deg, distance_km)
-        3. bearing_between(point A, point B)
-        4. distance_between(point A, point B)
-        5. make_line_through_point(center_point, heading_deg, length_km)
-        6. offset_line(line, offset_heading_deg, offset_km)
-        7. make_lawnmower_grid_through_m1()
+geo.py owns spatial calculations only: bearings, destination points, line
+offsets, grid sizing, grid area, and M1-centered lawnmower geometry. It does
+not create CandidatePlan objects, estimate battery, validate legality, or
+write output files.
 '''
 
-# IMPORTS:
+import math
+
 from pyproj import Geod
 from shapely.geometry import Point, LineString
-#import math
-#from typing import List, Tuple
 
-#CONSTANTS:
-#Constants used in this file are global and defined below:
-g = Geod(ellps='WGS84')
-CONST_360_DEG = 360
-CONST_METER_CONVERSION = 1000
 
-'''
-FUNCTION: normalize_heading(heading_deg)
+WGS84_GEOD = Geod(ellps="WGS84")
+FULL_CIRCLE_DEG = 360
 
-DESCRIPTION: This function standarizes heading inputs into the following range:
-0 <= heading < 360.
-(0 degress is considered equivalent to 360 in this context)
-(This effectively makes the range: 0 <= heading <= 359)
 
-PARAMETER(S): heading_deg: a heading value in degress, floats are rejected
+def _as_point(point):
+    if isinstance(point, Point):
+        return point
+    if hasattr(point, "point"):
+        return point.point
+    raise TypeError("Expected a Shapely Point or an object with a .point property")
 
-RETURNS: heading_deg standardized to the range 0 <= heading < 360 
-'''
 
 def normalize_heading(heading_deg):
-        
-        while isinstance(heading_deg, int) is not True:
-                print("Invalid input! Please input an integer!\n")
-                heading_deg = int(input("Input an integer heading value: "))
+    '''
+    Normalize heading into 0 <= heading < 360 degrees.
+    '''
+    if not isinstance(heading_deg, (int, float)):
+        raise TypeError("heading_deg must be an int or float")
+    return heading_deg % FULL_CIRCLE_DEG
 
-        print("Success!")
-        
-        if heading_deg < 0:
-                print("Heading normalized.")
-                return (heading_deg + CONST_360_DEG)
-        elif heading_deg > 359:
-                print("Heading normalized.")
-                return (heading_deg % CONST_360_DEG)
+
+def destination_point(start_point, heading_deg, distance_m):
+    '''
+    Move from a start point along a heading for distance_m meters.
+    '''
+    start = _as_point(start_point)
+    heading = normalize_heading(heading_deg)
+    new_lon, new_lat, _ = WGS84_GEOD.fwd(start.x, start.y, heading, distance_m)
+    return Point(new_lon, new_lat)
+
+
+def bearing_between(point_a, point_b):
+    '''
+    Return the forward bearing from point_a to point_b in degrees.
+    '''
+    start = _as_point(point_a)
+    end = _as_point(point_b)
+    forward_azimuth, _, _ = WGS84_GEOD.inv(start.x, start.y, end.x, end.y)
+    return normalize_heading(forward_azimuth)
+
+
+def distance_between(point_a, point_b):
+    '''
+    Return geodesic distance between two points in meters.
+    '''
+    start = _as_point(point_a)
+    end = _as_point(point_b)
+    _, _, distance_m = WGS84_GEOD.inv(start.x, start.y, end.x, end.y)
+    return abs(distance_m)
+
+
+def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg=40):
+    '''
+    Compute cross-track ground footprint width for an off-nadir camera.
+
+    Formula:
+        h * (tan(theta + fov / 2) - tan(theta - fov / 2))
+    '''
+    if altitude_m <= 0:
+        raise ValueError("altitude_m must be positive")
+    if cross_track_fov_deg <= 0:
+        raise ValueError("cross_track_fov_deg must be positive")
+
+    lower_angle_deg = off_nadir_deg - (cross_track_fov_deg / 2)
+    upper_angle_deg = off_nadir_deg + (cross_track_fov_deg / 2)
+
+    if lower_angle_deg <= -90 or upper_angle_deg >= 90:
+        raise ValueError("FOV and off-nadir angle must stay within +/- 90 degrees")
+
+    lower_angle_rad = math.radians(lower_angle_deg)
+    upper_angle_rad = math.radians(upper_angle_deg)
+    return altitude_m * (math.tan(upper_angle_rad) - math.tan(lower_angle_rad))
+
+
+def offset_distance_m(swath_width_m, desired_overlap_pct):
+    '''
+    Convert swath width and desired overlap into line-to-line offset distance.
+    '''
+    if swath_width_m <= 0:
+        raise ValueError("swath_width_m must be positive")
+    if desired_overlap_pct < 0 or desired_overlap_pct >= 100:
+        raise ValueError("desired_overlap_pct must satisfy 0 <= overlap < 100")
+
+    return swath_width_m * (1 - (desired_overlap_pct / 100))
+
+
+def calculate_line_length_m(offset_m, total_lines):
+    '''
+    Calculate square-grid side length for V1.
+    '''
+    if offset_m <= 0:
+        raise ValueError("offset_m must be positive")
+    if total_lines < 2:
+        raise ValueError("total_lines must be at least 2")
+
+    return offset_m * (total_lines - 1)
+
+
+def calculate_grid_area_m2(offset_m, total_lines):
+    '''
+    Calculate V1 grid area using (offset * (N - 1)) ** 2.
+    '''
+    line_length_m = calculate_line_length_m(offset_m, total_lines)
+    return line_length_m ** 2
+
+
+def calculate_total_lines(usable_distance_m, line_length_m):
+    '''
+    Calculate the largest even line count that fits the distance budget.
+    '''
+    if usable_distance_m <= 0:
+        raise ValueError("usable_distance_m must be positive")
+    if line_length_m <= 0:
+        raise ValueError("line_length_m must be positive")
+
+    total_lines = math.floor(usable_distance_m / line_length_m)
+    if total_lines % 2 != 0:
+        total_lines -= 1
+
+    return max(0, total_lines)
+
+
+def make_line_through_point(center_point, grid_orientation_deg, line_length_m):
+    '''
+    Create a LineString centered on center_point and aligned to grid_orientation_deg.
+    '''
+    center = _as_point(center_point)
+    if line_length_m <= 0:
+        raise ValueError("line_length_m must be positive")
+
+    half_length_m = line_length_m / 2
+    start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m)
+    end = destination_point(center, grid_orientation_deg, half_length_m)
+    return LineString([(start.x, start.y), (center.x, center.y), (end.x, end.y)])
+
+
+def offset_line(line, offset_heading_deg, offset_m):
+    '''
+    Offset every coordinate in a LineString by offset_m along offset_heading_deg.
+    '''
+    if offset_m < 0:
+        raise ValueError("offset_m cannot be negative")
+
+    offset_points = []
+    for lon, lat in line.coords:
+        offset_points.append(destination_point(Point(lon, lat), offset_heading_deg, offset_m))
+
+    return LineString([(point.x, point.y) for point in offset_points])
+
+
+def _route_distance_m(route_points):
+    total_distance_m = 0
+    for i in range(1, len(route_points)):
+        total_distance_m += distance_between(route_points[i - 1], route_points[i])
+    return total_distance_m
+
+
+def _initial_total_lines_from_budget(usable_distance_m, offset_m):
+    if usable_distance_m <= 0:
+        raise ValueError("usable_distance_m must be positive")
+    if offset_m <= 0:
+        raise ValueError("offset_m must be positive")
+
+    # Solve N * offset * (N - 1) <= usable_distance as a conservative first estimate.
+    total_lines = math.floor((1 + math.sqrt(1 + (4 * usable_distance_m / offset_m))) / 2)
+    if total_lines % 2 != 0:
+        total_lines -= 1
+
+    return max(2, total_lines)
+
+
+def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines):
+    line_length_m = calculate_line_length_m(offset_m, total_lines)
+    center_line = make_line_through_point(center_point, grid_orientation_deg, line_length_m)
+    perpendicular_heading = normalize_heading(grid_orientation_deg + 90)
+    opposite_perpendicular_heading = normalize_heading(grid_orientation_deg - 90)
+
+    line_offsets = [
+        (i - ((total_lines - 1) / 2)) * offset_m
+        for i in range(total_lines)
+    ]
+
+    flight_lines = []
+    for line_offset_m in line_offsets:
+        if line_offset_m >= 0:
+            flight_lines.append(offset_line(center_line, perpendicular_heading, line_offset_m))
         else:
-                print("Heading normalized.")
-                return heading_deg
-        
-#========================================================================================
-    
-'''
-FUNCTION: destination_point(start_point, heading_deg, distance_km)
+            flight_lines.append(offset_line(center_line, opposite_perpendicular_heading, abs(line_offset_m)))
 
-DESCRIPTION: This function moves in a heading_deg direction for a 
-certain distance_km in order to make a destination point. This allows the
-UAV to traverse from one waypoint to the next. It is also how a grid with
-waypoints is built for the lawnmower pattern. This function is used
-to create chains of waypoints that serve as the route for the aircraft.
+    route_points = []
+    m1_insert_index = (total_lines // 2) - 1
+    center = _as_point(center_point)
 
-PARAMETER(S): start_point: a Point object that is the point the destination point will originate from.
-              heading_deg: a heading value that is first normalized but then will serve as the heading data for the destination point.
-              distance_km: a distance, Units = km, from the start_point that the destination point will be.
-              
-RETURNS: A Point object that has location and heading data different from start_point.
-'''
-    
-       
-def destination_point(start_point, heading_deg, distance_km):
-        
-        #normalizing the provided heading value 
-        # To be used later when output is a waypoint object
-        #new_heading = normalize_heading(heading_deg)
-        
-        # converting provided distance to meters for Geod.fwd()
-        distance_in_m = (distance_km * CONST_METER_CONVERSION)
-        
-        _new_longitude, _new_latitude, back_azimuth = g.fwd(start_point.longitude, start_point.latitude, heading_deg, distance_in_m)
-        
-        #normalized_heading_to_compare = normalize_heading(heading_to_compare)
-        # If the heading generated by g.fwd() is what the user was expecting to use
-        # in the new waypoint, use it, if not, override with the user's expected heading.
-        #if (new_heading == normalized_heading_to_compare):
-        return Point(_new_longitude, _new_latitude)
-#========================================================================================
+    for line_index, line in enumerate(flight_lines):
+        line_points = [Point(lon, lat) for lon, lat in line.coords]
+        if line_index % 2 != 0:
+            line_points.reverse()
+
+        route_points.extend(line_points)
+
+        if line_index == m1_insert_index:
+            route_points.append(center)
+
+    return flight_lines, route_points
+
+
+def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_distance_m,
+                                   altitude_m, cross_track_fov_deg,
+                                   desired_overlap_pct, off_nadir_deg=40):
+    '''
+    Build the largest V1 M1-centered lawnmower grid that fits usable_distance_m.
+
+    Returns:
+        flight_lines, route_points, metrics
+    '''
+    swath_width_m = ground_swath_width_m(
+        altitude_m,
+        cross_track_fov_deg,
+        off_nadir_deg,
+    )
+    offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
+    total_lines = _initial_total_lines_from_budget(usable_distance_m, offset_m)
+
+    while total_lines >= 2:
+        flight_lines, route_points = _build_centered_grid(
+            center_point,
+            grid_orientation_deg,
+            offset_m,
+            total_lines,
+        )
+        total_route_distance_m = _route_distance_m(route_points)
+
+        if total_route_distance_m <= usable_distance_m:
+            line_length_m = calculate_line_length_m(offset_m, total_lines)
+            metrics = {
+                "total_route_distance_m": total_route_distance_m,
+                "usable_endurance_distance_m": usable_distance_m,
+                "grid_area_m2": calculate_grid_area_m2(offset_m, total_lines),
+                "offset_distance_m": offset_m,
+                "line_length_m": line_length_m,
+                "total_lines": total_lines,
+                "science_lines": total_lines // 2,
+                "traverse_lines": total_lines // 2,
+                "offset_lines": total_lines - 1,
+            }
+            return flight_lines, route_points, metrics
+
+        total_lines -= 2
+
+    raise ValueError("Usable endurance distance is too small for a V1 grid")

@@ -246,6 +246,39 @@ class Weather:
     @property
     def condition(self):
         return self._condition
+
+
+class Sensor:
+
+    '''
+    Sensor stores the camera geometry values that drive grid spacing.
+    The engine uses the cross-track FOV to determine line-to-line offset
+    distance, while QGroundControl remains responsible for waypoint headings.
+    '''
+
+    def __init__(self, cross_track_fov_deg, desired_overlap_pct,
+                 off_nadir_deg=40, sensor_name=None):
+
+        self._cross_track_fov_deg = cross_track_fov_deg
+        self._desired_overlap_pct = desired_overlap_pct
+        self._off_nadir_deg = off_nadir_deg
+        self._sensor_name = sensor_name
+
+    @property
+    def cross_track_fov(self):
+        return self._cross_track_fov_deg
+
+    @property
+    def desired_overlap(self):
+        return self._desired_overlap_pct
+
+    @property
+    def off_nadir(self):
+        return self._off_nadir_deg
+
+    @property
+    def sensor_name(self):
+        return self._sensor_name
     
 
 class Waypoint:
@@ -265,14 +298,13 @@ class Waypoint:
     you'll find in this constructor.
     '''
     
-    def __init__(self, waypoint_id, latitude_decimal, longitude_decimal, altitude_m, speed_ms, heading_deg, action, notes=None, target_name=None):
+    def __init__(self, waypoint_id, latitude_decimal, longitude_decimal, altitude_m, speed_ms, action, notes=None, target_name=None):
         
         self._waypoint_id = waypoint_id
         self._latitude_decimal = latitude_decimal
         self._longitude_decimal = longitude_decimal
         self._altitude_m = altitude_m
         self._speed_ms = speed_ms
-        self._heading_deg = heading_deg
         self.action = action
         self.notes = notes
         self.target_name = target_name
@@ -284,10 +316,9 @@ class Waypoint:
         3. longitude: Waypoint's longitude coordinate in decimal form
         4. altitude: aircraft altitude at that waypoint
         5. speed: aircraft speed at that waypoint
-        6. heading: aircraft heading at that waypoint
-        7. action: Most important param, a string used to pass to other functions so the engine can make decisions on a per-point basis
-        8. notes: human readable notes about a waypoint, OPTIONAL
-        9. target_name, an optional but more human readable name for a waypoint besides its ID
+        6. action: Most important param, a string used to pass to other functions so the engine can make decisions on a per-point basis
+        7. notes: human readable notes about a waypoint, OPTIONAL
+        8. target_name, an optional but more human readable name for a waypoint besides its ID
         '''
         
         #Allowance to referral to each point as a Shapely point
@@ -312,17 +343,13 @@ class Waypoint:
         return self._speed_ms
     
     @property
-    def heading(self):
-        return self._heading_deg
-    
-    @property
     def waypoint_ID(self):
         return self._waypoint_id  
 
     def to_CSV_row(self):
         return [self._waypoint_id, self._longitude_decimal, self._latitude_decimal, 
-                self._altitude_m, self._speed_ms, self._heading_deg,
-                self.action, self.notes, self.target_name]
+                self._altitude_m, self._speed_ms, self.action,
+                self.notes, self.target_name]
     
     def is_m1_overflight(self):
         return self.action == "m1_overflight" or self.target_name == "M1"
@@ -330,7 +357,7 @@ class Waypoint:
     
 class MissionRequest:
     
-    def __init__(self, mission_name, launch_waypoint, land_waypoint, line_length_km, line_spacing_km, grid_width_km, altitude_m, date, require_m1_overflight=True, desired_heading_deg=None, notes=None, included_target_waypoints = None):
+    def __init__(self, mission_name, launch_waypoint, land_waypoint, line_length_km, line_spacing_km, grid_width_km, altitude_m, date, require_m1_overflight=True, grid_orientation_deg=None, notes=None, included_target_waypoints = None):
         
         self._mission_name = mission_name
         self._launch_waypoint = launch_waypoint
@@ -341,7 +368,7 @@ class MissionRequest:
         self._altitude_m = altitude_m
         self._date = date
         self._require_M1_overflight = require_m1_overflight
-        self._desired_heading_deg = desired_heading_deg
+        self._grid_orientation_deg = grid_orientation_deg
         self._notes = notes
         self._included_target_waypoints = included_target_waypoints
         
@@ -382,20 +409,29 @@ class MissionRequest:
         return self._altitude_m
     
     @property
+    def grid_orientation(self):
+        return self._grid_orientation_deg
+
+    @property
     def desired_heading(self):
-        return self._desired_heading_deg
+        return self._grid_orientation_deg
     
 
     
 class CandidatePlan:
     
     #For V1, these are the only objects we will need passed as parameters:
-    def __init__(self, missionRequest, aircraft, currentSunState, weather, waypoints=None):
+    def __init__(self, missionRequest, aircraft, currentSunState, weather, sensor=None, waypoints=None):
         
         self._mission_request = missionRequest
         self._aircraft = aircraft
         self._currentSunState = currentSunState
         self._weather = weather
+        self._sensor = sensor
+
+        if waypoints is None and isinstance(sensor, list):
+            waypoints = sensor
+            self._sensor = None
         
         if waypoints == None:
             self._waypoints = []
@@ -403,7 +439,16 @@ class CandidatePlan:
         else:
             self._waypoints = waypoints
             
-        self._total_distance_km = None
+        self._total_route_distance_m = None
+        self._usable_endurance_distance_m = None
+        self._grid_area_m2 = None
+        self._offset_distance_m = None
+        self._line_length_m = None
+        self._total_lines = None
+        self._science_lines = None
+        self._traverse_lines = None
+        self._offset_lines = None
+
         self._estimated_duration_min = None
         self._battery_margin_min = None
 
@@ -433,8 +478,48 @@ class CandidatePlan:
         return self._weather
 
     @property
+    def sensor(self):
+        return self._sensor
+
+    @property
     def waypoints(self):
         return self._waypoints
+
+    @property
+    def total_route_distance_m(self):
+        return self._total_route_distance_m
+
+    @property
+    def usable_endurance_distance_m(self):
+        return self._usable_endurance_distance_m
+
+    @property
+    def grid_area_m2(self):
+        return self._grid_area_m2
+
+    @property
+    def offset_distance_m(self):
+        return self._offset_distance_m
+
+    @property
+    def line_length_m(self):
+        return self._line_length_m
+
+    @property
+    def total_lines(self):
+        return self._total_lines
+
+    @property
+    def science_lines(self):
+        return self._science_lines
+
+    @property
+    def traverse_lines(self):
+        return self._traverse_lines
+
+    @property
+    def offset_lines(self):
+        return self._offset_lines
     
     '''
     Below are the methods needed or that will be convenient during the 
@@ -447,6 +532,18 @@ class CandidatePlan:
         
     def add_validation_message(self, new_message):
         self._validation_messages.append(new_message)
+        return
+
+    def set_grid_metrics(self, metrics):
+        self._total_route_distance_m = metrics.get("total_route_distance_m")
+        self._usable_endurance_distance_m = metrics.get("usable_endurance_distance_m")
+        self._grid_area_m2 = metrics.get("grid_area_m2")
+        self._offset_distance_m = metrics.get("offset_distance_m")
+        self._line_length_m = metrics.get("line_length_m")
+        self._total_lines = metrics.get("total_lines")
+        self._science_lines = metrics.get("science_lines")
+        self._traverse_lines = metrics.get("traverse_lines")
+        self._offset_lines = metrics.get("offset_lines")
         return
     
     def has_m1_overflight(self):

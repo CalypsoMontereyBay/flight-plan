@@ -46,6 +46,14 @@ V1_DEFAULT_LINE_SPACING_km = 0.15 #Units = km. 0.15 km = ~500 FT.
 
 V1_DEFAULT_GRID_WIDTH_km = 2.5 #Units = km. 2.5 km = ~1.55 MI -> ~8202 FT.
 
+V1_EMERGENCY_RESERVE_FRACTION = 0.15 # 15% battery/distance reserve held as a hard limit.
+
+V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 45 #Units = degrees. Placeholder until exact camera specs are known.
+
+V1_DEFAULT_SENSOR_OFF_NADIR_deg = 40 #Units = degrees.
+
+V1_DEFAULT_OVERLAP_PCT = 30 #Units = %. Placeholder until science overlap requirement is known.
+
 # Engine Version 1 aircraft defailts are defined below:
 
 #AIRCRAFT PARAMS ARE DEFINED WITH RESPECT TO THE BLACKSWIFT S2 FIXED-WING UAV
