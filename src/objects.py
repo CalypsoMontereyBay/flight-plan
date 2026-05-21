@@ -135,13 +135,13 @@ class CurrentSunState:
     # Parameters important for V1 in order to establish the very limited
     # ranking capabilities are below
     
-    def __init__(self, azimuth_deg, elevation_deg, zenith_deg, day_of_year, current_hour, current_minute):
+    def __init__(self, azimuth_deg, elevation_deg, zenith_deg, day_of_year, current_hour, current_minute=0):
         
         self._azimuth_angle = azimuth_deg
         self._elevation = elevation_deg
         self._zenith_angle = zenith_deg
         self._current_day = day_of_year #1-365
-        self._current_time_of_day = [current_hour, current_minute] #hours are 00 - 24, mins are 00 - 59
+        self._current_time_of_day = [current_hour, current_minute] #hours are 00 - 24, mins are 0 - 59
         
     
     # Defining getters for each of the sun state params:

@@ -24,6 +24,15 @@ For the first build of the engine, this file will hold all of the constants used
 M1_MOORING_LONG = -122.020
 M1_MOORING_LAT = 36.750
 
+# Launch point coordinate constants (beach to the right of the seymour center.)
+V1_LAUNCH_POINT_LONG = -122.067
+V1_LAUNCH_POINT_LAT = 36.949
+
+# Land point coordinate constants (road right next to seymour center.)
+
+V1_LAND_POINT_LONG = -122.065
+V1_LAND_POINT_LAT = 36.948
+
 # Engine Version 1 constants are defined below:
 
 V1_DEFAULT_MISSION_DAY_OF_YEAR = 1
@@ -33,6 +42,8 @@ V1_DEFAULT_MISSION_NAME = "v1_m1_test"
 V1_DEFAULT_MISSION_YEAR = 2026
 
 V1_DEFAULT_MISSION_MONTH = 1
+
+V1_DEFAULT_MISSION_HOUR = 10 #Units: 24hr clock, we are assuming a mission start time of 10 am.
 
 V1_DEFAULT_MISSION_CLOUD_COVER = 0 #Units = %
 
