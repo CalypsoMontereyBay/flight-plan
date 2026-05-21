@@ -112,7 +112,7 @@ def create_launch_sun_state():
     
     launch_sun_state = CurrentSunState(current_launch_point_az_deg, current_launch_point_elev_deg, 
                             current_launch_point_zen_deg, V1_DEFAULT_MISSION_DAY_OF_YEAR,
-                            V1_DEFAULT_MISSION_HOUR,)
+                            V1_DEFAULT_MISSION_HOUR)
     
     return launch_sun_state
     
