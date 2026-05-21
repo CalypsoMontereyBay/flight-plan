@@ -1,3 +1,4 @@
-.gitignore
+*.gitignore
 *.DS_Store
 *.json
+/src/__pycache__
