@@ -26,7 +26,7 @@ class Aircraft:
     # Global vars used for both a fixed wing and copter to standardize:
     
     #Units = minutes of flight time at cruise speed (SUBJECT TO CHANGE)
-    required_battery_reserve_mins = 10 
+    #required_battery_reserve_mins = 10 
     
     #Default constructor for an aircraft, global parameters remain above,
     #but the following parameters will differ between wing and hex/quad/oct
@@ -256,10 +256,11 @@ class Sensor:
     distance, while QGroundControl remains responsible for waypoint headings.
     '''
 
-    def __init__(self, cross_track_fov_deg, desired_overlap_pct,
+    def __init__(self, cross_track_fov_deg, along_track_fov_deg, desired_overlap_pct,
                  off_nadir_deg=40, sensor_name=None):
 
         self._cross_track_fov_deg = cross_track_fov_deg
+        self._along_track_fov_deg = along_track_fov_deg
         self._desired_overlap_pct = desired_overlap_pct
         self._off_nadir_deg = off_nadir_deg
         self._sensor_name = sensor_name
@@ -267,6 +268,10 @@ class Sensor:
     @property
     def cross_track_fov(self):
         return self._cross_track_fov_deg
+    
+    @property
+    def along_track_fov(self):
+        return self._along_track_fov_deg
 
     @property
     def desired_overlap(self):

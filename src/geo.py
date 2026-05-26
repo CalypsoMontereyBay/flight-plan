@@ -63,7 +63,7 @@ def distance_between(point_a, point_b):
     _, _, distance_m = WGS84_GEOD.inv(start.x, start.y, end.x, end.y)
     return abs(distance_m)
 
-
+#TODO: fix this function and all others below to incorporate sensor along track fov if needed
 def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg=40):
     '''
     Compute cross-track ground footprint width for an off-nadir camera.

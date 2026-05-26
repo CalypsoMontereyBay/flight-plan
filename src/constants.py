@@ -59,7 +59,9 @@ V1_DEFAULT_GRID_WIDTH_km = 2.5 #Units = km. 2.5 km = ~1.55 MI -> ~8202 FT.
 
 V1_EMERGENCY_RESERVE_FRACTION = 0.15 # 15% battery/distance reserve held as a hard limit.
 
-V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 45 #Units = degrees. Placeholder until exact camera specs are known.
+V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48 #Units = degrees. USING PAYLOAD FROM GREY PAPER
+
+V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8 #Units = degrees. USING PAYLOAD FROM GREY PAPER
 
 V1_DEFAULT_SENSOR_OFF_NADIR_deg = 40 #Units = degrees.
 
