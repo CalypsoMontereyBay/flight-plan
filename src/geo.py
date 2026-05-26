@@ -178,10 +178,11 @@ def _initial_total_lines_from_budget(usable_distance_m, offset_m):
 
     # Solve N * offset * (N - 1) <= usable_distance as a conservative first estimate.
     total_lines = math.floor((1 + math.sqrt(1 + (4 * usable_distance_m / offset_m))) / 2)
-    if total_lines % 2 != 0:
+    # V1 forces odd N so the center line passes through M1 -> free overflight, no detour.
+    if total_lines % 2 == 0:
         total_lines -= 1
 
-    return max(2, total_lines)
+    return max(3, total_lines)
 
 
 def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines):
@@ -203,20 +204,19 @@ def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lin
             flight_lines.append(offset_line(center_line, opposite_perpendicular_heading, abs(line_offset_m)))
 
     route_points = []
-    m1_insert_index = (total_lines // 2) - 1
-    center = _as_point(center_point)
-
     for line_index, line in enumerate(flight_lines):
         line_points = [Point(lon, lat) for lon, lat in line.coords]
         if line_index % 2 != 0:
             line_points.reverse()
-
         route_points.extend(line_points)
 
-        if line_index == m1_insert_index:
-            route_points.append(center)
+    # With odd total_lines the center line (index total_lines // 2) sits at offset 0
+    # and passes through M1. make_line_through_point emits [start, midpoint, end],
+    # so M1 is always the middle coord of that line -> +1 within its 3-point block.
+    center_line_index = total_lines // 2
+    m1_route_index = center_line_index * 3 + 1
 
-    return flight_lines, route_points
+    return flight_lines, route_points, m1_route_index
 
 
 def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_distance_m,
@@ -224,6 +224,10 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                                    desired_overlap_pct, off_nadir_deg=40):
     '''
     Build the largest V1 M1-centered lawnmower grid that fits usable_distance_m.
+
+    V1 uses an odd total_lines so the center line passes directly through M1; the
+    M1 overflight is then a natural waypoint at route_points[metrics["m1_route_index"]]
+    and adds zero detour distance.
 
     Returns:
         flight_lines, route_points, metrics
@@ -236,8 +240,8 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
     total_lines = _initial_total_lines_from_budget(usable_distance_m, offset_m)
 
-    while total_lines >= 2:
-        flight_lines, route_points = _build_centered_grid(
+    while total_lines >= 3:
+        flight_lines, route_points, m1_route_index = _build_centered_grid(
             center_point,
             grid_orientation_deg,
             offset_m,
@@ -254,12 +258,13 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "offset_distance_m": offset_m,
                 "line_length_m": line_length_m,
                 "total_lines": total_lines,
-                "science_lines": total_lines // 2,
-                "traverse_lines": total_lines // 2,
+                "science_lines": total_lines,
+                "traverse_lines": total_lines - 1,
                 "offset_lines": total_lines - 1,
+                "m1_route_index": m1_route_index,
             }
             return flight_lines, route_points, metrics
 
-        total_lines -= 2
+        total_lines -= 2  # preserve odd parity
 
     raise ValueError("Usable endurance distance is too small for a V1 grid")
