@@ -10,18 +10,18 @@ return heading is not determined by sun azimuth.
 '''
 
 #module imports:
-from pysolar import get_azimuth, get_altitude 
+from pysolar.solar import get_azimuth, get_altitude 
 import datetime
-from objects import CurrentSunState
+from .objects import CurrentSunState
 
 
 #constants imports
-from constants import (
+from .constants import (
                         V1_LAUNCH_POINT_LAT, 
                         V1_LAUNCH_POINT_LONG, 
                         V1_DEFAULT_MISSION_YEAR,
                         V1_DEFAULT_MISSION_MONTH,
-                        V1_DEFAULT_MISSION_DAY_OF_YEAR,
+                        V1_DEFAULT_MISSION_DAY_OF_MONTH,
                         V1_DEFAULT_MISSION_HOUR)
 
 #date constants in datetime module form are below:
@@ -29,7 +29,7 @@ TIME_ZONE_INFO = datetime.timezone.utc
 
 #The datetime library is used in conunction with pysolar for my helper functions
 mission_date = datetime.datetime(V1_DEFAULT_MISSION_YEAR, V1_DEFAULT_MISSION_MONTH, 
-                                 V1_DEFAULT_MISSION_DAY_OF_YEAR, V1_DEFAULT_MISSION_HOUR, tzinfo=TIME_ZONE_INFO)
+                                 V1_DEFAULT_MISSION_DAY_OF_MONTH, V1_DEFAULT_MISSION_HOUR, tzinfo=TIME_ZONE_INFO)
 
 '''
 Below are the list of helper functions used to populate the current sun state
@@ -99,20 +99,21 @@ the helper functions above and calculates the values needed for the rest
 of the engine to have proper sun data.
 '''
 
-def create_launch_sun_state():
+#Creator function is getting defaults for now
+def create_sun_state(latitude=V1_LAUNCH_POINT_LAT, longitude=V1_LAUNCH_POINT_LONG, date=mission_date):
     
     #calculating launch point azimuth for object
-    current_launch_point_az_deg = calc_azimuth(V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, mission_date)
+    current_launch_point_az_deg = calc_azimuth(latitude, longitude, date)
     
     #calculating launch point elevation for object
-    current_launch_point_elev_deg = calc_elevation(V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, mission_date)
+    current_launch_point_elev_deg = calc_elevation(latitude, longitude, date)
     
     #calculating launch point zenith for object
     current_launch_point_zen_deg = calc_zenith(current_launch_point_elev_deg)
     
     launch_sun_state = CurrentSunState(current_launch_point_az_deg, current_launch_point_elev_deg, 
-                            current_launch_point_zen_deg, V1_DEFAULT_MISSION_DAY_OF_YEAR,
-                            V1_DEFAULT_MISSION_HOUR)
+                            current_launch_point_zen_deg, V1_DEFAULT_MISSION_DAY_OF_MONTH,
+                            V1_DEFAULT_MISSION_HOUR,0)
     
     return launch_sun_state
     

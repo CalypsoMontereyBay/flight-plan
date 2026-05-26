@@ -35,7 +35,7 @@ V1_LAND_POINT_LAT = 36.948
 
 # Engine Version 1 constants are defined below:
 
-V1_DEFAULT_MISSION_DAY_OF_YEAR = 1
+V1_DEFAULT_MISSION_DAY_OF_MONTH = 1
 
 V1_DEFAULT_MISSION_NAME = "v1_m1_test"
 
@@ -43,7 +43,7 @@ V1_DEFAULT_MISSION_YEAR = 2026
 
 V1_DEFAULT_MISSION_MONTH = 1
 
-V1_DEFAULT_MISSION_HOUR = 10 #Units: 24hr clock, we are assuming a mission start time of 10 am.
+V1_DEFAULT_MISSION_HOUR = 18 #Units: 24hr clock in UTC, we are assuming a mission start time of 10 am.
 
 V1_DEFAULT_MISSION_CLOUD_COVER = 0 #Units = %
 
