@@ -5,6 +5,15 @@ geo.py owns spatial calculations only: bearings, destination points, line
 offsets, grid sizing, grid area, and M1-centered lawnmower geometry. It does
 not create CandidatePlan objects, estimate battery, validate legality, or
 write output files.
+
+FOV note: cross-track and along-track FOV are orthogonal.
+  * Cross-track FOV  -> ground swath width  -> line-to-line offset / grid
+                        spacing. Drives the lawnmower lattice.
+  * Along-track FOV  -> instantaneous ground footprint length in the flight
+                        direction. Relevant to image trigger rate and to the
+                        "free" coverage you get past each line endpoint. V1
+                        does not consume this for routing; the helper is here
+                        for reporting and for future trigger-rate logic.
 '''
 
 import math
@@ -63,10 +72,13 @@ def distance_between(point_a, point_b):
     _, _, distance_m = WGS84_GEOD.inv(start.x, start.y, end.x, end.y)
     return abs(distance_m)
 
-#TODO: fix this function and all others below to incorporate sensor along track fov if needed
 def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg=40):
     '''
     Compute cross-track ground footprint width for an off-nadir camera.
+
+    Cross-track only. Along-track FOV is orthogonal and handled separately
+    by ground_footprint_along_m; it does not affect swath width or grid
+    spacing.
 
     Formula:
         h * (tan(theta + fov / 2) - tan(theta - fov / 2))
@@ -85,6 +97,30 @@ def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg=40):
     lower_angle_rad = math.radians(lower_angle_deg)
     upper_angle_rad = math.radians(upper_angle_deg)
     return altitude_m * (math.tan(upper_angle_rad) - math.tan(lower_angle_rad))
+
+
+def ground_footprint_along_m(altitude_m, along_track_fov_deg, off_nadir_deg=0):
+    '''
+    Compute the along-track ground footprint length for a camera that may be
+    cross-track-rolled by off_nadir_deg (V1's camera rolls sideways for glint
+    avoidance, not pitched forward/back).
+
+    A tilted camera sees a longer along-track patch because the ground is
+    further away on the slant: slant_range = h / cos(off_nadir).
+
+    Formula:
+        2 * (h / cos(off_nadir)) * tan(fov_along / 2)
+    '''
+    if altitude_m <= 0:
+        raise ValueError("altitude_m must be positive")
+    if along_track_fov_deg <= 0:
+        raise ValueError("along_track_fov_deg must be positive")
+    if abs(off_nadir_deg) >= 90:
+        raise ValueError("off_nadir_deg must satisfy |off_nadir| < 90 degrees")
+
+    slant_range_m = altitude_m / math.cos(math.radians(off_nadir_deg))
+    half_fov_rad = math.radians(along_track_fov_deg / 2)
+    return 2 * slant_range_m * math.tan(half_fov_rad)
 
 
 def offset_distance_m(swath_width_m, desired_overlap_pct):

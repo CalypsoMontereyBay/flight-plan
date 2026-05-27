@@ -20,11 +20,6 @@ from sun import *
 from aircraft_math import *
 
 
-#Constants Imports:
-
-#Constant Declarations:
-
-
 # Main Functions and logic:
 #Step 1: Build the components of a candidate plan by assembling the
 #objects I need.
@@ -36,25 +31,64 @@ _Black_Swift = Aircraft(BLACKSWIFT_ENDURANCE_min, BLACKSWIFT_WIND_RATING_ms,
                                 BLACKSWIFT_TURN_RADIUS_m, BLACKSWIFT_TURN_PENALTY_s,
                                 BLACKSWIFT_MIN_GROUND_SPEED_ms, BLACKSWIFT_CRUISE_SPEED_ms)
 
-#Get the aircraft's total endurance as a unit of distance
-_Black_Swift_total_endurance_m = total_endurance_distance_m(_Black_Swift)
-
-#Get the aircraft's reserve endurance as a unit of distance
-_Black_Swift_reserve_endurance_m = reserve_distance_m(_Black_Swift, V1_EMERGENCY_RESERVE_FRACTION)
-
 #Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
 _Black_Swift_usable_endurance_m = max_planned_distance_m(_Black_Swift, V1_EMERGENCY_RESERVE_FRACTION)
 
-#Step 2.2: Assemble the Sensor object
+#Step 1.2: Assemble the Sensor object
 
-_Calypso_payload = Sensor(V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg, V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG, V1_DEFAULT_OVERLAP_PCT,
-                          V1_DEFAULT_SENSOR_OFF_NADIR_deg, "Micasense from Grey Paper")
+_Calypso_payload = Sensor(V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg, V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG, 
+                          V1_DEFAULT_OVERLAP_PCT, V1_DEFAULT_SENSOR_OFF_NADIR_deg, "Micasense from Grey Paper")
 
-#Step 2.3: Mission Request object (Route Assembly):
+#Step 1.3: Mission Request object for launch, land, and M1, then route assembly:
+
+_V1_Launch_Waypoint = Waypoint("WP000", V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+                               BLACKSWIFT_CRUISE_SPEED_ms, WAYPOINT_ACTION_LAUNCH, "Launch point", "Seymour-Beach-Launch")
+
+_V1_Land_Waypoint = Waypoint("WP_END", V1_LAND_POINT_LAT, V1_LAND_POINT_LONG, V1_DEFAULT_AIRCRAFT_ALTITUDE_m, BLACKSWIFT_CRUISE_SPEED_ms,
+                             WAYPOINT_ACTION_LAND, "land waypoint", "Seymour-Road-Land")
+
+_V1_M1_Waypoint = Waypoint("WP_M1", M1_MOORING_LAT, M1_MOORING_LONG, V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+                           BLACKSWIFT_CRUISE_SPEED_ms, WAYPOINT_ACTION_M1_OVERFLIGHT, "M1 waypoint for overflight req",
+                           "M1-Mooring-Station")
+
+_V1_Mission_Request = MissionRequest("V1 First example Mission", _V1_Launch_Waypoint, _V1_Land_Waypoint,
+                                     V1_DEFAULT_AIRCRAFT_ALTITUDE_m, mission_date,
+                                     True, 0, "First mission")
 
 
-#Step 2.4: Weather Stub, no API source yet, using conditions at launch point:
+#Step 1.4: Weather Stub, no API source yet, using conditions at launch point:
 
 _V1_assumed_weather = Weather(V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, mission_date,
                               V1_DEFAULT_MISSION_CLOUD_COVER, DEFAULT_ZERO_WIND, DEFAULT_WIND_DIRECTION_deg,
                               DEFAULT_WIND_GUST_ms, DEFAULT_VISIBILITY_m, DEFAULT_WEATHER_CONDITION)
+
+
+#Step 2: Assemble the current sun state and grab the azimuth.
+
+_V1_mission_sun_state = create_sun_state(V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, mission_date)
+
+_V1_mission_sun_azmimuth = _V1_mission_sun_state.azimuth
+
+
+def _candidate_orientation(sun_az):
+    
+    #Two possible heading orientations for minimizing glint, they will
+    #be used as "paths" and then the score for V1 is based off of glint minimization.
+    
+    az_candidate_one = (sun_az + AZIMUTH_ONE_THIRTY_FIVE) % AZIMUTH_THREE_SIXTY
+    
+    az_candidate_two = (sun_az - AZIMUTH_ONE_THIRTY_FIVE) % AZIMUTH_THREE_SIXTY
+    
+    return (az_candidate_one, az_candidate_two)
+
+
+
+#Using geo.py functions to actually build the grid, make points, populate a route...
+
+
+
+
+
+#Glint scoring function used to rank plans for V1.
+#THE ONLY RANKING FUNCTION FOR V1, OTHERS WILL FOLLOW
+#def _score_glint()

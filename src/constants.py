@@ -24,14 +24,14 @@ For the first build of the engine, this file will hold all of the constants used
 M1_MOORING_LONG = -122.020
 M1_MOORING_LAT = 36.750
 
-# Launch point coordinate constants (beach to the right of the seymour center.)
-V1_LAUNCH_POINT_LONG = -122.067
-V1_LAUNCH_POINT_LAT = 36.949
+# Launch point coordinate constants (Closest point to M1 station.)
+V1_LAUNCH_POINT_LONG = -121.936
+V1_LAUNCH_POINT_LAT = 36.637
 
-# Land point coordinate constants (road right next to seymour center.)
+# Land point coordinate constants (Beach near launch point.)
 
-V1_LAND_POINT_LONG = -122.065
-V1_LAND_POINT_LAT = 36.948
+V1_LAND_POINT_LONG = -121.938
+V1_LAND_POINT_LAT = 36.634
 
 # Engine Version 1 constants are defined below:
 
@@ -121,3 +121,9 @@ WAYPOINT_ACTION_SCIENCE = "science"
 WAYPOINT_ACTION_M1_OVERFLIGHT = "m1_overflight"
 WAYPOINT_ACTION_TURN = "turn"
 WAYPOINT_ACTION_LAND = "land"
+
+#Azimuth Constant for planner.py:
+
+AZIMUTH_ONE_THIRTY_FIVE = 135 #Units = degrees.
+
+AZIMUTH_THREE_SIXTY = 360 #Units = degrees.

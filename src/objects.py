@@ -19,7 +19,7 @@
 #imports:
 from shapely.geometry import Point
 from typing import Optional
-from datetime import date, time
+from datetime import date, time, datetime
 
 class Aircraft:
     
@@ -213,13 +213,16 @@ class Weather:
     pass around data as described in the documentation for this file up above.
     '''
     
-    def __init__(self, latitude_decimal, longitude_decimal, valid_time, 
+    def __init__(self, latitude_decimal, longitude_decimal, valid_time,
                  cloud_cover_pct, wind_speed_ms, wind_direction_deg,
                  wind_gusting_ms, visibility_m, condition_str, source = "STUB"):
-        
+
+        if not isinstance(valid_time, datetime):
+            raise TypeError("valid_time must be a datetime.datetime instance")
+
         self._latitude = latitude_decimal
         self._longitude = longitude_decimal
-        self._valid_time = valid_time #TURN INTO LIST WITH VALID HOURS AND MINUTES (MAY REQUIRE STRING PARSER)
+        self._valid_time = valid_time
         self._cloud_cover_pct = cloud_cover_pct
         self._wind_speed_ms = wind_speed_ms
         self._wind_direction_deg = wind_direction_deg
@@ -227,25 +230,49 @@ class Weather:
         self._visibility_m = visibility_m
         self._condition = condition_str
         self._data_source = source
-    
-    
+
+
     #The necessary getters for this object (since most is based on api), are listed below:
-    
+
     @property
     def cloud_cover(self):
         return self._cloud_cover_pct
-    
+
     @property
     def wind_speed(self):
         return self._wind_speed_ms
-    
+
     @property
     def wind_gusts(self):
         return self._wind_gust_speed_ms
-    
+
     @property
     def condition(self):
         return self._condition
+
+    # Date-awareness getters, mirroring CurrentSunState's pattern so the planner
+    # can ask the same shape of questions ("what hour?", "what day-of-year?") of
+    # both objects without special-casing.
+
+    @property
+    def valid_time(self):
+        return self._valid_time
+
+    @property
+    def valid_day_of_year(self):
+        return self._valid_time.timetuple().tm_yday
+
+    @property
+    def valid_hour(self):
+        return self._valid_time.hour
+
+    @property
+    def valid_minute(self):
+        return self._valid_time.minute
+
+    @property
+    def valid_date(self):
+        return self._valid_time.date()
 
 
 class Sensor:
@@ -303,7 +330,7 @@ class Waypoint:
     you'll find in this constructor.
     '''
     
-    def __init__(self, waypoint_id, latitude_decimal, longitude_decimal, altitude_m, speed_ms, action, notes=None, target_name=None):
+    def __init__(self, waypoint_id: str, latitude_decimal, longitude_decimal, altitude_m, speed_ms, action, notes=None, target_name=None):
         
         self._waypoint_id = waypoint_id
         self._latitude_decimal = latitude_decimal
@@ -362,16 +389,16 @@ class Waypoint:
     
 class MissionRequest:
     
-    def __init__(self, mission_name, launch_waypoint, land_waypoint, line_length_km, line_spacing_km, grid_width_km, altitude_m, date, require_m1_overflight=True, grid_orientation_deg=None, notes=None, included_target_waypoints = None):
+    def __init__(self, mission_name, launch_waypoint, land_waypoint, altitude_m, valid_date: datetime, require_m1_overflight=True, grid_orientation_deg=0, notes=None, included_target_waypoints = None):
+        
+        if not isinstance(valid_date, datetime):
+            raise TypeError("valid_time must be a datetime.datetime instance")
         
         self._mission_name = mission_name
         self._launch_waypoint = launch_waypoint
         self._land_waypoint = land_waypoint
-        self._line_length_km = line_length_km
-        self._line_spacing_km = line_spacing_km
-        self._grid_width_km = grid_width_km
         self._altitude_m = altitude_m
-        self._date = date
+        self._date = valid_date
         self._require_M1_overflight = require_m1_overflight
         self._grid_orientation_deg = grid_orientation_deg
         self._notes = notes
@@ -396,18 +423,6 @@ class MissionRequest:
             return [wp.point for wp in self._included_target_waypoints]
         
         return []
-    
-    @property
-    def line_length(self):
-        return self._line_length_km
-    
-    @property
-    def line_spacing(self):
-        return self._line_spacing_km
-    
-    @property
-    def grid_width(self):
-        return self._grid_width_km
     
     @property
     def altitude(self):
