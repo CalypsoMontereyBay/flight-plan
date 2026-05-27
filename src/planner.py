@@ -126,18 +126,30 @@ _V1_mission_sun_azmimuth = _V1_mission_sun_state.azimuth
 HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
 In Order:
 
-1. _candidate_orientation(sun_az): takes an azimuth angle and returns two heading "tracks"
-Both tracks are valid for "science" lines, but depending on all the other factors, one will score
+1. _candidate_orientation(sun_az): takes an azimuth angle and returns two heading "orientations"
+Both orientations are valid for "science" lines, but depending on all the other factors, one will score
 better than the other. returns both in a tuple for passing around and proper security.
-These values are then passed as track_heading_deg params in other helpers.
+These values are then passed as potential_orientation_deg params in other helpers.
 
-2. _score_glint(track_heading_deg, sun_az_deg): Returns how far off a candidate orientation is
+2. _score_glint(potential_orientation_deg, sun_az_deg): Returns how far off one leg of a candidate orientation is
 off from the 135 standard. Scores follow a golf paradigm (lower = better). A score of 0 means
 135 degrees exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
 two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
 is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
 
-3. _score_candidate()
+3. _score_candidate(orientation_track_heading_deg, sun_az_deg): scores an entire candidate
+by scoring both a leg in heading orientation_track_heading_deg, and orientation_track_heading_deg + 180.
+A candidate is only good in V1 if both directions are tolerable.
+
+CONTROL FLOW FOR THESE THREE FUNCTIONS:
+
+1. _candidate_orientation() produces two "potential orientations" for the final grid.
+
+2. Each potential orientation needs to be flow in in its original heading and + 180 degrees (lawnmower pattern)
+
+3. _score_glint() evaluates one potential orientation in one direction, therefore running twice per potential orientation.
+
+4. _score_candidate() combines the two legs into one candidate and ranks them. 
 """
 
 
@@ -145,18 +157,18 @@ def _candidate_orientation(sun_az):
 
     # Two possible heading orientations for minimizing glint, they will
     # be used as "paths" and then the score for V1 is based off of glint minimization.
-    # A second candidate will be considered for V2.
 
-    az_candidate_one = (sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
+    potential_orientation_one = (sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
 
-    az_candidate_two = (sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
+    potential_orientation_two = (sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
 
-    return (az_candidate_one, az_candidate_two)
+    return (potential_orientation_one, potential_orientation_two)
 
 
 # Glint scoring function used to rank plans for V1.
 # THE ONLY RANKING FUNCTION FOR V1, OTHERS WILL FOLLOW
-def _score_glint(track_heading_deg, sun_az_deg):
+#track heading is an az candidate from the function above
+def _score_glint(potential_orientation_deg, sun_az_deg):
     """
     Golf-style glint penalty: 0 = perfect (track is exactly 135 off sun-azimuth),
     higher = worse. Symmetric is +- 135 since the camera does not care which way it is tilted.
@@ -167,7 +179,7 @@ def _score_glint(track_heading_deg, sun_az_deg):
     """
 
     # finds how far off each azimuth candidate heading is from the desired 0 score.
-    azimuth_delta = (track_heading_deg - sun_az_deg) % CONST.AZIMUTH_THREE_SIXTY
+    azimuth_delta = (potential_orientation_deg - sun_az_deg) % CONST.AZIMUTH_THREE_SIXTY
 
     # the lower of the values is the winner and is returned
     return min(
