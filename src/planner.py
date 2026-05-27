@@ -69,24 +69,36 @@ _V1_mission_sun_state = create_sun_state(V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LO
 
 _V1_mission_sun_azmimuth = _V1_mission_sun_state.azimuth
 
+#Using geo.py functions to actually build the grid, make points, populate a route...
+
+
+'''
+HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
+In Order:
+
+1. _candidate_orientation(sun_az): takes an azimuth angle and returns two heading "tracks"
+Both tracks are valid for "science" lines, but depending on all the other factors, one will score
+better than the other. returns both in a tuple for passing around and proper security.
+
+2. _score_glint(track_heading_deg, sun_az_deg): Returns how far off a candidate orientation is
+off from the 135 standard. Scores follow a golf paradigm (lower = better). A score of 0 means
+135 degrees exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
+two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
+is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
+'''
+
 
 def _candidate_orientation(sun_az):
     
     #Two possible heading orientations for minimizing glint, they will
     #be used as "paths" and then the score for V1 is based off of glint minimization.
+    #A second candidate will be considered for V2.
     
     az_candidate_one = (sun_az + AZIMUTH_ONE_THIRTY_FIVE) % AZIMUTH_THREE_SIXTY
     
     az_candidate_two = (sun_az - AZIMUTH_ONE_THIRTY_FIVE) % AZIMUTH_THREE_SIXTY
     
     return (az_candidate_one, az_candidate_two)
-
-
-
-#Using geo.py functions to actually build the grid, make points, populate a route...
-
-
-
 
 
 #Glint scoring function used to rank plans for V1.
