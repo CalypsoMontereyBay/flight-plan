@@ -12,11 +12,11 @@ return heading is not determined by sun azimuth.
 #module imports:
 from pysolar.solar import get_azimuth, get_altitude 
 import datetime
-from .objects import CurrentSunState
+from objects import CurrentSunState
 
 
 #constants imports
-from .constants import (
+from constants import (
                         V1_LAUNCH_POINT_LAT, 
                         V1_LAUNCH_POINT_LONG, 
                         V1_DEFAULT_MISSION_YEAR,

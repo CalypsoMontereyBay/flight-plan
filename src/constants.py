@@ -127,3 +127,5 @@ WAYPOINT_ACTION_LAND = "land"
 AZIMUTH_ONE_THIRTY_FIVE = 135 #Units = degrees.
 
 AZIMUTH_THREE_SIXTY = 360 #Units = degrees.
+
+AZIMUTH_TWO_TWENTY_FIVE = 225 #Units = degrees.

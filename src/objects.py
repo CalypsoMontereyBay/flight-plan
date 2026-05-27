@@ -389,7 +389,9 @@ class Waypoint:
     
 class MissionRequest:
     
-    def __init__(self, mission_name, launch_waypoint, land_waypoint, altitude_m, valid_date: datetime, require_m1_overflight=True, grid_orientation_deg=0, notes=None, included_target_waypoints = None):
+    #Mission Request object no longer holds line length/grid_width etc... params
+    def __init__(self, mission_name, launch_waypoint, land_waypoint, altitude_m, valid_date: datetime, require_m1_overflight=True, 
+                 grid_orientation_deg=None, notes=None, included_target_waypoints = None):
         
         if not isinstance(valid_date, datetime):
             raise TypeError("valid_time must be a datetime.datetime instance")
@@ -448,10 +450,12 @@ class CandidatePlan:
         self._currentSunState = currentSunState
         self._weather = weather
         self._sensor = sensor
-
+        
+        '''
         if waypoints is None and isinstance(sensor, list):
             waypoints = sensor
             self._sensor = None
+        '''
         
         if waypoints == None:
             self._waypoints = []
