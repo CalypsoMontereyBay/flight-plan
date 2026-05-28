@@ -51,6 +51,8 @@ V1_DEFAULT_LEGAL_STATUS = True
 
 V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 118  # Units = m. 118m = ~385 FT.
 
+V1_DEFAULT_LAND_ALTITUDE_m = 0 #Units = m. 
+
 V1_DEFAULT_LINE_LENGTH_km = 2  # Units = km. 2 km = ~6562 FT.
 
 V1_DEFAULT_LINE_SPACING_km = 0.15  # Units = km. 0.15 km = ~500 FT.

@@ -434,6 +434,9 @@ class Waypoint:
     def is_m1_overflight(self):
         return self.action == "m1_overflight" or self.target_name == "M1"
 
+    def set_action(self, new_action):
+        self.action = new_action
+        return
 
 class MissionRequest:
 

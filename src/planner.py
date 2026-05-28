@@ -68,7 +68,7 @@ _V1_Land_Waypoint = Waypoint(
     "WP_END",
     CONST.V1_LAND_POINT_LAT,
     CONST.V1_LAND_POINT_LONG,
-    CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+    CONST.V1_DEFAULT_LAND_ALTITUDE_m,
     CONST.BLACKSWIFT_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAND,
     "land waypoint",
@@ -126,6 +126,8 @@ _V1_mission_sun_azimuth = _V1_mission_sun_state.azimuth
 HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
 In Order:
 
+
+
 1. _candidate_orientation(sun_az): takes an azimuth angle and returns two heading "orientations"
 Both orientations are valid for "science" lines, but depending on all the other factors, one will score
 better than the other. returns both in a tuple for passing around and proper security.
@@ -141,7 +143,21 @@ is used. This is the tiebreaker because if the corner is closer, it is more like
 by scoring both a leg in heading orientation_track_heading_deg, and orientation_track_heading_deg + 180.
 A candidate is only good in V1 if both directions are tolerable.
 
-CONTROL FLOW FOR THESE THREE FUNCTIONS:
+4. _pick_best_orientation(candidates: list, sun_az_deg): Runs the previous function on both candidates in order
+to return the winning heading to the program and geo.py for making the lawnmower. 
+
+5. _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint): Simple function that evaluates the winning candidate's corners, and simply reverses
+the list of waypoints if the last corner is closest the launch point. This allows for maximum battery efficiency
+and savings.
+
+6. _classify_waypoints(route_points: list, m1_route_idx, launch_wp: Waypoint, land_wp: Waypoint, altitude_m, speed_ms): Walks the route and 
+tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
+final positions. Returns a list of waypoint objects that is "the route."
+
+
+
+
+CONTROL FLOW FOR THE RANKING FUNCTIONS:
 
 1. _candidate_orientation() produces two "potential orientations" for the final grid.
 
@@ -158,16 +174,20 @@ def _candidate_orientation(sun_az):
     # Two possible heading orientations for minimizing glint, they will
     # be used as "paths" and then the score for V1 is based off of glint minimization.
 
-    potential_orientation_one = (sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
+    potential_orientation_one = (
+        sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE
+    ) % CONST.AZIMUTH_THREE_SIXTY
 
-    potential_orientation_two = (sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE) % CONST.AZIMUTH_THREE_SIXTY
+    potential_orientation_two = (
+        sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE
+    ) % CONST.AZIMUTH_THREE_SIXTY
 
     return (potential_orientation_one, potential_orientation_two)
 
 
 # Glint scoring function used to rank plans for V1.
 # THE ONLY RANKING FUNCTION FOR V1, OTHERS WILL FOLLOW
-#track heading is an az candidate from the function above
+# track heading is an az candidate from the function above
 def _score_glint(potential_orientation_deg, sun_az_deg):
     """
     Golf-style glint penalty: 0 = perfect (track is exactly 135 off sun-azimuth),
@@ -184,22 +204,62 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
     # the lower of the values is the winner and is returned
     return min(
         (abs(azimuth_delta - CONST.AZIMUTH_ONE_THIRTY_FIVE)),
-        (abs(azimuth_delta - CONST.AZIMUTH_TWO_TWENTY_FIVE))
+        (abs(azimuth_delta - CONST.AZIMUTH_TWO_TWENTY_FIVE)),
     )
 
 
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
-    
-    '''
+    """
     Returns the penalty that will be added to each candidates score by
     returning the max of the glint score of the forward and reverse legs
     of a given heading orientation. Candidates are punished in V1 by their
-    worst leg. 
-    '''
-    
-    forward_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
-    
-    reverse_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
-    
-    return (max(forward_leg_score, reverse_leg_score))
+    worst leg.
+    """
 
+    forward_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+
+    reverse_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+
+    return max(forward_leg_score, reverse_leg_score)
+
+
+def _pick_best_orientation(candidates: tuple, sun_az_deg):
+
+    cand_Alpha, cand_Bravo = candidates
+
+    cand_Alpha_score = _score_candidate(cand_Alpha, sun_az_deg)
+
+    cand_Bravo_score = _score_candidate(cand_Bravo, sun_az_deg)
+
+    # The best candidate has the lowest score and is returned.
+    return min(cand_Alpha_score, cand_Bravo_score)
+
+
+def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
+
+    last_wp_dist_to_launch = distance_between(launch_point, route_points[-1])
+
+    first_wp_dist_to_launch = distance_between(launch_point, route_points[0])
+
+    if last_wp_dist_to_launch < first_wp_dist_to_launch:
+
+        updated_route_list = route_points[::-1]
+        # updated_m1_idx = ?
+
+        return updated_route_list  # , updated_m1_idx)
+    else:
+        return (route_points, m1_idx)
+
+def _classify_waypoints(route_points: list, m1_route_idx, launch_wp: Waypoint, land_wp: Waypoint, altitude_m, speed_ms):
+    
+    for i in range (len(route_points)):
+        
+        if i == 0:
+            route_points.insert(0, launch_wp)
+        
+        if i == len(route_points) -1:
+            route_points.append(land_wp)
+            
+        if (route_points[i] == m1_route_idx):
+            route_points[i].set_action(CONST.WAYPOINT_ACTION_M1_OVERFLIGHT)
+            
