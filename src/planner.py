@@ -120,7 +120,7 @@ _V1_mission_sun_state = create_sun_state(
     CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_date
 )
 
-_V1_mission_sun_azmimuth = _V1_mission_sun_state.azimuth
+_V1_mission_sun_azimuth = _V1_mission_sun_state.azimuth
 
 """
 HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
@@ -186,3 +186,20 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
         (abs(azimuth_delta - CONST.AZIMUTH_ONE_THIRTY_FIVE)),
         (abs(azimuth_delta - CONST.AZIMUTH_TWO_TWENTY_FIVE))
     )
+
+
+def _score_candidate(potential_orientation_candidate_deg, sun_az):
+    
+    '''
+    Returns the penalty that will be added to each candidates score by
+    returning the max of the glint score of the forward and reverse legs
+    of a given heading orientation. Candidates are punished in V1 by their
+    worst leg. 
+    '''
+    
+    forward_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+    
+    reverse_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+    
+    return (max(forward_leg_score, reverse_leg_score))
+

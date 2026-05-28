@@ -18,8 +18,7 @@
 
 # imports:
 from shapely.geometry import Point
-from typing import Optional
-from datetime import date, time, datetime
+from datetime import datetime
 
 
 class Aircraft:
@@ -517,13 +516,7 @@ class CandidatePlan:
         self._weather = weather
         self._sensor = sensor
 
-        """
-        if waypoints is None and isinstance(sensor, list):
-            waypoints = sensor
-            self._sensor = None
-        """
-
-        if waypoints == None:
+        if waypoints is None:
             self._waypoints = []
 
         else:
