@@ -274,6 +274,56 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
         off_nadir_deg,
     )
     offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
+
+    # ------------------------------------------------------------------
+    # SCIENCE / TRANSIT OFFSET CORRECTION  (documented, NOT yet active)
+    # ------------------------------------------------------------------
+    # PROBLEM:
+    #   The live offset_m above is sized as the line-to-line spacing
+    #   assuming EVERY adjacent line collects science -- a copter-style
+    #   bidirectional lawnmower. The fixed-wing BlackSwift has no yaw
+    #   axis to de-rotate the camera, so only the legs flown at the
+    #   science heading H collect data; the return legs at H+180 are
+    #   transit (camera off, wrong glint direction).
+    #
+    #   In the serpentine built by _build_centered_grid, even-indexed
+    #   lines are flown at H (science) and odd-indexed lines at H+180
+    #   (transit). So the SCIENCE lines are really spaced 2 * offset_m
+    #   apart, not offset_m. Two consequences:
+    #     1. The science swaths do not abut at the intended overlap --
+    #        they leave cross-track gaps (under-sampled ocean).
+    #     2. metrics["science_lines"] = total_lines overcounts the real
+    #        science lines by roughly 2x.
+    #
+    # FIX:
+    #   Treat the swath/overlap result as the desired SCIENCE-line
+    #   spacing, then halve it to get the physical line spacing, so the
+    #   interleaved transit line falls exactly between two science lines.
+    #
+    #   science_offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
+    #   line_offset_m    = science_offset_m / 2
+    #   offset_m         = line_offset_m   # physical spacing fed to the grid
+    #
+    # METRICS that must change with the fix (total_lines is odd):
+    #   science_lines = (total_lines + 1) // 2   # even-indexed, flown at H
+    #   transit_lines =  total_lines // 2        # odd-indexed, flown at H+180
+    #   offset_lines  =  total_lines - 1
+    #   grid_area_m2  =  science area. With the halved offset the science
+    #                    swaths close their gaps, so the bounding-square
+    #                    area equals true science coverage again -- but for
+    #                    the SAME total_lines the grid is now half the
+    #                    linear size (a quarter of the area), OR you need
+    #                    ~2x the lines (and ~2x the route distance, since
+    #                    half is transit) to cover the same area.
+    #
+    # DOWNSTREAM EFFECT:
+    #   For a fixed endurance budget the honest achievable science area
+    #   roughly halves versus the current optimistic model, because ~50%
+    #   of the flight distance is non-collecting transit. Activate this
+    #   block only once planner/outputs report science vs transit lines
+    #   separately and the area-based ranking expects true science area.
+    # ------------------------------------------------------------------
+
     total_lines = _initial_total_lines_from_budget(usable_distance_m, offset_m)
 
     while total_lines >= 3:

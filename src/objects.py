@@ -450,6 +450,7 @@ class MissionRequest:
         mission_name,
         launch_waypoint,
         land_waypoint,
+        m1_waypoint,
         altitude_m,
         valid_date: datetime,
         require_m1_overflight=True,
@@ -464,6 +465,7 @@ class MissionRequest:
         self._mission_name = mission_name
         self._launch_waypoint = launch_waypoint
         self._land_waypoint = land_waypoint
+        self._m1_waypoint = m1_waypoint
         self._altitude_m = altitude_m
         self._date = valid_date
         self._require_M1_overflight = require_m1_overflight
@@ -502,6 +504,18 @@ class MissionRequest:
     @property
     def desired_heading(self):
         return self._grid_orientation_deg
+    
+    @property
+    def launch_wp(self):
+        return self._launch_waypoint
+    
+    @property
+    def land_wp(self):
+        return self._land_waypoint
+    
+    @property
+    def m1_wp(self):
+        return self._m1_waypoint
 
 
 class CandidatePlan:
@@ -513,6 +527,7 @@ class CandidatePlan:
         aircraft,
         currentSunState,
         weather,
+        chosen_orientation_deg,
         sensor=None,
         waypoints=None,
     ):
@@ -521,6 +536,7 @@ class CandidatePlan:
         self._aircraft = aircraft
         self._currentSunState = currentSunState
         self._weather = weather
+        self._chosen_orientation_deg = chosen_orientation_deg
         self._sensor = sensor
 
         if waypoints is None:
@@ -610,6 +626,10 @@ class CandidatePlan:
     @property
     def offset_lines(self):
         return self._offset_lines
+    
+    @property
+    def chosen_orientation(self):
+        return self._chosen_orientation_deg
 
     """
     Below are the methods needed or that will be convenient during the 
@@ -653,4 +673,8 @@ class CandidatePlan:
     
     def set_score (self, mission_score):
         self._score = mission_score
+        return
+    
+    def set_orientation(self, new_orientation):
+        self._chosen_orientation_deg = new_orientation
         return

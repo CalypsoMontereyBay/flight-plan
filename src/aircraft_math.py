@@ -52,13 +52,13 @@ def max_planned_distance_m(aircraft, reserve_fraction=V1_EMERGENCY_RESERVE_FRACT
 def route_duration_min(total_route_distance_m: float, total_lines, aircraft: Aircraft):
     
     # time spent flying in a straight line (cruising)
-    cruise_seconds = total_route_distance_m / aircraft._cruising_speed
+    cruise_seconds = total_route_distance_m / aircraft.vehicle_cruise_speed
     
     # time spent flying in a turn
     # total number of turns is N-lines - 1
-    turn_seconds = (total_lines -1) * aircraft._turn_penalty
+    turn_seconds = (total_lines -1) * aircraft.vehicle_turn_penalty
     
-    duration_min = (cruise_seconds / turn_seconds) / SECONDS_PER_MINUTE
+    duration_min = (cruise_seconds + turn_seconds) / SECONDS_PER_MINUTE
     
     return duration_min
 

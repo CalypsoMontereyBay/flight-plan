@@ -136,3 +136,8 @@ AZIMUTH_THREE_SIXTY = 360  # Units = degrees.
 AZIMUTH_TWO_TWENTY_FIVE = 225  # Units = degrees. 360 - 135, mirror of the ideal offset.
 
 DEGREE_ONE_EIGHTY = 180 # Units = degrees
+
+
+#Glint "Gate threshold" for proper ranking purposes
+
+V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 135 before a plan is rejected
