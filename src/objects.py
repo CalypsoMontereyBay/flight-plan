@@ -377,7 +377,7 @@ class Waypoint:
         self._longitude_decimal = longitude_decimal
         self._altitude_m = altitude_m
         self._speed_ms = speed_ms
-        self.action = action
+        self._action = action
         self.notes = notes
         self.target_name = target_name
 
@@ -418,7 +418,11 @@ class Waypoint:
     @property
     def waypoint_ID(self):
         return self._waypoint_id
-
+    
+    @property
+    def action(self):
+        return self._action
+    
     def to_CSV_row(self):
         return [
             self._waypoint_id,
@@ -435,7 +439,7 @@ class Waypoint:
         return self.action == "m1_overflight" or self.target_name == "M1"
 
     def set_action(self, new_action):
-        self.action = new_action
+        self._action = new_action
         return
 
 class MissionRequest:
@@ -638,3 +642,15 @@ class CandidatePlan:
                 return True
 
         return False
+    
+    def set_duration_min (self, mission_duration_min):
+        self._estimated_duration_min = mission_duration_min
+        return
+    
+    def set_battery_margin_min (self, mission_battery_margin_min):
+        self._battery_margin_min = mission_battery_margin_min
+        return
+    
+    def set_score (self, mission_score):
+        self._score = mission_score
+        return

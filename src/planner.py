@@ -15,9 +15,9 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 
 from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
+from geo import make_lawnmower_grid_through_m1, distance_between#, bearing_between
 from sun import create_sun_state, mission_date
-from aircraft_math import max_planned_distance_m
+from aircraft_math import max_planned_distance_m,route_duration_min, battery_margin_min
 
 # Main Functions and logic:
 # Step 1: Build the components of a candidate plan by assembling the
@@ -120,6 +120,7 @@ _V1_mission_sun_state = create_sun_state(
     CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_date
 )
 
+# Setting the mission azimuth
 _V1_mission_sun_azimuth = _V1_mission_sun_state.azimuth
 
 """
@@ -218,7 +219,9 @@ def _score_candidate(potential_orientation_candidate_deg, sun_az):
 
     forward_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
 
-    reverse_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+    reverse_leg_score = _score_glint(
+        (potential_orientation_candidate_deg + CONST.DEGREE_ONE_EIGHTY), sun_az
+    )
 
     return max(forward_leg_score, reverse_leg_score)
 
@@ -232,7 +235,10 @@ def _pick_best_orientation(candidates: tuple, sun_az_deg):
     cand_Bravo_score = _score_candidate(cand_Bravo, sun_az_deg)
 
     # The best candidate has the lowest score and is returned.
-    return min(cand_Alpha_score, cand_Bravo_score)
+    if cand_Alpha_score <= cand_Bravo_score:
+        return (cand_Alpha, cand_Alpha_score)
+    else:
+        return (cand_Bravo, cand_Bravo_score)
 
 
 def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
@@ -244,22 +250,130 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
     if last_wp_dist_to_launch < first_wp_dist_to_launch:
 
         updated_route_list = route_points[::-1]
-        # updated_m1_idx = ?
+        updated_m1_idx = len(route_points) - 1 - m1_idx
 
-        return updated_route_list  # , updated_m1_idx)
+        return (updated_route_list, updated_m1_idx)
     else:
         return (route_points, m1_idx)
 
-def _classify_waypoints(route_points: list, m1_route_idx, launch_wp: Waypoint, land_wp: Waypoint, altitude_m, speed_ms):
+
+def _classify_waypoints(
+    route_points: list,
+    m1_route_idx,
+    launch_wp: Waypoint,
+    land_wp: Waypoint,
+    altitude_m,
+    cruise_speed_ms,
+):
+
+    # Establish a new route list that has each waypoint tagged
+    tagged_route_list = []
+
+    # Sets the launch action then adds it to the list
+    if launch_wp.action != CONST.WAYPOINT_ACTION_LAUNCH:
+        launch_wp.set_action(CONST.WAYPOINT_ACTION_LAUNCH)
+
+    tagged_route_list.append(launch_wp)
+
+    if land_wp.action != CONST.WAYPOINT_ACTION_LAND:
+        land_wp.set_action(CONST.WAYPOINT_ACTION_LAND)
+
+    for index, point in enumerate(route_points):
+
+        if index == m1_route_idx:
+            action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
+            target_name = "M1_Mooring"
+
+        elif index % 3 == 1:
+            action = CONST.WAYPOINT_ACTION_SCIENCE
+            target_name = None
+
+        else:
+            action = CONST.WAYPOINT_ACTION_TURN
+            target_name = None
+
+        tagged_route_list.append(
+            Waypoint(
+                f"WP{index + 1:03d}",
+                point.y,
+                point.x,
+                altitude_m,
+                cruise_speed_ms,
+                action,
+                target_name=target_name,
+            )
+        )
+
+    tagged_route_list.insert(-1, land_wp)
+
+    return tagged_route_list
+
+
+
+'''
+Putting it all together, build_candidate_plan() uses all of the pre-established
+objects and sends their data through the helpers as needed. Below is what happens in
+order:
+
+1. Identify candidates then pick the best oritentation
+
+2. make a lawnmower grid through m1.
+
+3. reorient to the launch to get the shortest traversal to the grid possible.
+
+4. classify each waypoint now that proper orientation has been established.
+
+5. construct the candidate plan object with helpers and getters/setters.
+
+6. return a fully finished candidate plan.
+
+'''
+
+def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_m, payload: Sensor, 
+                         mission_request: MissionRequest, mission_weather: Weather, mission_azimuth,
+                         mission_sun_state
+                         ):
     
-    for i in range (len(route_points)):
-        
-        if i == 0:
-            route_points.insert(0, launch_wp)
-        
-        if i == len(route_points) -1:
-            route_points.append(land_wp)
-            
-        if (route_points[i] == m1_route_idx):
-            route_points[i].set_action(CONST.WAYPOINT_ACTION_M1_OVERFLIGHT)
-            
+    #Step 1, generate the potential orientation candidates
+    mission_potential_orientations = _candidate_orientation(mission_azimuth)
+    
+    #Step 2, pick the winning orientation candidate
+    mission_orientation, mission_orientation_score = _pick_best_orientation(mission_potential_orientations, mission_azimuth)
+    
+    #Step 3, make the lawnmower grid
+    flight_lines, route_points, metrics = make_lawnmower_grid_through_m1(mission_request.target_point, mission_orientation, mission_aircraft_endurance_m,
+                                                                        mission_request.altitude, payload.cross_track_fov, CONST.V1_DEFAULT_OVERLAP_PCT,
+                                                                        off_nadir_deg=payload.off_nadir)
+    
+    #Step 4, reorient the grid as needed
+    route_waypoints, m1_index = _reorient_to_launch(route_points, metrics["m1_route_index"], mission_request.launch_point)
+    
+    #Step 5, walk the route and classify each waypoint and assign it an index:
+    
+    mission_route_list_classified = _classify_waypoints(route_waypoints, m1_index, mission_request.launch_point,
+                                                        mission_request.land_point, mission_request.altitude, mission_aircraft.vehicle_cruise_speed)
+    
+    
+    #Step 6, build the candidate plan
+    
+    candidate_plan = CandidatePlan(mission_request, mission_aircraft, mission_sun_state,
+                                   mission_weather, payload, mission_route_list_classified)
+    
+    #Step 7, set the plan metrics using the obejct's setter
+    
+    candidate_plan.set_grid_metrics(metrics)
+    
+    #Step 8, calculate the duration of the flight in minutes and then send it to the candidate
+    
+    candidate_plan_estimated_duration_min = route_duration_min(metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft)
+    
+    candidate_plan_estimated_battery_margin_min = battery_margin_min(mission_aircraft, candidate_plan_estimated_duration_min)
+    
+    candidate_plan.set_duration_min(candidate_plan_estimated_duration_min)
+    
+    candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
+    
+    #Step 9, retrieve the orientation score and send it to the candidate
+    candidate_plan.set_score(mission_orientation_score)
+    
+    return candidate_plan

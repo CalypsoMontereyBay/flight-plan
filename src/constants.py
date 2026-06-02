@@ -135,3 +135,4 @@ AZIMUTH_THREE_SIXTY = 360  # Units = degrees.
 
 AZIMUTH_TWO_TWENTY_FIVE = 225  # Units = degrees. 360 - 135, mirror of the ideal offset.
 
+DEGREE_ONE_EIGHTY = 180 # Units = degrees
