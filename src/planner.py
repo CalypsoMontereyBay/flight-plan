@@ -90,6 +90,7 @@ _V1_Mission_Request = MissionRequest(
     mission_name="V1 First Example Mission",
     launch_waypoint=_V1_Launch_Waypoint,
     land_waypoint=_V1_Land_Waypoint,
+    m1_waypoint= _V1_M1_Waypoint,
     altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
     valid_date=mission_date,
     require_m1_overflight=True,
@@ -212,33 +213,91 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
     """
     Returns the penalty that will be added to each candidates score by
-    returning the max of the glint score of the forward and reverse legs
-    of a given heading orientation. Candidates are punished in V1 by their
-    worst leg.
+    returning the glint score of the science leg
     """
 
-    forward_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
+    science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az) 
 
-    reverse_leg_score = _score_glint(
-        (potential_orientation_candidate_deg + CONST.DEGREE_ONE_EIGHTY), sun_az
+    return science_leg_score
+
+def _passes_glint_gate(score):
+    
+    return (score <= CONST.V1_GLINT_TOLERANCE_DEG)
+
+
+def _build_grid_for_orientation(orientation_deg, mission_request: MissionRequest,
+                                payload: Sensor, usable_distance_m):
+    """
+    Thin wrapper around geo.make_lawnmower_grid_through_m1 that pulls the grid
+    parameters out of the mission/payload objects for a single orientation.
+
+    Returns geo's (flight_lines, route_points, metrics) tuple unchanged.
+    """
+    return make_lawnmower_grid_through_m1(
+        mission_request.m1_wp,
+        orientation_deg,
+        usable_distance_m,
+        mission_request.altitude,
+        payload.cross_track_fov,
+        payload.desired_overlap,
+        off_nadir_deg=payload.off_nadir,
     )
 
-    return max(forward_leg_score, reverse_leg_score)
 
+def _pick_best_orientation(candidates: tuple, sun_az_deg, mission_request: MissionRequest,
+                           payload: Sensor, usable_distance_m):
+    """
+    Score both candidate science headings (glint, science-leg only), keep the
+    ones that clear the glint gate, build each survivor's grid, and return the
+    winner together with its already-built grid so build_candidate_plan never
+    rebuilds.
 
-def _pick_best_orientation(candidates: tuple, sun_az_deg):
+    Tiebreak (the V1 norm, since both ideal candidates score 0): choose the
+    orientation whose nearest grid endpoint is closest to the launch point,
+    which minimizes the transit leg flown from launch into the grid.
 
-    cand_Alpha, cand_Bravo = candidates
+    Returns:
+        (winning_orientation_deg, winning_score, flight_lines, route_points, metrics)
+    """
+    launch_point = mission_request.launch_point
 
-    cand_Alpha_score = _score_candidate(cand_Alpha, sun_az_deg)
+    # Collect (orientation, score) for every candidate that clears the gate.
+    gate_passers = []
+    for candidate_orientation in candidates:
+        candidate_score = _score_candidate(candidate_orientation, sun_az_deg)
+        if _passes_glint_gate(candidate_score):
+            gate_passers.append((candidate_orientation, candidate_score))
 
-    cand_Bravo_score = _score_candidate(cand_Bravo, sun_az_deg)
+    if len(gate_passers) == 0:
+        raise ValueError("No candidate orientations passed the glint gate!")
 
-    # The best candidate has the lowest score and is returned.
-    if cand_Alpha_score <= cand_Bravo_score:
-        return (cand_Alpha, cand_Alpha_score)
-    else:
-        return (cand_Bravo, cand_Bravo_score)
+    # Build each survivor's grid once and keep the one with the closest entry
+    # corner. The running-best comparison covers the 1-passer and multi-passer
+    # cases uniformly, so no branching is needed here or in the caller.
+    best_entry = None  # (corner_dist, orientation, score, flight_lines, route_points, metrics)
+
+    for orientation_deg, orientation_score in gate_passers:
+        flight_lines, route_points, metrics = _build_grid_for_orientation(
+            orientation_deg, mission_request, payload, usable_distance_m
+        )
+        nearest_corner_dist_m = min(
+            distance_between(launch_point, route_points[0]),
+            distance_between(launch_point, route_points[-1]),
+        )
+
+        if best_entry is None or nearest_corner_dist_m < best_entry[0]:
+            best_entry = (
+                nearest_corner_dist_m,
+                orientation_deg,
+                orientation_score,
+                flight_lines,
+                route_points,
+                metrics,
+            )
+
+    _, winning_orientation, winning_score, flight_lines, route_points, metrics = best_entry
+
+    return (winning_orientation, winning_score, flight_lines, route_points, metrics)
 
 
 def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
@@ -282,7 +341,7 @@ def _classify_waypoints(
 
         if index == m1_route_idx:
             action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
-            target_name = "M1_Mooring"
+            target_name = "M1"
 
         elif index % 3 == 1:
             action = CONST.WAYPOINT_ACTION_SCIENCE
@@ -304,7 +363,7 @@ def _classify_waypoints(
             )
         )
 
-    tagged_route_list.insert(-1, land_wp)
+    tagged_route_list.append(land_wp)
 
     return tagged_route_list
 
@@ -336,31 +395,30 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
     
     #Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
-    
-    #Step 2, pick the winning orientation candidate
-    mission_orientation, mission_orientation_score = _pick_best_orientation(mission_potential_orientations, mission_azimuth)
-    
-    #Step 3, make the lawnmower grid
-    flight_lines, route_points, metrics = make_lawnmower_grid_through_m1(mission_request.target_point, mission_orientation, mission_aircraft_endurance_m,
-                                                                        mission_request.altitude, payload.cross_track_fov, CONST.V1_DEFAULT_OVERLAP_PCT,
-                                                                        off_nadir_deg=payload.off_nadir)
-    
-    #Step 4, reorient the grid as needed
-    route_waypoints, m1_index = _reorient_to_launch(route_points, metrics["m1_route_index"], mission_request.launch_point)
-    
-    #Step 5, walk the route and classify each waypoint and assign it an index:
-    
-    mission_route_list_classified = _classify_waypoints(route_waypoints, m1_index, mission_request.launch_point,
-                                                        mission_request.land_point, mission_request.altitude, mission_aircraft.vehicle_cruise_speed)
-    
-    
-    #Step 6, build the candidate plan
-    
+
+    #Step 2, pick the winning orientation AND reuse the grid the picker built
+    (mission_orientation, mission_orientation_score,
+     flight_lines, route_points, metrics) = _pick_best_orientation(
+        mission_potential_orientations, mission_azimuth,
+        mission_request, payload, mission_aircraft_endurance_m,
+    )
+
+    #Step 3, reorient the grid so the route starts at the corner closest to launch
+    route_shapely_waypoints, m1_index = _reorient_to_launch(route_points, metrics["m1_route_index"], mission_request.launch_point)
+
+    #Step 4, walk the route and classify each waypoint and assign it an index:
+
+    mission_route_list_classified = _classify_waypoints(route_shapely_waypoints, m1_index, mission_request.launch_wp,
+                                                        mission_request.land_wp, mission_request.altitude, mission_aircraft.vehicle_cruise_speed)
+
+
+    #Step 5, build the candidate plan
+
     candidate_plan = CandidatePlan(mission_request, mission_aircraft, mission_sun_state,
-                                   mission_weather, payload, mission_route_list_classified)
-    
-    #Step 7, set the plan metrics using the obejct's setter
-    
+                                   mission_weather, mission_orientation, payload, mission_route_list_classified)
+
+    #Step 6, set the plan metrics using the obejct's setter
+
     candidate_plan.set_grid_metrics(metrics)
     
     #Step 8, calculate the duration of the flight in minutes and then send it to the candidate
