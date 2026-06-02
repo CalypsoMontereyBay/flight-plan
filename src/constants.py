@@ -141,3 +141,13 @@ DEGREE_ONE_EIGHTY = 180 # Units = degrees
 #Glint "Gate threshold" for proper ranking purposes
 
 V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 135 before a plan is rejected
+
+OUTPUT_DIRECTORY = "/Users/robbywandel/Desktop/CALYPSO_OUTPUT"
+
+EXTENSION_KML = "kml"
+
+EXTENSION_PNG = "png"
+
+#FOR V2 ONLY:
+
+EXTENSION_JSON = "json"

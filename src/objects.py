@@ -523,6 +523,7 @@ class CandidatePlan:
     # For V1, these are the only objects we will need passed as parameters:
     def __init__(
         self,
+        name: str,
         missionRequest,
         aircraft,
         currentSunState,
@@ -531,7 +532,7 @@ class CandidatePlan:
         sensor=None,
         waypoints=None,
     ):
-
+        self._name = name
         self._mission_request = missionRequest
         self._aircraft = aircraft
         self._currentSunState = currentSunState
@@ -630,6 +631,10 @@ class CandidatePlan:
     @property
     def chosen_orientation(self):
         return self._chosen_orientation_deg
+    
+    @property
+    def name(self):
+        return self._name
 
     """
     Below are the methods needed or that will be convenient during the 
@@ -677,4 +682,8 @@ class CandidatePlan:
     
     def set_orientation(self, new_orientation):
         self._chosen_orientation_deg = new_orientation
+        return
+
+    def change_name(self, new_name):
+        self._name = new_name
         return
