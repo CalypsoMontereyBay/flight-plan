@@ -130,44 +130,35 @@ In Order:
 
 
 
-1. _candidate_orientation(sun_az): takes an azimuth angle and returns two heading "orientations"
+1. _candidate_orientation(): takes an azimuth angle and returns two heading "orientations"
 Both orientations are valid for "science" lines, but depending on all the other factors, one will score
 better than the other. returns both in a tuple for passing around and proper security.
 These values are then passed as potential_orientation_deg params in other helpers.
 
-2. _score_glint(potential_orientation_deg, sun_az_deg): Returns how far off one leg of a candidate orientation is
+2. _score_glint(): Returns how far off one leg of a candidate orientation is
 off from the 135 standard. Scores follow a golf paradigm (lower = better). A score of 0 means
 135 degrees exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
 two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
 is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
 
-3. _score_candidate(orientation_track_heading_deg, sun_az_deg): scores an entire candidate
-by scoring both a leg in heading orientation_track_heading_deg, and orientation_track_heading_deg + 180.
-A candidate is only good in V1 if both directions are tolerable.
+3. _score_candidate(): scores a candidate based on the
+deviation from the 135 degree ideal based on their science leg. 
 
-4. _pick_best_orientation(candidates: list, sun_az_deg): Runs the previous function on both candidates in order
-to return the winning heading to the program and geo.py for making the lawnmower. 
+4. _passes_glint_gate(): checks if the score of a candidate is within a certain margin, plans are rejected if this
+function returns False, used in function #6.
 
-5. _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint): Simple function that evaluates the winning candidate's corners, and simply reverses
-the list of waypoints if the last corner is closest the launch point. This allows for maximum battery efficiency
-and savings.
+5. _build_grid_for_orientation(): takes an orientation and uses the lawnmower route
+building function to construct a grid
 
-6. _classify_waypoints(route_points: list, m1_route_idx, launch_wp: Waypoint, land_wp: Waypoint, altitude_m, speed_ms): Walks the route and 
-tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
+6. _pick_best_orientation(): takes the two candidates and picks the best grid for the mission, also handles
+tie breaking
+
+7. _reorient_to_launch(): checks if the normal orientation of the grid or the reverse orientation (H + 180)
+is more efficient by checking the distance of the launch point to both the first and last waypoints of the grid.
+The grid is then either left alone or reversed accordingly
+
+8. _classify_waypoints(): Walks the route and tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
 final positions. Returns a list of waypoint objects that is "the route."
-
-
-
-
-CONTROL FLOW FOR THE RANKING FUNCTIONS:
-
-1. _candidate_orientation() produces two "potential orientations" for the final grid.
-
-2. Each potential orientation needs to be flow in in its original heading and + 180 degrees (lawnmower pattern)
-
-3. _score_glint() evaluates one potential orientation in one direction, therefore running twice per potential orientation.
-
-4. _score_candidate() combines the two legs into one candidate and ranks them. 
 """
 
 
@@ -211,11 +202,8 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
 
 
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
-    """
-    Returns the penalty that will be added to each candidates score by
-    returning the glint score of the science leg
-    """
-
+   
+    #Calculates the science leg score of an orientation
     science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az) 
 
     return science_leg_score
@@ -421,7 +409,7 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
 
     candidate_plan.set_grid_metrics(metrics)
     
-    #Step 8, calculate the duration of the flight in minutes and then send it to the candidate
+    #Step 7, calculate the duration of the flight in minutes and then send it to the candidate
     
     candidate_plan_estimated_duration_min = route_duration_min(metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft)
     
@@ -431,7 +419,7 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
     
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
     
-    #Step 9, retrieve the orientation score and send it to the candidate
+    #Step 8, retrieve the orientation score and send it to the candidate
     candidate_plan.set_score(mission_orientation_score)
     
     return candidate_plan
