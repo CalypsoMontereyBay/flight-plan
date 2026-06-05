@@ -201,14 +201,15 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         IF YOU OPEN THIS FILE IN A CODE EDITOR WITH PYLANCE:
         
         **There is not error in the lines that contain: .coords, .extrude, .altitudemode
-        simplekml uses its own special syntax rules and logic that makes this syntax valid.**
+        simplekml uses its own special syntax rules and logic that makes this syntax valid.
+        Just disable the warning in pyright.**
         """
 
-        ls.coords = pts
+        ls.coords = pts # type: ignore
 
-        ls.extrude = 0
+        ls.extrude = 0 # pyright: ignore[reportAttributeAccessIssue]
 
-        ls.altitudemode = simplekml.AltitudeMode.relativetoground
+        ls.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
 
         ls.style.linestyle.width = 3
 
@@ -232,7 +233,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     m1_marker = kml.newpoint(name=plan.mission_request.m1_wp.action)
 
     # Set the coordinates and altitude of each POI
-    launch_marker.coords = [
+    launch_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.launch_wp.longitude,
             plan.mission_request.launch_wp.latitude,
@@ -240,7 +241,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         )
     ]
 
-    land_marker.coords = [
+    land_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.land_wp.longitude,
             plan.mission_request.land_wp.latitude,
@@ -248,7 +249,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         )
     ]
 
-    m1_marker.coords = [
+    m1_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.m1_wp.longitude,
             plan.mission_request.m1_wp.latitude,
@@ -257,11 +258,11 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     ]
 
     # Set the altitude mode of each POI
-    launch_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+    launch_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
 
-    land_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+    land_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
 
-    m1_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+    m1_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
 
     # Set the styling of each POI
     launch_marker.style.iconstyle.color = simplekml.Color.green
