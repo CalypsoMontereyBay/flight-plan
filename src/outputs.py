@@ -200,9 +200,8 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         """
         IF YOU OPEN THIS FILE IN A CODE EDITOR WITH PYLANCE:
         
-        **There is not error on the lines that contain: ls.coords = pts
-        && ls.extrude = 0. Pylance freaks out but it is valid syntax for the simplekml
-        library**
+        **There is not error in the lines that contain: .coords, .extrude, .altitudemode
+        simplekml uses its own special syntax rules and logic that makes this syntax valid.**
         """
 
         ls.coords = pts
