@@ -32,9 +32,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 import math
-import datetime
+from datetime import datetime
 from typing import Optional, Iterable
-import os
 
 # Outputs.py helpers are defined below:
 
@@ -64,17 +63,19 @@ def _sun_vector(sun_az_deg, length):
     pass
 
 
-def _output_path(plan: CandidatePlan, extension: str, out_dir: str= "EMPTY"):
+def _output_path(plan_name: property, extension: str, out_dir: str= "EMPTY"):
     
     #Won't be used in v1, but when a directory is not found, the engine will make one.
     if out_dir == "EMPTY":
         
-        os.mkdir(CONST.OUTPUT_DIRECTORY)
+        pass
         
     #gets the current date and time after establishing it
-    curr_datetime = datetime.datetime.now()
+    curr_datetime = datetime.now()
     
-    output_path = f"{CONST.OUTPUT_DIRECTORY}/{plan.name}_{{{{{curr_datetime.year}{curr_datetime.month}{curr_datetime.day}}}}}-{{{curr_datetime.hour}{curr_datetime.minute}}}.{extension}"
+    curr_date_str = curr_datetime.strftime("%Y%m%d-%H%M")
+    
+    output_path = f"{out_dir}/{plan_name}_{curr_date_str}.{extension}"
     
     return output_path
 

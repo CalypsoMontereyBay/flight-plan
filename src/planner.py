@@ -378,7 +378,7 @@ order:
 
 def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_m, payload: Sensor, 
                          mission_request: MissionRequest, mission_weather: Weather, mission_azimuth,
-                         mission_sun_state
+                         mission_sun_state, candidate_name
                          ):
     
     #Step 1, generate the potential orientation candidates
@@ -402,7 +402,7 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
 
     #Step 5, build the candidate plan
 
-    candidate_plan = CandidatePlan(mission_request, mission_aircraft, mission_sun_state,
+    candidate_plan = CandidatePlan(candidate_name, mission_request, mission_aircraft, mission_sun_state,
                                    mission_weather, mission_orientation, payload, mission_route_list_classified)
 
     #Step 6, set the plan metrics using the obejct's setter
