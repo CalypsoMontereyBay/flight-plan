@@ -125,9 +125,9 @@ def _sun_vector(sun_az_deg, length):
     # points along the compass bearing with north = +y.
     sun_az_rad = math.radians(sun_az_deg)
 
-    dx = (length * math.sin(sun_az_rad))
+    dx = length * math.sin(sun_az_rad)
 
-    dy = (length * math.cos(sun_az_rad))
+    dy = length * math.cos(sun_az_rad)
 
     return (dx, dy)
 
@@ -150,3 +150,131 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
     output_path = f"{out_dir}/{plan_name}_{curr_date_str}.{extension}"
 
     return output_path
+
+
+def _metrics_caption(plan: CandidatePlan):
+
+    return f"{plan.chosen_orientation}, {plan._score}, {plan.grid_area_m2}, {plan.total_lines}, {plan.duration}, {plan.margin}"
+
+
+def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
+    """
+    QGC REMINDER:
+    A KML uploaded to QGroundControl is VISUALIZATION ONLY. QGC draws the
+    LineStrings/Placemarks for review, but it does NOT turn them into a
+    flyable mission with auto-generated per-waypoint headings. To actually
+    upload-and-fly we will emit a QGC ".plan" file (JSON) -- which is why
+    constants.py carries EXTENSION_JSON. That JSON writer is a future helper
+    (write_qgc_plan); this KML is for human/Google Earth review.
+
+    Section #1: Prep, establish the kml, get the line segments,
+    get the output path, get the route list
+    """
+
+    kml = simplekml.Kml()
+
+    route = _route_coords(plan)
+
+    # _segments_by_action expects the (lon, lat, alt, action) tuples from
+    # _route_coords -- NOT raw Waypoint objects (those aren't subscriptable).
+    segments = _segments_by_action(route)
+
+    path = _output_path(plan.name, CONST.EXTENSION_KML, out_dir)
+
+    """
+    Section #2: Set the document name and metadata 
+    """
+
+    kml.document.name = plan.name
+
+    kml.document.description = _metrics_caption(plan)
+
+    """
+    Section #3: Draw the route
+    """
+
+    for category, pts in segments:
+
+        ls = kml.newlinestring(name=category)
+
+        """
+        IF YOU OPEN THIS FILE IN A CODE EDITOR WITH PYLANCE:
+        
+        **There is not error on the lines that contain: ls.coords = pts
+        && ls.extrude = 0. Pylance freaks out but it is valid syntax for the simplekml
+        library**
+        """
+
+        ls.coords = pts
+
+        ls.extrude = 0
+
+        ls.altitudemode = simplekml.AltitudeMode.relativetoground
+
+        ls.style.linestyle.width = 3
+
+        if category == "science":
+
+            ls.style.linestyle.color = simplekml.Color.green
+
+        else:
+
+            ls.style.linestyle.color = simplekml.Color.gray
+
+    """
+    Section #4: Markers at POI's
+    """
+
+    # Establish each POI
+    launch_marker = kml.newpoint(name=plan.mission_request.launch_wp.action)
+
+    land_marker = kml.newpoint(name=plan.mission_request.land_wp.action)
+
+    m1_marker = kml.newpoint(name=plan.mission_request.m1_wp.action)
+
+    # Set the coordinates and altitude of each POI
+    launch_marker.coords = [
+        (
+            plan.mission_request.launch_wp.longitude,
+            plan.mission_request.launch_wp.latitude,
+            plan.mission_request.launch_wp.altitude,
+        )
+    ]
+
+    land_marker.coords = [
+        (
+            plan.mission_request.land_wp.longitude,
+            plan.mission_request.land_wp.latitude,
+            plan.mission_request.land_wp.altitude,
+        )
+    ]
+
+    m1_marker.coords = [
+        (
+            plan.mission_request.m1_wp.longitude,
+            plan.mission_request.m1_wp.latitude,
+            plan.mission_request.m1_wp.altitude,
+        )
+    ]
+
+    # Set the altitude mode of each POI
+    launch_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+
+    land_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+
+    m1_marker.altitudemode = simplekml.AltitudeMode.relativetoground
+
+    # Set the styling of each POI
+    launch_marker.style.iconstyle.color = simplekml.Color.green
+
+    land_marker.style.iconstyle.color = simplekml.Color.red
+
+    m1_marker.style.iconstyle.color = simplekml.Color.coral
+
+    """
+    Section #5: Save and return
+    """
+    
+    kml.save(path=path)
+    
+    return path

@@ -635,6 +635,14 @@ class CandidatePlan:
     @property
     def name(self):
         return self._name
+    
+    @property
+    def duration(self):
+        return self._estimated_duration_min
+    
+    @property
+    def margin(self):
+        return self._battery_margin_min
 
     """
     Below are the methods needed or that will be convenient during the 
