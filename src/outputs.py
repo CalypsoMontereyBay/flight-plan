@@ -154,7 +154,7 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 
 def _metrics_caption(plan: CandidatePlan):
 
-    return f"{plan.chosen_orientation}, {plan._score}, {plan.grid_area_m2}, {plan.total_lines}, {plan.duration}, {plan.margin}"
+    return f"{plan.chosen_orientation}, {plan.score}, {plan.grid_area_m2}, {plan.total_lines}, {plan.duration}, {plan.margin}"
 
 
 def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):

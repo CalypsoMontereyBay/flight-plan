@@ -643,6 +643,10 @@ class CandidatePlan:
     @property
     def margin(self):
         return self._battery_margin_min
+    
+    @property
+    def score(self):
+        return self._score
 
     """
     Below are the methods needed or that will be convenient during the 
