@@ -1,6 +1,6 @@
 """
 The outputs.py file takes the data from our candidate plan and produces
-human readable output in the form of a KML file and a PNG file.
+human readable output in the form of a KML, PNG, JSON, and Cartopy figure file.
 
 KML's can be uploaded to QGroundControl, BlackSwift's FMS, or Google Earth.
 
