@@ -481,7 +481,7 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     # Step 5: Put the title, Legend, and Grid
 
-    axes.set_title(f"{plan.name}\n{_metrics_caption(plan)}")
+    axes.set_title(f"{plan.name}\nCaption Values in Order (L -> R): Chosen Orientation, Plan Score, Grid Area (m^2), Total Line Number, Plan Duration (minutes), Battery Margin Remaining (%)\n{_metrics_caption(plan)}")
 
     axes.legend(loc="best")
 
