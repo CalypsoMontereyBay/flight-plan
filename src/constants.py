@@ -72,6 +72,8 @@ V1_DEFAULT_SENSOR_OFF_NADIR_deg = 40  # Units = degrees.
 
 V1_DEFAULT_OVERLAP_PCT = 30  # Units = %. Placeholder until science overlap requirement is known.
 
+PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
+
 # Engine Version 1 aircraft defailts are defined below:
 
 # AIRCRAFT PARAMS ARE DEFINED WITH RESPECT TO THE BLACKSWIFT S2 FIXED-WING UAV

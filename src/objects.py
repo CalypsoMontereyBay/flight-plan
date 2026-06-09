@@ -647,6 +647,9 @@ class CandidatePlan:
     @property
     def score(self):
         return self._score
+    
+    
+    
 
     """
     Below are the methods needed or that will be convenient during the 

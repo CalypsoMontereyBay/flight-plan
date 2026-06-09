@@ -37,6 +37,12 @@ from typing import Optional, Iterable
 
 # Outputs.py helpers are defined below:
 
+"""
+============================================================================
+==              SECTION 0: KML HELPERS                                    ==
+============================================================================
+"""
+
 
 # Walks the candidate plan's route and fills a list with the actions needed to generate kml
 def _route_coords(plan: CandidatePlan):
@@ -117,21 +123,6 @@ def _segments_by_action(route: list):
     return segments
 
 
-# converts azimuth to a (dx, dy) for PNG arrow denoting sun position/angle
-def _sun_vector(sun_az_deg, length):
-
-    # math.sin/cos expect RADIANS; azimuth comes in as degrees (0 = north,
-    # clockwise), so convert first. dx uses sin, dy uses cos so the arrow
-    # points along the compass bearing with north = +y.
-    sun_az_rad = math.radians(sun_az_deg)
-
-    dx = length * math.sin(sun_az_rad)
-
-    dy = length * math.cos(sun_az_rad)
-
-    return (dx, dy)
-
-
 def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 
     # "EMPTY" is the sentinel for "caller gave no directory" -> fall back to the
@@ -155,6 +146,100 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 def _metrics_caption(plan: CandidatePlan):
 
     return f"{plan.chosen_orientation}, {plan.score}, {plan.grid_area_m2}, {plan.total_lines}, {plan.duration}, {plan.margin}"
+
+
+"""
+============================================================================
+==              SECTION 1: PNG HELPERS                                    ==
+============================================================================
+"""
+
+
+# Defines the geographic bounds for png elements such as the sun arrow, etc.
+def _route_extent(route: list):
+
+    lons = []
+
+    lats = []
+
+    # length checking route to gracefully handle a case in which an error
+    # has occured and the helper recieves an empty route list.
+    if not route:
+
+        raise ValueError("Route list is empty and it should not be!")
+
+    else:
+
+        for point in route:
+
+            lons.append(point[0])
+            lats.append(point[1])
+
+        return (min(lons), max(lons), min(lats), max(lats))
+
+
+def _poi_markers(plan: CandidatePlan):
+
+    mission_req = plan.mission_request
+
+    poi_list = []
+
+    poi_list.append(
+        (
+            mission_req.launch_wp.action,
+            mission_req.launch_wp.longitude,
+            mission_req.launch_wp.latitude,
+            mission_req.launch_wp.altitude,
+        )
+    )
+
+    poi_list.append(
+        (
+            mission_req.land_wp.action,
+            mission_req.land_wp.longitude,
+            mission_req.land_wp.latitude,
+            mission_req.land_wp.altitude,
+        )
+    )
+
+    poi_list.append(
+        (
+            mission_req.m1_wp.action,
+            mission_req.m1_wp.longitude,
+            mission_req.m1_wp.latitude,
+            mission_req.m1_wp.altitude,
+        )
+    )
+
+    return poi_list
+
+
+# Standardizing the coloring paradigm between the png output and the KML,
+# KML function will use this to assign colors! (I think)
+def _png_color(category: str):
+
+    if category == CONST.WAYPOINT_ACTION_SCIENCE:
+
+        return "green"
+
+    else:
+
+        return "gray"
+
+
+# converts azimuth to a (dx, dy) for PNG arrow denoting sun position/angle
+def _sun_vector(sun_az_deg, length):
+
+    # math.sin/cos expect RADIANS; azimuth comes in as degrees (0 = north,
+    # clockwise), so convert first. dx uses sin, dy uses cos so the arrow
+    # points along the compass bearing with north = +y.
+    sun_az_rad = math.radians(sun_az_deg)
+
+    dx = length * math.sin(sun_az_rad)
+
+    dy = length * math.cos(sun_az_rad)
+
+    return (dx, dy)
 
 
 def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
@@ -205,11 +290,13 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         Just disable the warning in pyright.**
         """
 
-        ls.coords = pts # type: ignore
+        ls.coords = pts  # type: ignore
 
-        ls.extrude = 0 # pyright: ignore[reportAttributeAccessIssue]
+        ls.extrude = 0  # pyright: ignore[reportAttributeAccessIssue]
 
-        ls.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
+        ls.altitudemode = (
+            simplekml.AltitudeMode.relativetoground
+        )  # pyright: ignore[reportAttributeAccessIssue]
 
         ls.style.linestyle.width = 3
 
@@ -233,7 +320,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     m1_marker = kml.newpoint(name=plan.mission_request.m1_wp.action)
 
     # Set the coordinates and altitude of each POI
-    launch_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
+    launch_marker.coords = [  # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.launch_wp.longitude,
             plan.mission_request.launch_wp.latitude,
@@ -241,7 +328,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         )
     ]
 
-    land_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
+    land_marker.coords = [  # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.land_wp.longitude,
             plan.mission_request.land_wp.latitude,
@@ -249,7 +336,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
         )
     ]
 
-    m1_marker.coords = [ # pyright: ignore[reportAttributeAccessIssue]
+    m1_marker.coords = [  # pyright: ignore[reportAttributeAccessIssue]
         (
             plan.mission_request.m1_wp.longitude,
             plan.mission_request.m1_wp.latitude,
@@ -258,11 +345,17 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     ]
 
     # Set the altitude mode of each POI
-    launch_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
+    launch_marker.altitudemode = (
+        simplekml.AltitudeMode.relativetoground
+    )  # pyright: ignore[reportAttributeAccessIssue]
 
-    land_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
+    land_marker.altitudemode = (
+        simplekml.AltitudeMode.relativetoground
+    )  # pyright: ignore[reportAttributeAccessIssue]
 
-    m1_marker.altitudemode = simplekml.AltitudeMode.relativetoground # pyright: ignore[reportAttributeAccessIssue]
+    m1_marker.altitudemode = (
+        simplekml.AltitudeMode.relativetoground
+    )  # pyright: ignore[reportAttributeAccessIssue]
 
     # Set the styling of each POI
     launch_marker.style.iconstyle.color = simplekml.Color.green
@@ -274,7 +367,125 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     """
     Section #5: Save and return
     """
-    
+
     kml.save(path=path)
-    
+
+    return path
+
+
+def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
+
+    # The png writer has the same spine as the kml writer, only differences
+    # are output type dependent.
+
+    # Step 0, establish the png infrastructure by calling the helpers
+
+    route = _route_coords(plan)
+
+    segments = _segments_by_action(route)
+
+    path = _output_path(plan.name, CONST.EXTENSION_PNG, out_dir)
+
+    pois = _poi_markers(plan)
+
+    geo_bounds = _route_extent(route)
+
+    # Step 1: establish the plot for the png and set its bounds and settings
+
+    figures, axes = plt.subplots(8, 8)
+
+    axes.set_aspect(1 / math.cos(math.radians(CONST.M1_MOORING_LAT)))
+
+    axes.set_xlabel("Longitude")
+
+    axes.set_ylabel("Latitude")
+
+    lower_lon, upper_lon, lower_lat, upper_lat = geo_bounds
+
+    # Setting the bound limits with a +- 5% margin
+    plt.xlim(
+        (lower_lon - (lower_lon * CONST.PNG_PLOTTING_MARGIN)),
+        (upper_lon + (upper_lon * CONST.PNG_PLOTTING_MARGIN)),
+    )
+
+    plt.ylim(
+        (lower_lat - (lower_lat * CONST.PNG_PLOTTING_MARGIN)),
+        (upper_lat + (upper_lat * CONST.PNG_PLOTTING_MARGIN)),
+    )
+
+    # Step 2: draw the route on the PNG:
+
+    seen_cats = set()
+
+    x_vals = []
+
+    y_vals = []
+
+    for category, points in segments:
+
+        x_vals.append(points[0])
+
+        y_vals.append(points[1])
+
+        color = _png_color(category)
+
+        if category not in seen_cats:
+
+            label = category
+
+        else:
+
+            label = None
+
+        axes.plot(x_vals, y_vals, color=color, linewidth=1.5, label=label)
+
+        seen_cats.add(category)
+
+    # Step 3: Draw the markers:
+
+    style = {"launch": ("^", "green"), "land": ("v", "red"), "M1": ("*", "coral")}
+
+    # alt has to be unpacked but it is not used
+    for label, lon, lat, alt in pois:
+
+        symbol, color = style[label]
+
+        axes.scatter(lon, lat, marker=symbol, c=color, s=120, label=label, zorder=5)
+
+    # Step 4: Sun Arrow visualizer:
+
+    sun_az = plan.sun_state.azimuth
+
+    span = max((upper_lon - lower_lon), (upper_lat - lower_lat))
+
+    dx, dy = _sun_vector(sun_az, length=(0.15 * span))
+
+    axes.annotate(
+        "",
+        xy=(
+            (plan.mission_request.m1_wp.longitude + dx),
+            (plan.mission_request.m1_wp.latitude + dy),
+        ),
+        xytext=(
+            plan.mission_request.m1_wp.longitude,
+            plan.mission_request.m1_wp.latitude,
+        ),
+        arrowprops=dict(color="orange", width=2),
+    )
+
+    axes.text(f"sun azimuth angle: {sun_az:.0f}")
+
+    # Step 5: Put the title, Legend, and Grid
+
+    axes.set_title(f"{plan.name}\n{_metrics_caption(plan)}")
+
+    axes.legend(loc="best")
+
+    axes.grid(True, alpha=0.3)
+
+    # Save the figure and return the path
+
+    figures.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(figures)
+
     return path
