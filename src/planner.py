@@ -423,3 +423,12 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
     candidate_plan.set_score(mission_orientation_score)
     
     return candidate_plan
+
+
+#Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
+
+def plan_default_mission(candidate_name):
+    
+    return build_candidate_plan(_Black_Swift, _Black_Swift_usable_endurance_m, _Calypso_payload,
+                                _V1_Mission_Request, _V1_assumed_weather, _V1_mission_sun_azimuth,
+                                _V1_mission_sun_state, candidate_name=candidate_name)

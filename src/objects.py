@@ -418,11 +418,11 @@ class Waypoint:
     @property
     def waypoint_ID(self):
         return self._waypoint_id
-    
+
     @property
     def action(self):
         return self._action
-    
+
     def to_CSV_row(self):
         return [
             self._waypoint_id,
@@ -441,6 +441,7 @@ class Waypoint:
     def set_action(self, new_action):
         self._action = new_action
         return
+
 
 class MissionRequest:
 
@@ -504,15 +505,15 @@ class MissionRequest:
     @property
     def desired_heading(self):
         return self._grid_orientation_deg
-    
+
     @property
     def launch_wp(self):
         return self._launch_waypoint
-    
+
     @property
     def land_wp(self):
         return self._land_waypoint
-    
+
     @property
     def m1_wp(self):
         return self._m1_waypoint
@@ -627,29 +628,26 @@ class CandidatePlan:
     @property
     def offset_lines(self):
         return self._offset_lines
-    
+
     @property
     def chosen_orientation(self):
         return self._chosen_orientation_deg
-    
+
     @property
     def name(self):
         return self._name
-    
+
     @property
     def duration(self):
         return self._estimated_duration_min
-    
+
     @property
     def margin(self):
         return self._battery_margin_min
-    
+
     @property
     def score(self):
         return self._score
-    
-    
-    
 
     """
     Below are the methods needed or that will be convenient during the 
@@ -682,19 +680,19 @@ class CandidatePlan:
                 return True
 
         return False
-    
-    def set_duration_min (self, mission_duration_min):
+
+    def set_duration_min(self, mission_duration_min):
         self._estimated_duration_min = mission_duration_min
         return
-    
-    def set_battery_margin_min (self, mission_battery_margin_min):
+
+    def set_battery_margin_min(self, mission_battery_margin_min):
         self._battery_margin_min = mission_battery_margin_min
         return
-    
-    def set_score (self, mission_score):
+
+    def set_score(self, mission_score):
         self._score = mission_score
         return
-    
+
     def set_orientation(self, new_orientation):
         self._chosen_orientation_deg = new_orientation
         return
