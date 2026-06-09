@@ -392,7 +392,7 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     # Step 1: establish the plot for the png and set its bounds and settings
 
-    figures, axes = plt.subplots(8, 8)
+    figures, axes = plt.subplots(figsize=(8, 8))
 
     axes.set_aspect(1 / math.cos(math.radians(CONST.M1_MOORING_LAT)))
 
@@ -402,48 +402,46 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     lower_lon, upper_lon, lower_lat, upper_lat = geo_bounds
 
-    # Setting the bound limits with a +- 5% margin
-    plt.xlim(
-        (lower_lon - (lower_lon * CONST.PNG_PLOTTING_MARGIN)),
-        (upper_lon + (upper_lon * CONST.PNG_PLOTTING_MARGIN)),
-    )
+    # Margin must be a fraction of the SPAN, not of the coordinate value.
+    # (lon ~ -121.9, so lon * 0.05 would shove the view ~6 degrees sideways.)
+    lon_margin = (upper_lon - lower_lon) * CONST.PNG_PLOTTING_MARGIN
+    lat_margin = (upper_lat - lower_lat) * CONST.PNG_PLOTTING_MARGIN
 
-    plt.ylim(
-        (lower_lat - (lower_lat * CONST.PNG_PLOTTING_MARGIN)),
-        (upper_lat + (upper_lat * CONST.PNG_PLOTTING_MARGIN)),
-    )
+    axes.set_xlim(lower_lon - lon_margin, upper_lon + lon_margin)
+    axes.set_ylim(lower_lat - lat_margin, upper_lat + lat_margin)
 
-    # Step 2: draw the route on the PNG:
+    # Step 2: draw the route on the PNG, one polyline per segment:
 
     seen_cats = set()
 
-    x_vals = []
-
-    y_vals = []
-
     for category, points in segments:
 
-        x_vals.append(points[0])
-
-        y_vals.append(points[1])
+        # each segment is its OWN list of (lon, lat) points -> unpack per segment
+        xs = [pt[0] for pt in points]
+        ys = [pt[1] for pt in points]
 
         color = _png_color(category)
 
+        # label each category only once so the legend isn't flooded
         if category not in seen_cats:
-
             label = category
-
         else:
-
             label = None
 
-        axes.plot(x_vals, y_vals, color=color, linewidth=1.5, label=label)
+        axes.plot(xs, ys, color=color, linewidth=1.5, label=label)
 
         seen_cats.add(category)
 
     # Step 3: Draw the markers:
 
-    style = {"launch": ("^", "green"), "land": ("v", "red"), "M1": ("*", "coral")}
+    # _poi_markers labels each POI with its waypoint ACTION, so the style dict
+    # must be keyed on the action strings (M1's action is "m1_overflight",
+    # not "M1") or every M1 marker would KeyError.
+    style = {
+        CONST.WAYPOINT_ACTION_LAUNCH: ("^", "green"),
+        CONST.WAYPOINT_ACTION_LAND: ("v", "red"),
+        CONST.WAYPOINT_ACTION_M1_OVERFLIGHT: ("*", "coral"),
+    }
 
     # alt has to be unpacked but it is not used
     for label, lon, lat, alt in pois:
@@ -473,7 +471,13 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
         arrowprops=dict(color="orange", width=2),
     )
 
-    axes.text(f"sun azimuth angle: {sun_az:.0f}")
+    # text() needs (x, y, string); anchor the label at the sun-arrow tip.
+    axes.text(
+        plan.mission_request.m1_wp.longitude + dx,
+        plan.mission_request.m1_wp.latitude + dy,
+        f"sun azimuth: {sun_az:.0f} deg",
+        color="orange",
+    )
 
     # Step 5: Put the title, Legend, and Grid
 
