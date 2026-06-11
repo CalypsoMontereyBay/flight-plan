@@ -103,10 +103,11 @@ def calc_zenith(solar_elevation_deg):
 # ===================================================================
 
 """
-The create_launch_sun_state function puts it all together by populating
-the constructor of a currentSunState obejct and returning it. It uses
+The create_sun_state function puts it all together by populating
+the constructor of a CurrentSunState object and returning it. It uses
 the helper functions above and calculates the values needed for the rest
-of the engine to have proper sun data.
+of the engine to have proper sun data. Latitude, longitude, and date all
+default to the V1 launch point and assumed mission date.
 """
 
 

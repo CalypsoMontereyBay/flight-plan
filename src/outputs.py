@@ -1,6 +1,7 @@
 """
 The outputs.py file takes the data from our candidate plan and produces
-human readable output in the form of a KML, PNG, JSON, and Cartopy figure file.
+human readable output. V1 produces two artifacts: a KML file and a PNG file.
+(A QGC ".plan" JSON writer is planned for V2 -- see EXTENSION_JSON in constants.)
 
 KML's can be uploaded to QGroundControl, BlackSwift's FMS, or Google Earth.
 
@@ -39,16 +40,16 @@ from typing import Optional, Iterable
 
 """
 ============================================================================
-==              SECTION 0: KML HELPERS                                    ==
+==      SECTION 0: SHARED HELPERS (used by BOTH the KML and PNG writers)  ==
 ============================================================================
 """
 
 
-# Walks the candidate plan's route and fills a list with the actions needed to generate kml
+# Walks the candidate plan's route into (lon, lat, alt, action) tuples.
+# Shared spine consumed by BOTH write_kml and write_png.
 def _route_coords(plan: CandidatePlan):
 
-    # KML list for holding the necessary items to make points using
-    # simplekml.
+    # One (lon, lat, alt, action) tuple per waypoint, in flight order.
     kml_wp_list = []
     for point in plan.waypoints:
 
@@ -214,8 +215,10 @@ def _poi_markers(plan: CandidatePlan):
     return poi_list
 
 
-# Standardizing the coloring paradigm between the png output and the KML,
-# KML function will use this to assign colors! (I think)
+# Maps a segment category to a matplotlib color for the PNG route.
+# NOTE: write_kml does NOT call this -- it applies simplekml.Color directly.
+# Keeping the science=green / transit=gray choice here documents the shared
+# color convention in one place so the two outputs stay visually consistent.
 def _png_color(category: str):
 
     if category == CONST.WAYPOINT_ACTION_SCIENCE:
