@@ -8,11 +8,11 @@ For the first build of the engine, this file will hold all of the constants used
     3. We will also be assuming permanently clear skies on January 1st 2026 for now.
 
     4. The coordinates of the M1 Mooring station are also found here and will be used
-    even after the first eversion of the engine works.
+    even after the first version of the engine works.
 
     5. Legal status for now is assumed to be true (Legal).
 
-    6. Flight path constants like altitude, line lengths, etc are also found her for now.
+    6. Flight path constants like altitude, line lengths, etc are also found here for now.
 
     7. We are also ignoring wind in version 1.
 """
@@ -74,7 +74,7 @@ V1_DEFAULT_OVERLAP_PCT = 30  # Units = %. Placeholder until science overlap requ
 
 PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
 
-# Engine Version 1 aircraft defailts are defined below:
+# Engine Version 1 aircraft defaults are defined below:
 
 # AIRCRAFT PARAMS ARE DEFINED WITH RESPECT TO THE BLACKSWIFT S2 FIXED-WING UAV
 
@@ -100,11 +100,7 @@ BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
 NWS_BASE_URL = "https://api.weather.gov"
 # NWS_USER_AGENT =
 
-DEFAULT_CLOUD_COVER = 0  # Units = %
-
 DEFAULT_ZERO_WIND = 0  # Units = m/s
-
-MAX_ACCEPTABLE_WIND = 15  # Units = m/s (Same as UAV wing rating)
 
 CLEAR_SKY_THRESHOLD_PERCENTAGE = 95  # Units = % (When 95% or more of the sky is clear, the engine considers the sky clear)
 

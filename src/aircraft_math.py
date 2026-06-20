@@ -6,12 +6,9 @@ Route geometry stays in geo.py; this file only answers how far the aircraft
 can fly while preserving the required emergency reserve.
 """
 
-try:
-    from .constants import V1_EMERGENCY_RESERVE_FRACTION
-    from .objects import Aircraft
-except ImportError:
-    from constants import V1_EMERGENCY_RESERVE_FRACTION
-    from objects import Aircraft
+
+from constants import V1_EMERGENCY_RESERVE_FRACTION
+from objects import Aircraft
 
 
 SECONDS_PER_MINUTE = 60

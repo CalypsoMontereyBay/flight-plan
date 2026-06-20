@@ -13,7 +13,7 @@ that takes the data the engine produces and produces output.
 
 This follows my design of "dumb unidirectionality", meaning that files
 are only as knowledgeable of the rest of the program as they have to be
-and the engine's pipline follows a linear, unidirectional computational flow.
+and the engine's pipeline follows a linear, unidirectional computational flow.
 
 **NOTE**: Outputs.py may not always be the last link in the chain, once legal
 and other sources of validation are needed, its position may change to only produce
@@ -164,7 +164,7 @@ def _route_extent(route: list):
     lats = []
 
     # length checking route to gracefully handle a case in which an error
-    # has occured and the helper recieves an empty route list.
+    # has occurred and the helper receives an empty route list.
     if not route:
 
         raise ValueError("Route list is empty and it should not be!")

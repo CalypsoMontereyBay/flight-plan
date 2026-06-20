@@ -92,7 +92,7 @@ _V1_Mission_Request = MissionRequest(
     land_waypoint=_V1_Land_Waypoint,
     m1_waypoint= _V1_M1_Waypoint,
     altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    valid_date=mission_date,
+    valid_time=mission_date,
     require_m1_overflight=True,
     grid_orientation_deg=None,
     notes="First Mission",
@@ -185,7 +185,7 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
     """
     Golf-style glint penalty: 0 = perfect (track is exactly 135 off sun-azimuth),
     higher = worse. Symmetric is +- 135 since the camera does not care which way it is tilted.
-    (The aircraft is what maintins the azimuth, not the cam).
+    (The aircraft is what maintains the azimuth, not the cam).
 
     track_heading: heading flown on the leg: (0..360)
     sun_az: sun azimuth at the mission time: (0..360)
@@ -362,7 +362,7 @@ Putting it all together, build_candidate_plan() uses all of the pre-established
 objects and sends their data through the helpers as needed. Below is what happens in
 order:
 
-1. Identify candidates then pick the best oritentation
+1. Identify candidates then pick the best orientation
 
 2. make a lawnmower grid through m1.
 
@@ -405,7 +405,7 @@ def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_
     candidate_plan = CandidatePlan(candidate_name, mission_request, mission_aircraft, mission_sun_state,
                                    mission_weather, mission_orientation, payload, mission_route_list_classified)
 
-    #Step 6, set the plan metrics using the obejct's setter
+    #Step 6, set the plan metrics using the object's setter
 
     candidate_plan.set_grid_metrics(metrics)
     

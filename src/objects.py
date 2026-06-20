@@ -382,7 +382,7 @@ class Waypoint:
         self.target_name = target_name
 
         """
-        Parameters for the way point explained:
+        Parameters for the waypoint explained:
         1. Waypoint ID: Formatted as WPXXX, gives a numerical id to each WP
         2. latitude: Waypoint's latitude coordinates in decimal form
         3. longitude: Waypoint's longitude coordinate in decimal form
@@ -453,14 +453,14 @@ class MissionRequest:
         land_waypoint,
         m1_waypoint,
         altitude_m,
-        valid_date: datetime,
+        valid_time: datetime,
         require_m1_overflight=True,
         grid_orientation_deg=None,
         notes=None,
         included_target_waypoints=None,
     ):
 
-        if not isinstance(valid_date, datetime):
+        if not isinstance(valid_time, datetime):
             raise TypeError("valid_time must be a datetime.datetime instance")
 
         self._mission_name = mission_name
@@ -468,7 +468,7 @@ class MissionRequest:
         self._land_waypoint = land_waypoint
         self._m1_waypoint = m1_waypoint
         self._altitude_m = altitude_m
-        self._date = valid_date
+        self._date = valid_time
         self._require_M1_overflight = require_m1_overflight
         self._grid_orientation_deg = grid_orientation_deg
         self._notes = notes
