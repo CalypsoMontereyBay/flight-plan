@@ -61,68 +61,45 @@ def _route_coords(plan: CandidatePlan):
     return kml_wp_list
 
 
-def categorize(action: str):
+def _segment_builder(route: list):
 
-    if action == "science":
-
-        return "science"
-
-    else:
-        return "transit"
-
-
-def _segments_by_action(route: list):
-
-    # Each segment (science, transit) will be categorized so
-    # the two can be represented in distinct colors
-
-    # Finished runs
+    collecting = False
+    current_category = CONST.WAYPOINT_ACTION_TRANSIT
+    current_pts = []
     segments = []
 
-    # will be set to the current category of the run being built
-    current_category = None
+    for lon, lat, alt, action in route:
 
-    # the points on the line of the run being built
-    current_pts = []
+        point = (lon, lat)
 
-    # last point seen
-    prev_pt = None
+        if action == CONST.WAYPOINT_ACTION_COLLECT_START and not collecting:
 
-    for route_point in route:
-
-        # according to my loop structure, the last index of the tuple is always the action
-        cat = categorize(route_point[-1])
-
-        # according to my loop structure, the first two indices are long and lat, respectively
-        long, lat = route_point[0], route_point[1]
-
-        if current_category == None:
-
-            current_category = cat
-
-            current_pts.append((long, lat))
-
-        elif cat == current_category:
-
-            # same run just extends the current list
-            current_pts.append((long, lat))
-
-        else:
-
+            current_pts.append(point)   #append the last gray point
             segments.append((current_category, current_pts))
 
-            current_category = cat
+            collecting = True   #starting collection
+            current_category = CONST.WAYPOINT_ACTION_SCIENCE
 
-            current_pts = [prev_pt, (long, lat)]
+            current_pts = [point]   #The first green point
 
-        prev_pt = (long, lat)
+        elif action == CONST.WAYPOINT_ACTION_COLLECT_STOP and collecting:
 
-    # flush the final open run AFTER the loop ends
-    if current_pts:
-        segments.append((current_category, current_pts))
+            current_pts.append(point)   #append the last green point
+            segments.append((current_category, current_pts))
+
+            collecting = False  #stopping collection
+            current_category = CONST.WAYPOINT_ACTION_TRANSIT
+
+            current_pts = [point]   #The first gray point
+            
+        else:
+            current_pts.append(point) #add everything else
+            
+        #flush final run:
+        if current_pts:
+            segments.append((current_category,current_pts))
 
     return segments
-
 
 def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 
@@ -265,7 +242,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     # _segments_by_action expects the (lon, lat, alt, action) tuples from
     # _route_coords -- NOT raw Waypoint objects (those aren't subscriptable).
-    segments = _segments_by_action(route)
+    segments = _segment_builder(route)
 
     path = _output_path(plan.name, CONST.EXTENSION_KML, out_dir)
 
@@ -385,7 +362,7 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     route = _route_coords(plan)
 
-    segments = _segments_by_action(route)
+    segments = _segment_builder(route)
 
     path = _output_path(plan.name, CONST.EXTENSION_PNG, out_dir)
 
@@ -484,7 +461,9 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     # Step 5: Put the title, Legend, and Grid
 
-    axes.set_title(f"{plan.name}\nCaption Values in Order (L -> R): Chosen Orientation, Plan Score, Grid Area (m^2), Total Line Number, Plan Duration (minutes), Battery Margin Remaining (mins)\n{_metrics_caption(plan)}")
+    axes.set_title(
+        f"{plan.name}\nCaption Values in Order (L -> R): Chosen Orientation, Plan Score, Grid Area (m^2), Total Line Number, Plan Duration (minutes), Battery Margin Remaining (mins)\n{_metrics_caption(plan)}"
+    )
 
     axes.legend(loc="best")
 
