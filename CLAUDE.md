@@ -56,6 +56,6 @@ python flight_plan_maker.py        # optional: --name NAME --out-dir DIR
 
 ## Notes
 
-- Target Python 3.10+ (developed/tested on 3.14.4).
+- Target Python 3.12+ (developed/tested on 3.14.4).
 - This is a V1 proof-of-engine build: fixed aircraft, clear skies, fixed mission
   date/time, assumed legal-to-fly, glint as the only ranking metric.

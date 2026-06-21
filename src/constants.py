@@ -43,7 +43,7 @@ V1_DEFAULT_MISSION_MONTH = 1
 
 V1_DEFAULT_MISSION_HOUR = 18  # Units: 24hr clock in UTC, we are assuming a mission start time of 10 am.
 
-
+V1_POINTS_PER_LINE = 5
 
 V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 
@@ -65,6 +65,7 @@ V1_EMERGENCY_RESERVE_FRACTION = (
 
 V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. USING PAYLOAD FROM GREY PAPER
 
+V1_COLLECTION_INSET_m = 52 #Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
 
 V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. USING PAYLOAD FROM GREY PAPER
 
@@ -124,6 +125,11 @@ WAYPOINT_ACTION_SCIENCE = "science"
 WAYPOINT_ACTION_M1_OVERFLIGHT = "m1_overflight"
 WAYPOINT_ACTION_TURN = "turn"
 WAYPOINT_ACTION_LAND = "land"
+WAYPOINT_ACTION_COLLECT_START = "collect_start"
+WAYPOINT_ACTION_COLLECT_STOP = "collect_stop"
+WAYPOINT_ACTION_LINE_LABEL = "line_label"
+
+
 
 # Azimuth Constant for planner.py:
 
@@ -135,12 +141,16 @@ AZIMUTH_TWO_TWENTY_FIVE = 225  # Units = degrees. 360 - 135, mirror of the ideal
 
 DEGREE_ONE_EIGHTY = 180 # Units = degrees
 
+DEGREE_NINETY = 90 #Units = degrees
+
+FULL_CIRCLE_DEG = 360 #Units = degrees, second 360 for readability when not dealing with azimuth
+
 
 #Glint "Gate threshold" for proper ranking purposes
 
 V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 135 before a plan is rejected
 
-OUTPUT_DIRECTORY = "/Users/robbywandel/Desktop/CALYPSO_OUTPUT"
+OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 
 EXTENSION_KML = "kml"
 

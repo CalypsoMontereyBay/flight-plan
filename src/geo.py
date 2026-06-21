@@ -16,6 +16,8 @@ FOV note: cross-track and along-track FOV are orthogonal.
                         for reporting and for future trigger-rate logic.
 '''
 
+import constants as CONST
+
 import math
 
 from pyproj import Geod
@@ -23,7 +25,6 @@ from shapely.geometry import Point, LineString
 
 
 WGS84_GEOD = Geod(ellps="WGS84")
-FULL_CIRCLE_DEG = 360
 
 
 def _as_point(point):
@@ -40,7 +41,7 @@ def normalize_heading(heading_deg):
     '''
     if not isinstance(heading_deg, (int, float)):
         raise TypeError("heading_deg must be an int or float")
-    return heading_deg % FULL_CIRCLE_DEG
+    return heading_deg % CONST.FULL_CIRCLE_DEG
 
 
 def destination_point(start_point, heading_deg, distance_m):
@@ -182,7 +183,17 @@ def make_line_through_point(center_point, grid_orientation_deg, line_length_m):
     half_length_m = line_length_m / 2
     start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m)
     end = destination_point(center, grid_orientation_deg, half_length_m)
-    return LineString([(start.x, start.y), (center.x, center.y), (end.x, end.y)])
+    
+    if half_length_m > CONST.V1_COLLECTION_INSET_m:
+        collect_start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m - CONST.V1_COLLECTION_INSET_m)
+        collect_end = destination_point(center, grid_orientation_deg, half_length_m - CONST.V1_COLLECTION_INSET_m)
+    
+    else:
+        #For a tiny grid, just place the collection points halfway between the middle and the turns. 
+        collect_start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m / 2 )
+        collect_end = destination_point(center, grid_orientation_deg, half_length_m  / 2)
+        
+    return LineString([(start.x, start.y), (collect_start.x, collect_start.y), (center.x, center.y), (collect_end.x, collect_end.y), (end.x, end.y)])
 
 
 def offset_line(line, offset_heading_deg, offset_m):
@@ -248,9 +259,9 @@ def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lin
 
     # With odd total_lines the center line (index total_lines // 2) sits at offset 0
     # and passes through M1. make_line_through_point emits [start, midpoint, end],
-    # so M1 is always the middle coord of that line -> +1 within its 3-point block.
+    # so M1 is always the middle coord of that line -> +1 within its 5-point block.
     center_line_index = total_lines // 2
-    m1_route_index = center_line_index * 3 + 1
+    m1_route_index = ((center_line_index * CONST.V1_POINTS_PER_LINE) + (CONST.V1_POINTS_PER_LINE // 2))
 
     return flight_lines, route_points, m1_route_index
 
@@ -344,8 +355,8 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "offset_distance_m": offset_m,
                 "line_length_m": line_length_m,
                 "total_lines": total_lines,
-                "science_lines": total_lines,
-                "traverse_lines": total_lines - 1,
+                "science_lines": (total_lines + 1) // 2,
+                "traverse_lines": (total_lines // 2),
                 "offset_lines": total_lines - 1,
                 "m1_route_index": m1_route_index,
             }

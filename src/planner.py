@@ -15,9 +15,10 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 
 from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between#, bearing_between
+from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
 from sun import create_sun_state, mission_date
-from aircraft_math import max_planned_distance_m,route_duration_min, battery_margin_min
+from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
+import itertools
 
 # Main Functions and logic:
 # Step 1: Build the components of a candidate plan by assembling the
@@ -90,7 +91,7 @@ _V1_Mission_Request = MissionRequest(
     mission_name="V1 First Example Mission",
     launch_waypoint=_V1_Launch_Waypoint,
     land_waypoint=_V1_Land_Waypoint,
-    m1_waypoint= _V1_M1_Waypoint,
+    m1_waypoint=_V1_M1_Waypoint,
     altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
     valid_time=mission_date,
     require_m1_overflight=True,
@@ -129,7 +130,6 @@ HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
 In Order:
 
 
-
 1. _candidate_orientation(): takes an azimuth angle and returns two heading "orientations"
 Both orientations are valid for "science" lines, but depending on all the other factors, one will score
 better than the other. returns both in a tuple for passing around and proper security.
@@ -157,7 +157,9 @@ tie breaking
 is more efficient by checking the distance of the launch point to both the first and last waypoints of the grid.
 The grid is then either left alone or reversed accordingly
 
-8. _classify_waypoints(): Walks the route and tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
+8. _angular_distance(heading1_deg, heading2_deg): returns the angular distance between two angles
+
+9. _classify_waypoints(): Walks the route and tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
 final positions. Returns a list of waypoint objects that is "the route."
 """
 
@@ -202,19 +204,21 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
 
 
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
-   
-    #Calculates the science leg score of an orientation
-    science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az) 
+
+    # Calculates the science leg score of an orientation
+    science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
 
     return science_leg_score
 
+
 def _passes_glint_gate(score):
-    
-    return (score <= CONST.V1_GLINT_TOLERANCE_DEG)
+
+    return score <= CONST.V1_GLINT_TOLERANCE_DEG
 
 
-def _build_grid_for_orientation(orientation_deg, mission_request: MissionRequest,
-                                payload: Sensor, usable_distance_m):
+def _build_grid_for_orientation(
+    orientation_deg, mission_request: MissionRequest, payload: Sensor, usable_distance_m
+):
     """
     Thin wrapper around geo.make_lawnmower_grid_through_m1 that pulls the grid
     parameters out of the mission/payload objects for a single orientation.
@@ -232,8 +236,13 @@ def _build_grid_for_orientation(orientation_deg, mission_request: MissionRequest
     )
 
 
-def _pick_best_orientation(candidates: tuple, sun_az_deg, mission_request: MissionRequest,
-                           payload: Sensor, usable_distance_m):
+def _pick_best_orientation(
+    candidates: tuple,
+    sun_az_deg,
+    mission_request: MissionRequest,
+    payload: Sensor,
+    usable_distance_m,
+):
     """
     Score both candidate science headings (glint, science-leg only), keep the
     ones that clear the glint gate, build each survivor's grid, and return the
@@ -262,7 +271,9 @@ def _pick_best_orientation(candidates: tuple, sun_az_deg, mission_request: Missi
     # Build each survivor's grid once and keep the one with the closest entry
     # corner. The running-best comparison covers the 1-passer and multi-passer
     # cases uniformly, so no branching is needed here or in the caller.
-    best_entry = None  # (corner_dist, orientation, score, flight_lines, route_points, metrics)
+    best_entry = (
+        None  # (corner_dist, orientation, score, flight_lines, route_points, metrics)
+    )
 
     for orientation_deg, orientation_score in gate_passers:
         flight_lines, route_points, metrics = _build_grid_for_orientation(
@@ -283,7 +294,9 @@ def _pick_best_orientation(candidates: tuple, sun_az_deg, mission_request: Missi
                 metrics,
             )
 
-    _, winning_orientation, winning_score, flight_lines, route_points, metrics = best_entry
+    _, winning_orientation, winning_score, flight_lines, route_points, metrics = (
+        best_entry
+    )
 
     return (winning_orientation, winning_score, flight_lines, route_points, metrics)
 
@@ -304,6 +317,17 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
         return (route_points, m1_idx)
 
 
+def _angular_distance(heading1_deg, heading2_deg):
+
+    return abs(
+        (
+            ((heading2_deg - heading1_deg) + CONST.DEGREE_ONE_EIGHTY)
+            % CONST.FULL_CIRCLE_DEG
+            - CONST.DEGREE_ONE_EIGHTY
+        )
+    )
+
+
 def _classify_waypoints(
     route_points: list,
     m1_route_idx,
@@ -311,9 +335,10 @@ def _classify_waypoints(
     land_wp: Waypoint,
     altitude_m,
     cruise_speed_ms,
+    winning_orientation,
 ):
 
-    # Establish a new route list that has each waypoint tagged
+    # Establish a new route list that has each waypoint tagged, as well as a global index
     tagged_route_list = []
 
     # Sets the launch action then adds it to the list
@@ -324,40 +349,78 @@ def _classify_waypoints(
 
     if land_wp.action != CONST.WAYPOINT_ACTION_LAND:
         land_wp.set_action(CONST.WAYPOINT_ACTION_LAND)
+        
+    leg_number = 0
 
-    for index, point in enumerate(route_points):
+    for leg in itertools.batched(route_points, CONST.V1_POINTS_PER_LINE):
 
-        if index == m1_route_idx:
-            action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
-            target_name = "M1"
+        leg_heading = bearing_between(leg[0], leg[-1])
 
-        elif index % 3 == 1:
-            action = CONST.WAYPOINT_ACTION_SCIENCE
-            target_name = None
+        # A leg is a science leg if the current heading is the mission orientation that minimizes glint (H)
+
+        if _angular_distance(leg_heading, winning_orientation) < CONST.DEGREE_NINETY:
+
+            is_science = True
 
         else:
-            action = CONST.WAYPOINT_ACTION_TURN
-            target_name = None
 
-        tagged_route_list.append(
-            Waypoint(
-                f"WP{index + 1:03d}",
-                point.y,
-                point.x,
-                altitude_m,
-                cruise_speed_ms,
-                action,
-                target_name=target_name,
+            is_science = False
+            
+        leg_start = leg_number * CONST.V1_POINTS_PER_LINE
+            
+        for local_idx, point in enumerate(leg):
+            
+            global_index = leg_start + local_idx
+            
+            if global_index == m1_route_idx:
+                
+                action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
+                target_name = "M1"
+                
+            elif local_idx in (0, (CONST.V1_POINTS_PER_LINE -1)):
+                
+                action = CONST.WAYPOINT_ACTION_TURN
+                target_name = None
+                
+            elif local_idx == (CONST.V1_POINTS_PER_LINE // 2):
+                
+                action = CONST.WAYPOINT_ACTION_LINE_LABEL
+                target_name = None
+                
+            elif is_science and local_idx == 1:
+                    action = CONST.WAYPOINT_ACTION_COLLECT_START
+                    target_name = "Camera On"
+                    
+            elif is_science and local_idx == 3:
+                    action = CONST.WAYPOINT_ACTION_COLLECT_STOP
+                    target_name = "Camera Off"
+                    
+            else:
+                
+                action = CONST.WAYPOINT_ACTION_TRANSIT
+                target_name = None
+                
+        
+            tagged_route_list.append(
+                Waypoint(
+                    f"WP{global_index + 1:03d}",
+                    point.y,
+                    point.x,
+                    altitude_m,
+                    cruise_speed_ms,
+                    action,
+                    target_name=target_name,
+                )
             )
-        )
+            
+        leg_number += 1    
 
     tagged_route_list.append(land_wp)
 
     return tagged_route_list
 
 
-
-'''
+"""
 Putting it all together, build_candidate_plan() uses all of the pre-established
 objects and sends their data through the helpers as needed. Below is what happens in
 order:
@@ -374,61 +437,104 @@ order:
 
 6. return a fully finished candidate plan.
 
-'''
+"""
 
-def build_candidate_plan(mission_aircraft: Aircraft, mission_aircraft_endurance_m, payload: Sensor, 
-                         mission_request: MissionRequest, mission_weather: Weather, mission_azimuth,
-                         mission_sun_state, candidate_name
-                         ):
-    
-    #Step 1, generate the potential orientation candidates
+
+def build_candidate_plan(
+    mission_aircraft: Aircraft,
+    mission_aircraft_endurance_m,
+    payload: Sensor,
+    mission_request: MissionRequest,
+    mission_weather: Weather,
+    mission_azimuth,
+    mission_sun_state,
+    candidate_name,
+):
+
+    # Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
 
-    #Step 2, pick the winning orientation AND reuse the grid the picker built
-    (mission_orientation, mission_orientation_score,
-     flight_lines, route_points, metrics) = _pick_best_orientation(
-        mission_potential_orientations, mission_azimuth,
-        mission_request, payload, mission_aircraft_endurance_m,
+    # Step 2, pick the winning orientation AND reuse the grid the picker built
+    (
+        mission_orientation,
+        mission_orientation_score,
+        flight_lines,
+        route_points,
+        metrics,
+    ) = _pick_best_orientation(
+        mission_potential_orientations,
+        mission_azimuth,
+        mission_request,
+        payload,
+        mission_aircraft_endurance_m,
     )
 
-    #Step 3, reorient the grid so the route starts at the corner closest to launch
-    route_shapely_waypoints, m1_index = _reorient_to_launch(route_points, metrics["m1_route_index"], mission_request.launch_point)
+    # Step 3, reorient the grid so the route starts at the corner closest to launch
+    route_shapely_waypoints, m1_index = _reorient_to_launch(
+        route_points, metrics["m1_route_index"], mission_request.launch_point
+    )
 
-    #Step 4, walk the route and classify each waypoint and assign it an index:
+    # Step 4, walk the route and classify each waypoint and assign it an index:
 
-    mission_route_list_classified = _classify_waypoints(route_shapely_waypoints, m1_index, mission_request.launch_wp,
-                                                        mission_request.land_wp, mission_request.altitude, mission_aircraft.vehicle_cruise_speed)
+    mission_route_list_classified = _classify_waypoints(
+        route_shapely_waypoints,
+        m1_index,
+        mission_request.launch_wp,
+        mission_request.land_wp,
+        mission_request.altitude,
+        mission_aircraft.vehicle_cruise_speed,
+        mission_orientation,
+    )
 
+    # Step 5, build the candidate plan
 
-    #Step 5, build the candidate plan
+    candidate_plan = CandidatePlan(
+        candidate_name,
+        mission_request,
+        mission_aircraft,
+        mission_sun_state,
+        mission_weather,
+        mission_orientation,
+        payload,
+        mission_route_list_classified,
+    )
 
-    candidate_plan = CandidatePlan(candidate_name, mission_request, mission_aircraft, mission_sun_state,
-                                   mission_weather, mission_orientation, payload, mission_route_list_classified)
-
-    #Step 6, set the plan metrics using the object's setter
+    # Step 6, set the plan metrics using the object's setter
 
     candidate_plan.set_grid_metrics(metrics)
-    
-    #Step 7, calculate the duration of the flight in minutes and then send it to the candidate
-    
-    candidate_plan_estimated_duration_min = route_duration_min(metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft)
-    
-    candidate_plan_estimated_battery_margin_min = battery_margin_min(mission_aircraft, candidate_plan_estimated_duration_min)
-    
+
+    # Step 7, calculate the duration of the flight in minutes and then send it to the candidate
+
+    candidate_plan_estimated_duration_min = route_duration_min(
+        metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft
+    )
+
+    candidate_plan_estimated_battery_margin_min = battery_margin_min(
+        mission_aircraft, candidate_plan_estimated_duration_min
+    )
+
     candidate_plan.set_duration_min(candidate_plan_estimated_duration_min)
-    
+
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
-    
-    #Step 8, retrieve the orientation score and send it to the candidate
+
+    # Step 8, retrieve the orientation score and send it to the candidate
     candidate_plan.set_score(mission_orientation_score)
-    
+
     return candidate_plan
 
 
-#Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
+# Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
+
 
 def plan_default_mission(candidate_name):
-    
-    return build_candidate_plan(_Black_Swift, _Black_Swift_usable_endurance_m, _Calypso_payload,
-                                _V1_Mission_Request, _V1_assumed_weather, _V1_mission_sun_azimuth,
-                                _V1_mission_sun_state, candidate_name=candidate_name)
+
+    return build_candidate_plan(
+        _Black_Swift,
+        _Black_Swift_usable_endurance_m,
+        _Calypso_payload,
+        _V1_Mission_Request,
+        _V1_assumed_weather,
+        _V1_mission_sun_azimuth,
+        _V1_mission_sun_state,
+        candidate_name=candidate_name,
+    )
