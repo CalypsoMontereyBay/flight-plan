@@ -95,9 +95,10 @@ def _segment_builder(route: list):
         else:
             current_pts.append(point) #add everything else
             
-        #flush final run:
-        if current_pts:
-            segments.append((current_category,current_pts))
+    #flush final run:
+    #Do not put inside the loop: will append the list to itself, balooning the number of line segments incorrectly
+    if current_pts:
+        segments.append((current_category,current_pts))
 
     return segments
 
@@ -123,7 +124,7 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 
 def _metrics_caption(plan: CandidatePlan):
 
-    return f"{plan.chosen_orientation}, {plan.score}, {plan.grid_area_m2}, {plan.total_lines}, {plan.duration}, {plan.margin}"
+    return f"{plan.chosen_orientation:.2f}, {plan.score:.2f}, {plan.grid_area_m2:.4f}, {plan.total_lines}, {plan.duration:.2f}, {plan.margin:.2f}"
 
 
 """
@@ -240,7 +241,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     route = _route_coords(plan)
 
-    # _segments_by_action expects the (lon, lat, alt, action) tuples from
+    # _segment_builder expects the (lon, lat, alt, action) tuples from
     # _route_coords -- NOT raw Waypoint objects (those aren't subscriptable).
     segments = _segment_builder(route)
 
