@@ -26,7 +26,7 @@ from constants import (
 # date constants in datetime module form are below:
 TIME_ZONE_INFO = datetime.timezone.utc
 
-# The datetime library is used in conunction with pysolar for my helper functions
+# The datetime library is used in conjunction with pysolar for my helper functions
 mission_date = datetime.datetime(
     V1_DEFAULT_MISSION_YEAR,
     V1_DEFAULT_MISSION_MONTH,
@@ -68,7 +68,7 @@ def calc_azimuth(latitude, longitude, date):
 """
 The calc_elevation (latitude, longitude, date) function
 calculates the elevation of the sun given some coordinates
-and a date. Latitude and longitude will alwaus be the launch positon,
+and a date. Latitude and longitude will always be the launch position,
 and date will always be our assumed mission date for V1. It returns
 the elevation angle in degrees in decimal form.
 """

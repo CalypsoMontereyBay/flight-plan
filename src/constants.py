@@ -8,11 +8,11 @@ For the first build of the engine, this file will hold all of the constants used
     3. We will also be assuming permanently clear skies on January 1st 2026 for now.
 
     4. The coordinates of the M1 Mooring station are also found here and will be used
-    even after the first eversion of the engine works.
+    even after the first version of the engine works.
 
     5. Legal status for now is assumed to be true (Legal).
 
-    6. Flight path constants like altitude, line lengths, etc are also found her for now.
+    6. Flight path constants like altitude, line lengths, etc are also found here for now.
 
     7. We are also ignoring wind in version 1.
 """
@@ -43,7 +43,7 @@ V1_DEFAULT_MISSION_MONTH = 1
 
 V1_DEFAULT_MISSION_HOUR = 18  # Units: 24hr clock in UTC, we are assuming a mission start time of 10 am.
 
-
+V1_POINTS_PER_LINE = 5
 
 V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 
@@ -65,6 +65,7 @@ V1_EMERGENCY_RESERVE_FRACTION = (
 
 V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. USING PAYLOAD FROM GREY PAPER
 
+V1_COLLECTION_INSET_m = 52 #Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
 
 V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. USING PAYLOAD FROM GREY PAPER
 
@@ -74,7 +75,7 @@ V1_DEFAULT_OVERLAP_PCT = 30  # Units = %. Placeholder until science overlap requ
 
 PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
 
-# Engine Version 1 aircraft defailts are defined below:
+# Engine Version 1 aircraft defaults are defined below:
 
 # AIRCRAFT PARAMS ARE DEFINED WITH RESPECT TO THE BLACKSWIFT S2 FIXED-WING UAV
 
@@ -100,11 +101,7 @@ BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
 NWS_BASE_URL = "https://api.weather.gov"
 # NWS_USER_AGENT =
 
-DEFAULT_CLOUD_COVER = 0  # Units = %
-
 DEFAULT_ZERO_WIND = 0  # Units = m/s
-
-MAX_ACCEPTABLE_WIND = 15  # Units = m/s (Same as UAV wing rating)
 
 CLEAR_SKY_THRESHOLD_PERCENTAGE = 95  # Units = % (When 95% or more of the sky is clear, the engine considers the sky clear)
 
@@ -128,6 +125,11 @@ WAYPOINT_ACTION_SCIENCE = "science"
 WAYPOINT_ACTION_M1_OVERFLIGHT = "m1_overflight"
 WAYPOINT_ACTION_TURN = "turn"
 WAYPOINT_ACTION_LAND = "land"
+WAYPOINT_ACTION_COLLECT_START = "collect_start"
+WAYPOINT_ACTION_COLLECT_STOP = "collect_stop"
+WAYPOINT_ACTION_LINE_LABEL = "line_label"
+
+
 
 # Azimuth Constant for planner.py:
 
@@ -139,12 +141,16 @@ AZIMUTH_TWO_TWENTY_FIVE = 225  # Units = degrees. 360 - 135, mirror of the ideal
 
 DEGREE_ONE_EIGHTY = 180 # Units = degrees
 
+DEGREE_NINETY = 90 #Units = degrees
+
+FULL_CIRCLE_DEG = 360 #Units = degrees, second 360 for readability when not dealing with azimuth
+
 
 #Glint "Gate threshold" for proper ranking purposes
 
 V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 135 before a plan is rejected
 
-OUTPUT_DIRECTORY = "/Users/robbywandel/Desktop/CALYPSO_OUTPUT"
+OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 
 EXTENSION_KML = "kml"
 

@@ -18,7 +18,7 @@ V1 produces two artifacts per run:
 
 ## Requirements
 
-- **Python 3.10 or newer.** Developed and tested on **Python 3.14.4**.
+- **Python 3.12 or newer.** Developed and tested on **Python 3.14.4**.
 - The Python packages listed in [`requirements.txt`](requirements.txt):
 
   | Package | Version | Used by |
