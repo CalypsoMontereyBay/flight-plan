@@ -8,9 +8,13 @@ This file will be used to generate pull requests for the Calypso Monterey Bay fl
 
 1. Read this file.  Execute the 1st task under "Prep"
 
+## Review
+
+1. There is an active PR on this 
+
 ## Prep
 
-I wish for you to teach me how to have Claude examine an active PR for this Repository on GitHub and perform code review.  Please write a Report below.
+1. I wish for you to teach me how to have Claude examine an active PR for this Repository on GitHub and perform code review.  Please write a Report below.
 
 ### Report
 
