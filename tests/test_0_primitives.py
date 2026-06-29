@@ -4,144 +4,127 @@ math. If these functions fail, the entire system should be stopped. If function 
 """
 
 # imports:
-
-from src import geo as G, planner as P, constants as CONST
-
-
-def _test_normalize_heading(heading):
-
-    if isinstance(heading, int):
-
-        normalized_heading = G.normalize_heading(heading)
-
-        return normalized_heading
-
-    else:
-        raise TypeError
-
-
-def _test_destination_point(start, heading, distance):
-
-    if isinstance(heading, int):
-
-        dest_point = G.destination_point(start, heading, distance)
-
-        return dest_point
-
-    else:
-
-        raise TypeError
-
-
-def _test_distance_between(start, dest, distance):
-
-    tolerance = 1e-6
-
-    if isinstance(start, G.Point) and isinstance(dest, G.Point):
-
-        distance_between_start_end = G.distance_between(start, dest)
-
-        distance_between_start = G.distance_between(start, start)
-
-        if (
-            abs(distance - distance_between_start_end) <= tolerance
-            and distance_between_start == 0
-        ):
-
-            return 0
-
-        else:
-
-            return 1
-
-    else:
-
-        raise TypeError
-
-
-def _test_bearing_between(start, dest, heading):
-
-    tolerance = 1e-6
-
-    if isinstance(start, G.Point) and isinstance(dest, G.Point):
-
-        bearing_between_start_end = G.bearing_between(start, dest)
-
-        if abs(heading - bearing_between_start_end) <= tolerance:
-
-            return 0
-
-        else:
-
-            return 1
-
-    else:
-
-        raise TypeError
-
-
-def _test_ground_swath_width(height=118, cross_FOV=48, off_nadir=40):
-
-    if height <= 0 or cross_FOV <= 0 or off_nadir >= 90:
-
-        raise ValueError
-
-    else:
-
-        swath_width = G.ground_swath_width_m(height, cross_FOV, off_nadir)
-
-        return swath_width
-
-
-def _test_ground_footprint_along(height=118, along_FOV=36.8, off_nadir=40):
-
-    if height <= 0 or along_FOV <= 0 or off_nadir >= 90:
-
-        raise ValueError
-
-    else:
-
-        ground_footprint = G.ground_footprint_along_m(height, along_FOV, off_nadir)
-
-        return ground_footprint
-
-
-def _test_offest_distance(swath=200, pct_overlap=30):
-
-    if pct_overlap >= 100 or pct_overlap < 0 or swath <= 0:
-
-        raise ValueError
-
-    else:
-
-        offset_d = G.offset_distance_m(swath, pct_overlap)
-
-        return offset_d
-
-
-def _test_angular_distance(heading1, heading2):
-
-    if isinstance(heading1, int) and isinstance(heading2, int):
-
-        angular_distance = P._angular_distance(heading1, heading2)
-
-        return angular_distance
-
-    else:
-
-        raise TypeError
-
-
-def _test_score_glint(heading, sun_az=0):
-
-    if isinstance(heading, int):
-
-        glint_score = P._score_glint(heading, sun_az)
-
-        return glint_score
-
-    else:
-
-        raise TypeError
+import pytest
+from shapely.geometry import Point
+#red squiggles are just warnings, proper virtual environment setup and usage
+#does not cause an error with this test harness.
+import geo as G, planner as P, constants as CONST
+
+
+def test_normalize_heading():
+
+    assert G.normalize_heading(370) == 10
+    assert G.normalize_heading(-10) == 350
+    assert G.normalize_heading(360) == 0
+    assert G.normalize_heading(50) == 50
+
+def test_normalize_heading_rejects_non_Num():
+    
+    with pytest.raises(TypeError):
+        G.normalize_heading("north")
+        
+def test_geodesic_full_trip():
+    
+    p = Point(CONST.M1_MOORING_LONG, CONST.M1_MOORING_LAT)
+    
+    heading = 73.0
+    
+    distance = 1500.0
+    
+    q = G.destination_point(p, heading, distance)
+    
+    assert G.distance_between(p, q) == pytest.approx(distance, abs=1e-3)
+    assert G.bearing_between(p, q) == pytest.approx(heading, abs=1e-6)
+    assert G.distance_between(p,p) == pytest.approx(0)
+
+def test_ground_swath_width_rejects_bad_geometry1():
+    
+    with pytest.raises(ValueError):
+        G.ground_swath_width_m(0, 48, 40)
+        
+def test_ground_swath_width_rejects_bad_geometry2():
+    
+    with pytest.raises(ValueError):
+        G.ground_swath_width_m(118, 48, 70)
+
+
+def test_ground_swath_width():
+    
+    height= 118 
+    cross_FOV= 48 
+    off_nadir= 40
+    
+    expected = 208.10
+    
+    assert G.ground_swath_width_m(height, cross_FOV, off_nadir) == pytest.approx(expected, abs=0.1)
+
+
+def test_ground_footprint_along():
+    
+    height=118
+    along_FOV=36.8
+    off_nadir=40
+    expected = 102.5
+    
+    with pytest.raises(ValueError):
+        G.ground_footprint_along_m(0, along_FOV, off_nadir)
+        
+    with pytest.raises(ValueError):
+        G.ground_footprint_along_m(height, along_FOV, 90)
+        
+    with pytest.raises(ValueError):
+        G.ground_footprint_along_m(height, along_FOV, 100)
+ 
+    assert G.ground_footprint_along_m(height, along_FOV, off_nadir) == pytest.approx(expected, abs=0.1)
+
+
+def test_offset_distance():
+    
+    swath=200 
+    pct_overlap=30
+    
+    with pytest.raises(ValueError):
+        G.offset_distance_m(swath, 100)
+        
+    with pytest.raises(ValueError):
+        G.offset_distance_m(swath, -1)
+        
+    with pytest.raises(ValueError):
+        G.offset_distance(0, pct_overlap)
+
+    assert G.offset_distance_m(swath, pct_overlap) == pytest.approx(140)
+
+
+def test_angular_distance():
+
+    heading1 = 10
+    heading2 = 10
+    
+    heading3 = 0
+    heading4 = 180
+    
+    heading5 = 350
+    heading6 = 10
+
+    assert P._angular_distance(heading1, heading2) == pytest.approx(0)
+    assert P._angular_distance(heading3, heading4) == pytest.approx(180)
+    assert P._angular_distance(heading5, heading6) == pytest.approx(20)
+
+
+def test_score_glint():
+
+    heading1 = 135
+    sun_az1 = 0
+    
+    heading2 = 225
+    
+    heading3 = 90
+    
+    heading4 = 0
+    
+    assert P._score_glint(heading1, sun_az1) == pytest.approx(0)
+    assert P._score_glint(heading2, sun_az1) == pytest.approx(0)
+    assert P._score_glint(heading3, sun_az1) == pytest.approx(45)
+    assert P._score_glint(heading4, sun_az1) == pytest.approx(135)
 
 
