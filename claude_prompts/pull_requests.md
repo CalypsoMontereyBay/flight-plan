@@ -7,10 +7,15 @@ This file will be used to generate pull requests for the Calypso Monterey Bay fl
 ## Prompts
 
 1. Read this file.  Execute the 1st task under "Prep"
+2. Read this file.  Execute the 1st task under "Review"
+
+## Review
+
+1. There is an active PR on this repository.  Please review the latest changes made and then suggest any changes that are needed.  Log your work in the Logs section below.
 
 ## Prep
 
-I wish for you to teach me how to have Claude examine an active PR for this Repository on GitHub and perform code review.  Please write a Report below.
+1. I wish for you to teach me how to have Claude examine an active PR for this Repository on GitHub and perform code review.  Please write a Report below.
 
 ### Report
 
@@ -36,35 +41,36 @@ commands, and the recommended workflow.
 
 ---
 
-#### 1. One-time prerequisite: install & authenticate `gh`
+#### 1. One-time prerequisite: install & authenticate `gh`  ✅ DONE
 
-This environment does **not** currently have the GitHub CLI installed
-(`gh: command not found`). Claude reviews PRs by calling `gh`, so install it
-once:
+**Status (as of 2026-06-28): this prerequisite is already satisfied.** The
+GitHub CLI is installed and you are authenticated, so you can skip straight to
+section 2.
+
+```
+gh version 2.45.0
+gh auth status  ->  ✓ Logged in to github.com account profxj
+  Token scopes: 'gist', 'read:org', 'repo', 'workflow'
+origin  https://github.com/CalypsoMontereyBay/flight-plan.git
+```
+
+The `repo` scope on your token is what lets Claude (via `gh`) read PRs and post
+review comments.
+
+If you ever set this up on a fresh machine, the one-time steps are:
 
 ```bash
 # Debian/Ubuntu (this machine is Linux)
 sudo apt install gh
 # or see https://cli.github.com for other platforms
-```
 
-Then authenticate (this is a *you* step — Claude does not handle your
-credentials):
-
-```bash
 gh auth login        # choose GitHub.com -> HTTPS -> browser
 gh auth status       # confirm you are logged in
 ```
 
-The remote is already set correctly, so no extra configuration is needed:
-
-```
-origin  https://github.com/CalypsoMontereyBay/flight-plan.git
-```
-
 > Without `gh`, Claude can still review code, but only what is already on disk
 > (the current branch / working-tree diff). It cannot *discover* or fetch a
-> remote PR by number until `gh` is available.
+> remote PR by number until `gh` is available — but here, `gh` is ready to go.
 
 ---
 
@@ -89,9 +95,13 @@ tell me what's wrong"* — and Claude will do the same thing.
    ```bash
    gh pr list
    ```
+   Right now there is exactly one open PR:
+   ```
+   #1  Calypso Flight Engine V1  (branch: first_flight_engine_build)  OPEN
+   ```
 2. **Kick off the review.** Give Claude the PR number or URL:
    ```
-   /review 12
+   /review 1
    ```
    Claude will fetch the PR (title, description, changed files, diff) and read it.
 3. **Read Claude's findings.** Claude reports correctness issues, design concerns,
@@ -123,6 +133,18 @@ reading and reasoning.
 
 ## Report
 
+### 2026-06-28 (Refreshed the report — `gh` prerequisite now satisfied)
+
+Re-ran the Prep task and updated the teaching report to match the current
+environment. Key changes since the 2026-06-19 writeup:
+- `gh` (GitHub CLI) is now **installed and authenticated** (v2.45.0, account
+  `profxj`, token scopes include `repo`). The earlier blocker ("`gh` not
+  installed") is resolved, so the prerequisite section is marked ✅ DONE.
+- Confirmed exactly one open PR on the repo: **#1 "Calypso Flight Engine V1"**
+  (branch `first_flight_engine_build`). Made the workflow example concrete by
+  using `/review 1`.
+- The `origin` remote is unchanged and correct.
+
 ### 2026-06-19 (Documented the PR code-review workflow)
 
 Investigated how Claude can examine and review an active GitHub PR for this
@@ -140,3 +162,38 @@ What I learned about this environment:
   comments and `--fix` to apply edits), and `/security-review`.
 - Reinforced the CLAUDE.md working agreement: Claude reads/analyzes/comments,
   but the user runs all git state-changing commands.
+
+## Logs
+
+### 2026-06-29 (Reviewed PR #1 "Calypso Flight Engine V1")
+
+Reviewed the open PR #1 by Robert Wandel (`first_flight_engine_build` -> `main`,
++3018 / -32, 17 files). Read all core modules (`flight_plan_maker.py`, plus
+`src/`: constants, geo, aircraft_math, sun, objects, planner, outputs;
+`validator.py` is empty). Did not run the engine — deps not installed in this
+env and no venv present — so findings are from static review.
+
+**Headline bug found (high):** science legs never render as "science". The
+planner tags collection points as `collect_start` / `collect_stop` /
+`line_label` / `turn` and never assigns `WAYPOINT_ACTION_SCIENCE` ("science").
+`outputs.categorize()` returns "science" ONLY when `action == "science"`, so it
+always returns "transit" -> the entire KML/PNG route draws gray and the
+science-vs-transit color distinction is dead.
+
+Other findings:
+- `geo.calculate_total_lines()` is unused dead code and forces EVEN N, which
+  contradicts the odd-N (center-line-through-M1) design used everywhere else.
+- No plan-level validation yet (`validator.py` empty): battery margin can go
+  negative without rejection; `CandidatePlan._is_legal` /
+  `_is_aircraft_feasible` / `_passes_over_m1` set but never used;
+  `has_m1_overflight()` never called. Acknowledged as future work.
+- `sun.py` azimuth docstring describes the pre-0.7 pysolar convention; pinned
+  pysolar is 0.13 (clockwise-from-north 0-360), so the doc is stale (math is
+  fine).
+- Glint gate (`_passes_glint_gate`) can never reject in V1 since both candidate
+  orientations are constructed exactly 135 deg off-sun (score 0).
+- Minor: `_metrics_caption` emits unrounded floats; `_output_path` uses naive
+  `datetime.now()` (local) while the mission is UTC.
+
+Suggested the science-tagging fix as the one blocking change before merge; the
+rest are follow-ups. Did not run any git state-changing commands (per CLAUDE.md).
