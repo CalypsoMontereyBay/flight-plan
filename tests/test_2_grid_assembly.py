@@ -47,6 +47,7 @@ def test_make_line_through_point_structure():
 def test_assembled_grid_invariants():
     plan = P.plan_default_mission("t2")
     N = plan.total_lines
+    assert N is not None                       # a built plan always has its metrics populated
     grid_wps = plan.waypoints[1:-1]            # strip launch (0) and land (-1)
 
     assert len(grid_wps) == CONST.V1_POINTS_PER_LINE * N   # 5 points per line
@@ -59,7 +60,10 @@ def test_assembled_grid_invariants():
     assert G.distance_between(m1_pt, _m1_point()) == pytest.approx(0, abs=1.0)
 
     # the grid route fits the endurance budget the planner sized it against
-    assert plan.total_route_distance_m <= plan.usable_endurance_distance_m
+    route_distance = plan.total_route_distance_m
+    budget = plan.usable_endurance_distance_m
+    assert route_distance is not None and budget is not None
+    assert route_distance <= budget
 
     # metric relationships (the documented science/transit split)
     assert plan.science_lines == (N + 1) // 2

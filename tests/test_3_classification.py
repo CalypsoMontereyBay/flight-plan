@@ -26,6 +26,7 @@ def test_route_shape_and_endpoints():
     plan = _plan()
     wps = plan.waypoints
     N = plan.total_lines
+    assert N is not None                                     # a built plan always has its metrics populated
 
     assert len(wps) == CONST.V1_POINTS_PER_LINE * N + 2      # grid + launch + land
     assert wps[0].action == CONST.WAYPOINT_ACTION_LAUNCH
@@ -35,6 +36,7 @@ def test_route_shape_and_endpoints():
 def test_action_counts():
     plan = _plan()
     N = plan.total_lines
+    assert N is not None                                     # a built plan always has its metrics populated
     counts = Counter(w.action for w in plan.waypoints)
 
     assert counts[CONST.WAYPOINT_ACTION_TURN] == 2 * N            # 2 turns per line
