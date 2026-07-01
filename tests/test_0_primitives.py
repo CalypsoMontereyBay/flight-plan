@@ -90,7 +90,7 @@ def test_offset_distance():
         G.offset_distance_m(swath, -1)
         
     with pytest.raises(ValueError):
-        G.offset_distance(0, pct_overlap)
+        G.offset_distance_m(0, pct_overlap)
 
     assert G.offset_distance_m(swath, pct_overlap) == pytest.approx(140)
 
