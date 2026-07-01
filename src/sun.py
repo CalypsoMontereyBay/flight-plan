@@ -50,9 +50,7 @@ and a date. Latitude and longitude will be the launch position,
 and date will be our assumed mission date for V1.
 It returns the azimuth angle in degrees in decimal form.
 
-Azimuth is reckoned with zero corresponding to north. 
-Positive azimuth estimates correspond to estimates east of north; 
-negative estimates, or estimates larger than 180 are west of north.
+pysolar 0.13 returns azimuth clockwise from North (0-360).
 """
 
 
