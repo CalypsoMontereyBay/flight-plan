@@ -155,23 +155,6 @@ def calculate_grid_area_m2(offset_m, total_lines):
     line_length_m = calculate_line_length_m(offset_m, total_lines)
     return line_length_m ** 2
 
-
-def calculate_total_lines(usable_distance_m, line_length_m):
-    '''
-    Calculate the largest even line count that fits the distance budget.
-    '''
-    if usable_distance_m <= 0:
-        raise ValueError("usable_distance_m must be positive")
-    if line_length_m <= 0:
-        raise ValueError("line_length_m must be positive")
-
-    total_lines = math.floor(usable_distance_m / line_length_m)
-    if total_lines % 2 != 0:
-        total_lines -= 1
-
-    return max(0, total_lines)
-
-
 def make_line_through_point(center_point, grid_orientation_deg, line_length_m):
     '''
     Create a LineString centered on center_point and aligned to grid_orientation_deg.
