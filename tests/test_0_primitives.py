@@ -1,6 +1,6 @@
 """
 Testing harness for the basic mathematical functions that make up the foundation of the Calypso Flight Engine
-math. If these functions fail, the entire system should be stopped. If function will have a description above it.
+math. If these functions fail, the entire system should be stopped.
 """
 
 # imports:
