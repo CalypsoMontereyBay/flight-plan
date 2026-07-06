@@ -82,8 +82,8 @@ That single command runs the whole engine and writes a timestamped `.kml` and
 Mission : v1_m1_test
 Lines   : 23  |  Glint Score: 0.0
 Duration: 74.9 min | Margin: 15.1 min
-KML -> /Users/.../CALYPSO_OUTPUT/v1_m1_test_20260609-1529.kml
-PNG -> /Users/.../CALYPSO_OUTPUT/v1_m1_test_20260609-1529.png
+KML -> ./CALYPSO_OUTPUT/v1_m1_test_20260609-1529.kml
+PNG -> ./CALYPSO_OUTPUT/v1_m1_test_20260609-1529.png
 ```
 
 ### Options
@@ -98,8 +98,8 @@ python flight_plan_maker.py --name my_mission --out-dir ./outputs
 ```
 
 > **Output directory:** the default `OUTPUT_DIRECTORY` in `src/constants.py` is
-> currently an absolute path on the developer's machine. Either edit that
-> constant or pass `--out-dir` so output lands somewhere that exists for you.
+> `./CALYPSO_OUTPUT` (repo-relative), created on first run. Pass `--out-dir` to
+> write elsewhere.
 
 When finished, leave the environment with:
 
@@ -114,19 +114,41 @@ deactivate
 ```
 flight-plan/
 ├── flight_plan_maker.py     # terminal entry point (run this)
-├── requirements.txt
+├── requirements.txt         # runtime dependencies
+├── requirements-dev.txt     # test-only dependencies (pytest)
+├── conftest.py              # puts src/ on sys.path for the test suite
+├── pytest.ini               # test config + the tiered -x "gate"
+├── pyrightconfig.json       # editor: resolves the flat src/ imports (Pylance/Pyright)
 ├── README.md
-└── src/
-    ├── constants.py         # all V1 assumed constants (aircraft, M1, sensor, dates)
-    ├── objects.py           # Aircraft, Sensor, Weather, CurrentSunState, Waypoint,
-    │                        #   MissionRequest, CandidatePlan
-    ├── sun.py               # pysolar -> CurrentSunState (sun azimuth/elevation)
-    ├── aircraft_math.py     # endurance -> distance budget, duration, battery margin
-    ├── geo.py               # geodesic math + M1-centered lawnmower grid geometry
-    ├── planner.py           # the hub: assembles objects, scores glint, builds the plan
-    ├── outputs.py           # KML + PNG writers
-    └── validator.py         # (stub — reserved for V2 legality/feasibility gating)
+├── src/
+│   ├── constants.py         # all V1 assumed constants (aircraft, M1, sensor, dates)
+│   ├── objects.py           # Aircraft, Sensor, Weather, CurrentSunState, Waypoint,
+│   │                        #   MissionRequest, CandidatePlan
+│   ├── sun.py               # pysolar -> CurrentSunState (sun azimuth/elevation)
+│   ├── aircraft_math.py     # endurance -> distance budget, duration, battery margin
+│   ├── geo.py               # geodesic math + M1-centered lawnmower grid geometry
+│   ├── planner.py           # the hub: assembles objects, scores glint, builds the plan
+│   ├── outputs.py           # KML + PNG writers
+│   └── validator.py         # (empty — reserved for V2 legality/feasibility gating)
+└── tests/                   # tiered pytest harness (test_0_* … test_4_*)
 ```
+
+---
+
+## Running the tests
+
+The suite is a **tiered gate**: pure math (`test_0`, `test_1`) at the bottom, then
+grid / classification / rendering indicators (`test_2`–`test_4`). `pytest.ini` sets
+`-x` (fail-fast), so a run stops at the first broken tier — fix the lowest red tier,
+re-run, climb.
+
+```bash
+source .venv/bin/activate
+pip install -r requirements-dev.txt   # one time: installs pytest
+pytest                                # runs all tiers, gated
+```
+
+To see every test in one tier despite a failure: `pytest tests/test_1_derived_math.py -o addopts=""`.
 
 ---
 
