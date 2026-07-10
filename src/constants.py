@@ -1,20 +1,20 @@
 """
-For the first build of the engine, this file will hold all of the constants used/assumed.
+For the second build of the engine, this file will hold all of the constants used/assumed.
 
-    1. We use these assumed "constants" in order to prove the engine works.
+    1. We use these assumed "constants" in order to avoid magic numbers and assist the user.
 
     2. We will be assuming the aircraft type, and therefore, its properties.
 
-    3. We will also be assuming permanently clear skies on January 1st 2026 for now.
+    3. We will no longer be assuming constant date and time, but other constants to assist in dynamic dating will exist.
 
     4. The coordinates of the M1 Mooring station are also found here and will be used
     even after the first version of the engine works.
 
-    5. Legal status for now is assumed to be true (Legal).
+    5. Legal status is no longer assumed to be true in V2.
 
     6. Flight path constants like altitude, line lengths, etc are also found here for now.
 
-    7. We are also ignoring wind in version 1.
+    7. Wind is now a feature being accounted for in our dynamic weather, any related constants will be put here.
 """
 
 # M1 Mooring station coordinates are defined below:
