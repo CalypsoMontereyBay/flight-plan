@@ -1,6 +1,6 @@
 '''
 Geographic math for Engine V1.
-
+Test commit
 geo.py owns spatial calculations only: bearings, destination points, line
 offsets, grid sizing, grid area, and M1-centered lawnmower geometry. It does
 not create CandidatePlan objects, estimate battery, validate legality, or
