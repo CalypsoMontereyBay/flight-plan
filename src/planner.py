@@ -92,7 +92,7 @@ _M1_Waypoint = Waypoint(
 def _build_dated_objects (mission_datetime):
     
     _Sun_State = create_sun_state(
-        CONST.V1_LAND_POINT_LAT,
+        CONST.V1_LAUNCH_POINT_LAT,
         CONST.V1_LAUNCH_POINT_LONG,
         mission_datetime
         )
