@@ -16,7 +16,7 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
 from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
-from sun import create_sun_state, mission_date
+from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
 
@@ -34,7 +34,7 @@ _Black_Swift = Aircraft(
     CONST.BLACKSWIFT_TURN_RADIUS_m,
     CONST.BLACKSWIFT_TURN_PENALTY_s,
     CONST.BLACKSWIFT_MIN_GROUND_SPEED_ms,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_CRUISE_SPEED_ms
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
@@ -54,7 +54,7 @@ _Calypso_payload = Sensor(
 
 # Step 1.3: Mission Request object for launch, land, and M1, then route assembly:
 
-_V1_Launch_Waypoint = Waypoint(
+_Launch_Waypoint = Waypoint(
     "WP000",
     CONST.V1_LAUNCH_POINT_LAT,
     CONST.V1_LAUNCH_POINT_LONG,
@@ -65,7 +65,7 @@ _V1_Launch_Waypoint = Waypoint(
     "Seymour-Beach-Launch",
 )
 
-_V1_Land_Waypoint = Waypoint(
+_Land_Waypoint = Waypoint(
     "WP_END",
     CONST.V1_LAND_POINT_LAT,
     CONST.V1_LAND_POINT_LONG,
@@ -76,7 +76,7 @@ _V1_Land_Waypoint = Waypoint(
     "Seymour-Road-Land",
 )
 
-_V1_M1_Waypoint = Waypoint(
+_M1_Waypoint = Waypoint(
     "WP_M1",
     CONST.M1_MOORING_LAT,
     CONST.M1_MOORING_LONG,
@@ -87,43 +87,44 @@ _V1_M1_Waypoint = Waypoint(
     "M1-Mooring-Station",
 )
 
-_V1_Mission_Request = MissionRequest(
-    mission_name="V1 First Example Mission",
-    launch_waypoint=_V1_Launch_Waypoint,
-    land_waypoint=_V1_Land_Waypoint,
-    m1_waypoint=_V1_M1_Waypoint,
-    altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    valid_time=mission_date,
-    require_m1_overflight=True,
-    grid_orientation_deg=None,
-    notes="First Mission",
-    included_target_waypoints=[_V1_M1_Waypoint],
-)
+#Step 1.4, consolidating the date/time dependent objects to a builder function:
 
-
-# Step 1.4: Weather Stub, no API source yet, using conditions at launch point:
-
-_V1_assumed_weather = Weather(
-    CONST.V1_LAUNCH_POINT_LAT,
-    CONST.V1_LAUNCH_POINT_LONG,
-    mission_date,
-    CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
-    CONST.DEFAULT_ZERO_WIND,
-    CONST.DEFAULT_WIND_DIRECTION_deg,
-    CONST.DEFAULT_WIND_GUST_ms,
-    CONST.DEFAULT_VISIBILITY_m,
-    CONST.DEFAULT_WEATHER_CONDITION,
-)
-
-
-# Step 2: Assemble the current sun state and grab the azimuth.
-
-_V1_mission_sun_state = create_sun_state(
-    CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_date
-)
-
-# Setting the mission azimuth
-_V1_mission_sun_azimuth = _V1_mission_sun_state.azimuth
+def _build_dated_objects (mission_datetime):
+    
+    _Sun_State = create_sun_state(
+        CONST.V1_LAND_POINT_LAT,
+        CONST.V1_LAUNCH_POINT_LONG,
+        mission_datetime
+        )
+    
+    _Mission_Request = MissionRequest(
+        mission_name="V2 Generated Mission",
+        launch_waypoint=_Launch_Waypoint,
+        land_waypoint=_Land_Waypoint,
+        m1_waypoint=_M1_Waypoint,
+        altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+        valid_time=mission_datetime,
+        require_m1_overflight=True,
+        grid_orientation_deg=None,
+        notes="V2 Grid",
+        included_target_waypoints=[_M1_Waypoint]
+        )
+    
+    _Mission_Weather = Weather(
+        CONST.V1_LAUNCH_POINT_LAT, 
+        CONST.V1_LAUNCH_POINT_LONG,
+        mission_datetime,
+        CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
+        CONST.DEFAULT_ZERO_WIND,
+        CONST.DEFAULT_WIND_DIRECTION_deg,
+        CONST.DEFAULT_WIND_GUST_ms,
+        CONST.DEFAULT_VISIBILITY_m,
+        CONST.DEFAULT_WEATHER_CONDITION
+        )
+    
+    mission_az = _Sun_State.azimuth
+    
+    return (_Sun_State, _Mission_Request, _Mission_Weather, mission_az)
 
 """
 HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
@@ -526,15 +527,26 @@ def build_candidate_plan(
 # Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
 
 
-def plan_default_mission(candidate_name):
+def plan_default_mission(candidate_name, mission_datetime=None):
 
+    # With no datetime, fall back to the module-level V2 default so a plan can be
+    # built from just a name (keeps the V1-era one-arg call sites working). The
+    # sun resolver only defaults the STRING inputs; a None datetime object must be
+    # caught here.
+    if mission_datetime is None:
+        mission_datetime = DEFAULT_MISSION_DATETIME
+
+    #unpacking dated objects:
+    _Sun_State, _Mission_Request, _Weather_State, _Sun_az = _build_dated_objects(mission_datetime)
+        
     return build_candidate_plan(
         _Black_Swift,
         _Black_Swift_usable_endurance_m,
         _Calypso_payload,
-        _V1_Mission_Request,
-        _V1_assumed_weather,
-        _V1_mission_sun_azimuth,
-        _V1_mission_sun_state,
-        candidate_name=candidate_name,
+        _Mission_Request,
+        _Weather_State,
+        _Sun_az,
+        _Sun_State,
+        candidate_name=candidate_name
     )
+    

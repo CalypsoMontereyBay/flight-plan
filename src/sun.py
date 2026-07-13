@@ -12,6 +12,7 @@ return heading is not determined by sun azimuth.
 from pysolar.solar import get_azimuth, get_altitude
 import datetime
 from objects import CurrentSunState
+from zoneinfo import ZoneInfo
 
 # constants imports
 from constants import (
@@ -20,19 +21,9 @@ from constants import (
     V1_DEFAULT_MISSION_YEAR,
     V1_DEFAULT_MISSION_MONTH,
     V1_DEFAULT_MISSION_DAY_OF_MONTH,
-    V1_DEFAULT_MISSION_HOUR,
-)
-
-# date constants in datetime module form are below:
-TIME_ZONE_INFO = datetime.timezone.utc
-
-# The datetime library is used in conjunction with pysolar for my helper functions
-mission_date = datetime.datetime(
-    V1_DEFAULT_MISSION_YEAR,
-    V1_DEFAULT_MISSION_MONTH,
-    V1_DEFAULT_MISSION_DAY_OF_MONTH,
-    V1_DEFAULT_MISSION_HOUR,
-    tzinfo=TIME_ZONE_INFO,
+    V2_DEFAULT_MISSION_LOCAL_HOUR,
+    V2_MISSION_INPUT_TIMEZONE,
+    V2_DEFAULT_MISSION_LOCAL_MINUTE
 )
 
 """
@@ -101,17 +92,53 @@ def calc_zenith(solar_elevation_deg):
 # ===================================================================
 
 """
+The resolve_mission_datetime function converts local Pacfic timezone times
+to usable UTC times. This allows the Engine to be date and time aware for its 
+weather and flight restrictions, as well as day-to-day sun data.
+"""
+
+
+def resolve_mission_datetime(date_str: str | None = None, time_str: str | None = None):
+    
+    try:
+        mission_date_component = datetime.date.fromisoformat(date_str)  # type: ignore[arg-type]
+
+    except (ValueError, TypeError):
+        mission_date_component = datetime.date(
+            V1_DEFAULT_MISSION_YEAR,
+            V1_DEFAULT_MISSION_MONTH,
+            V1_DEFAULT_MISSION_DAY_OF_MONTH,
+        )
+        
+    try:
+        mission_time_component = datetime.time.fromisoformat(time_str)  # type: ignore[arg-type]
+
+    except (ValueError, TypeError):
+        mission_time_component = datetime.time(
+            V2_DEFAULT_MISSION_LOCAL_HOUR,
+            V2_DEFAULT_MISSION_LOCAL_MINUTE,
+        )
+    
+    local_datetime = datetime.datetime.combine(mission_date_component, mission_time_component, tzinfo=ZoneInfo(V2_MISSION_INPUT_TIMEZONE))
+
+    return local_datetime.astimezone(datetime.timezone.utc)
+
+# Module-level default instant, used when no CLI date/time is supplied: the V2
+# local-time defaults resolved to UTC. create_sun_state and planner fall back to
+# this so a plan can still be built with no --date/--time chosen.
+mission_datetime = resolve_mission_datetime()
+"""
 The create_sun_state function puts it all together by populating
 the constructor of a CurrentSunState object and returning it. It uses
 the helper functions above and calculates the values needed for the rest
 of the engine to have proper sun data. Latitude, longitude, and date all
-default to the V1 launch point and assumed mission date.
+default to the assumed launch point and the V2 default mission datetime.
 """
 
 
 # Creator function is getting defaults for now
 def create_sun_state(
-    latitude=V1_LAUNCH_POINT_LAT, longitude=V1_LAUNCH_POINT_LONG, date=mission_date
+    latitude=V1_LAUNCH_POINT_LAT, longitude=V1_LAUNCH_POINT_LONG, date=mission_datetime
 ):
 
     # calculating launch point azimuth for object
@@ -127,9 +154,9 @@ def create_sun_state(
         current_launch_point_az_deg,
         current_launch_point_elev_deg,
         current_launch_point_zen_deg,
-        V1_DEFAULT_MISSION_DAY_OF_MONTH,
-        V1_DEFAULT_MISSION_HOUR,
-        0,
+        date.day,
+        date.hour,
+        date.minute,
     )
 
     return launch_sun_state

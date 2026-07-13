@@ -31,17 +31,23 @@ V1_LAUNCH_POINT_LAT = 36.637
 V1_LAND_POINT_LONG = -121.938
 V1_LAND_POINT_LAT = 36.634
 
-# Engine Version 1 constants are defined below:
+# Engine Version 2 constants are defined below:
+
+#Local date/time defaults if user does not specify:
+
+V2_DEFAULT_MISSION_LOCAL_HOUR = 10 #10 AM PT
+
+V2_DEFAULT_MISSION_LOCAL_MINUTE = 0
 
 V1_DEFAULT_MISSION_DAY_OF_MONTH = 1
-
-V1_DEFAULT_MISSION_NAME = "v1_m1_test"
 
 V1_DEFAULT_MISSION_YEAR = 2026
 
 V1_DEFAULT_MISSION_MONTH = 1
 
-V1_DEFAULT_MISSION_HOUR = 18  # Units: 24hr clock in UTC, we are assuming a mission start time of 10 am.
+V2_MISSION_INPUT_TIMEZONE = "America/Los_Angeles" #String used in ZoneInfo 
+
+#--------------------------------------------
 
 V1_POINTS_PER_LINE = 5
 
