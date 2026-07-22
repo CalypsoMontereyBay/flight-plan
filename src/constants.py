@@ -45,7 +45,7 @@ V1_DEFAULT_MISSION_YEAR = 2026
 
 V1_DEFAULT_MISSION_MONTH = 1
 
-V2_MISSION_INPUT_TIMEZONE = "America/Los_Angeles" #String used in ZoneInfo 
+V2_MISSION_INPUT_TIMEZONE = "America/Los_Angeles" #String used in ZoneInfo
 
 #--------------------------------------------
 
@@ -101,11 +101,18 @@ BLACKSWIFT_MIN_GROUND_SPEED_ms = 12  # Units = m/s
 
 BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
 
-
-# WEATHER OBJECT AND API CONSTANTS FOR V1 ARE LISTED BELOW:
+# NATIONAL WEATHER SERVICE API CONSTANTS BELOW:
 
 NWS_BASE_URL = "https://api.weather.gov"
-# NWS_USER_AGENT =
+NWS_USER_AGENT = "Calypso Flight Engine (rwandel@ucsc.edu)"
+NWS_REQUEST_TIMEOUT_s = 10 #CFE will wait for 10 seconds before bailing
+NWS_MAX_RETRIES = 1 #CFE will retry the api request once before bailing
+NWS_ACCEPT_HEADER = "application/geo+json" #NWS api output formatting
+NWS_FORECAST_HORIZON_days = 7 #NWS forecasting horizon
+WEATHER_SOURCE = "NWS"
+
+
+# WEATHER OBJECT AND API CONSTANTS FOR V1 ARE LISTED BELOW:
 
 DEFAULT_ZERO_WIND = 0  # Units = m/s
 
@@ -121,7 +128,7 @@ DEFAULT_VISIBILITY_m = 16100  # ~10 miles (METAR reports max out at +10 SM)
 
 DEFAULT_WEATHER_CONDITION = "clear"
 
-DEFAULT_WEATHER_SOURCE = "V1Stub"
+KMH_TO_MS = 1/3.6 # conversion factor for wind speed
 
 # WAYPOINT DEFAULTS AND ACTION CONSTANTS HERE:
 

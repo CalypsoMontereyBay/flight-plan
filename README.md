@@ -1,11 +1,11 @@
-# Calypso Flight Planning Engine — V1
+# Calypso Flight Planning Engine — V2
 
 A **sun-aware** flight-planning engine for a fixed-wing UAV (Currently the BlackSwift S2) that
 collects ocean-color and Sea Surface Temperature data. The aircraft can only
 collect valid science when its science legs are flown **135° in azimuth relative
 to the sun** (to avoid sun glint), so the engine builds a lawnmower data collection grid centered on the M1 Mooring Station in the Pacific Ocean, orients it for minimum glint, picks the launch-nearest corner as the start, and exports the route for review.
 
-V1 produces two artifacts per run:
+The engine produces two artifacts per run:
 
 - **`.kml`** — for visual review in QGroundControl, BlackSwift's FMS, or Google Earth.
 - **`.png`** — a quick visual reference (grid, route, launch/land/M1 markers, sun arrow, metrics).
@@ -79,22 +79,32 @@ That single command runs the whole engine and writes a timestamped `.kml` and
 `.png` pair, then prints a summary, e.g.:
 
 ```
-Mission : v1_m1_test
+Mission : V2 Plan
+When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
 Lines   : 23  |  Glint Score: 0.0
 Duration: 74.9 min | Margin: 15.1 min
-KML -> ./CALYPSO_OUTPUT/v1_m1_test_20260609-1529.kml
-PNG -> ./CALYPSO_OUTPUT/v1_m1_test_20260609-1529.png
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.png
 ```
+
+> The `When` line shows the mission time you selected in **Monterey local** and the
+> **UTC** instant the engine actually computed the sun position with.
 
 ### Options
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--name` | `v1_m1_test` (from `constants.py`) | Mission name; used in the output filenames and titles. |
-| `--out-dir` | `OUTPUT_DIRECTORY` in `constants.py` | Directory to write the `.kml` / `.png` into (created if missing). |
+| `--name` | `V2 Plan` | Mission name; used in the output filenames and titles. |
+| `--out-dir` | `OUTPUT_DIRECTORY` in `constants.py` (`./CALYPSO_OUTPUT`) | Directory to write the `.kml` / `.png` into (created if missing). |
+| `--date` | `2026-01-01` (V2 defaults in `constants.py`) | Mission date `YYYY-MM-DD`, interpreted as **Monterey local time**. |
+| `--time` | `10:00` local | Mission start `HH:MM`, Monterey local; converted to UTC (DST-aware) to drive the sun position and glint scoring. |
+
+Each flag is independent; omit either `--date` or `--time` and it falls back to its
+default. Unparseable values also fall back to the defaults rather than erroring.
 
 ```bash
 python flight_plan_maker.py --name my_mission --out-dir ./outputs
+python flight_plan_maker.py --date 2026-07-15 --time 14:30    # afternoon sun, Monterey local
 ```
 
 > **Output directory:** the default `OUTPUT_DIRECTORY` in `src/constants.py` is
@@ -121,26 +131,26 @@ flight-plan/
 ├── pyrightconfig.json       # editor: resolves the flat src/ imports (Pylance/Pyright)
 ├── README.md
 ├── src/
-│   ├── constants.py         # all V1 assumed constants (aircraft, M1, sensor, dates)
+│   ├── constants.py         # engine constants (aircraft, M1, sensor, date/time defaults, weather)
 │   ├── objects.py           # Aircraft, Sensor, Weather, CurrentSunState, Waypoint,
 │   │                        #   MissionRequest, CandidatePlan
-│   ├── sun.py               # pysolar -> CurrentSunState (sun azimuth/elevation)
+│   ├── sun.py               # local->UTC datetime resolver + pysolar CurrentSunState (azimuth/elev)
 │   ├── aircraft_math.py     # endurance -> distance budget, duration, battery margin
 │   ├── geo.py               # geodesic math + M1-centered lawnmower grid geometry
 │   ├── planner.py           # the hub: assembles objects, scores glint, builds the plan
 │   ├── outputs.py           # KML + PNG writers
 │   └── validator.py         # (empty — reserved for V2 legality/feasibility gating)
-└── tests/                   # tiered pytest harness (test_0_* … test_4_*)
+└── tests/                   # tiered pytest harness (test_0_* … test_5_*)
 ```
 
 ---
 
 ## Running the tests
 
-The suite is a **tiered gate**: pure math (`test_0`, `test_1`) at the bottom, then
-grid / classification / rendering indicators (`test_2`–`test_4`). `pytest.ini` sets
-`-x` (fail-fast), so a run stops at the first broken tier — fix the lowest red tier,
-re-run, climb.
+The suite is a **tiered gate** (six tiers): primitives (`test_0`), date/time + sun
+wiring (`test_1`), derived math (`test_2`), then grid / classification / rendering
+indicators (`test_3`–`test_5`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
+the first broken tier — fix the lowest red tier, re-run, climb.
 
 ```bash
 source .venv/bin/activate
@@ -148,16 +158,20 @@ pip install -r requirements-dev.txt   # one time: installs pytest
 pytest                                # runs all tiers, gated
 ```
 
-To see every test in one tier despite a failure: `pytest tests/test_1_derived_math.py -o addopts=""`.
+To see every test in one tier despite a failure: `pytest tests/test_2_derived_math.py -o addopts=""`.
 
 ---
 
-## V1 assumptions
+## V2 status & remaining assumptions
 
-V1 is a proof-of-engine build. It assumes:
+V1 (proof-of-engine) is complete. V2 makes the mission situation-aware one step at a
+time. **Done — Step A:** selectable mission date/time (`--date` / `--time`, Monterey
+local → UTC), which drives the sun azimuth and therefore glint scoring.
+
+Still assumed (V2 work in progress):
 
 - A fixed aircraft (**BlackSwift S2**) with constant endurance/speed/turn values.
-- **Clear skies**, a fixed mission date/time (**Jan 1 2026, 18:00 UTC ≈ 10:00 local**), and no wind.
-- **Legal** to fly (no airspace checks yet).
+- **Clear skies / no wind** — weather is still a stub; live NWS weather is the next step (**B**).
+- **Legal** to fly (no airspace / Part 107 checks yet — step **D**).
 - The grid is always centered on the **M1 mooring**, and the route always includes an **M1 overflight**.
-- **Sun glint** is the only ranking metric (science legs held 135° off the sun, gated at a 15° tolerance).
+- **Sun glint** is the only ranking metric (science legs held 135° off the sun, gated at a 15° tolerance) — weather is not yet folded into ranking (step **C**).
