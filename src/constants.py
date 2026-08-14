@@ -109,6 +109,7 @@ NWS_REQUEST_TIMEOUT_s = 10 #CFE will wait for 10 seconds before bailing
 NWS_MAX_RETRIES = 1 #CFE will retry the api request once before bailing
 NWS_ACCEPT_HEADER = "application/geo+json" #NWS api output formatting
 NWS_FORECAST_HORIZON_days = 7 #NWS forecasting horizon
+WEATHER_SOURCE_NWS = "NWS" #tags a Weather object as live NWS data (vs the "STUB" fallback)
 WEATHER_SOURCE = "NWS"
 
 

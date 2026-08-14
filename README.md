@@ -28,6 +28,7 @@ The engine produces two artifacts per run:
   | `simplekml` | 1.3.6 | KML output — `outputs.py` |
   | `matplotlib` | 3.10.9 | PNG output — `outputs.py` |
   | `pysolar` | 0.13 | sun azimuth/elevation — `sun.py` |
+  | `requests` | 2.34.2 | NWS weather API client — `weather.py` |
   | `numpy` | 2.4.4 | pulled in transitively by the above |
 
 ---
@@ -137,6 +138,7 @@ flight-plan/
 │   ├── sun.py               # local->UTC datetime resolver + pysolar CurrentSunState (azimuth/elev)
 │   ├── aircraft_math.py     # endurance -> distance budget, duration, battery margin
 │   ├── geo.py               # geodesic math + M1-centered lawnmower grid geometry
+│   ├── weather.py           # leaf: live NWS weather -> Weather object (or None -> stub)
 │   ├── planner.py           # the hub: assembles objects, scores glint, builds the plan
 │   ├── outputs.py           # KML + PNG writers
 │   └── validator.py         # (empty — reserved for V2 legality/feasibility gating)
@@ -147,8 +149,8 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (six tiers): primitives (`test_0`), date/time + sun
-wiring (`test_1`), derived math (`test_2`), then grid / classification / rendering
+The suite is a **tiered gate** (six tiers): primitives (`test_0`), date/time + sun +
+weather wiring (`test_1`), derived math (`test_2`), then grid / classification / rendering
 indicators (`test_3`–`test_5`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
 
@@ -165,13 +167,14 @@ To see every test in one tier despite a failure: `pytest tests/test_2_derived_ma
 ## V2 status & remaining assumptions
 
 V1 (proof-of-engine) is complete. V2 makes the mission situation-aware one step at a
-time. **Done — Step A:** selectable mission date/time (`--date` / `--time`, Monterey
-local → UTC), which drives the sun azimuth and therefore glint scoring.
+time. **Done:** Step A — selectable mission date/time (`--date` / `--time`, Monterey
+local → UTC), which drives the sun azimuth and therefore glint; and Step B — live
+**NWS weather** (`weather.py`), a leaf that populates the `Weather` object for
+in-horizon dates and gracefully falls back to a clear-sky stub otherwise.
 
 Still assumed (V2 work in progress):
 
 - A fixed aircraft (**BlackSwift S2**) with constant endurance/speed/turn values.
-- **Clear skies / no wind** — weather is still a stub; live NWS weather is the next step (**B**).
-- **Legal** to fly (no airspace / Part 107 checks yet — step **D**).
+- **Legal** to fly (no airspace / Part 107 checks yet — step **E**).
 - The grid is always centered on the **M1 mooring**, and the route always includes an **M1 overflight**.
-- **Sun glint** is the only ranking metric (science legs held 135° off the sun, gated at a 15° tolerance) — weather is not yet folded into ranking (step **C**).
+- **Sun glint** is the only ranking metric (science legs held 135° off the sun, gated at a 15° tolerance) — weather is fetched but not yet folded into ranking (step **D**).

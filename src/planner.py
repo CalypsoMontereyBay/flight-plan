@@ -19,6 +19,7 @@ from geo import make_lawnmower_grid_through_m1, distance_between, bearing_betwee
 from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
+import weather
 
 # Main Functions and logic:
 # Step 1: Build the components of a candidate plan by assembling the
@@ -110,16 +111,24 @@ def _build_dated_objects (mission_datetime):
         included_target_waypoints=[_M1_Waypoint]
         )
     
-    _Mission_Weather = Weather(
-        CONST.V1_LAUNCH_POINT_LAT, 
-        CONST.V1_LAUNCH_POINT_LONG,
-        mission_datetime,
-        CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
-        CONST.DEFAULT_ZERO_WIND,
-        CONST.DEFAULT_WIND_DIRECTION_deg,
-        CONST.DEFAULT_WIND_GUST_ms,
-        CONST.DEFAULT_VISIBILITY_m,
-        CONST.DEFAULT_WEATHER_CONDITION
+    # Ask the weather leaf for live NWS data; it returns None when weather cannot be
+    # produced (out of forecast horizon, or any fetch/parse failure).
+    _Mission_Weather = weather.get_weather(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_datetime
+    )
+
+    # Fallback: the V1-style clear-sky / zero-wind stub, so a plan is always produced.
+    if _Mission_Weather is None:
+        _Mission_Weather = Weather(
+            CONST.V1_LAUNCH_POINT_LAT,
+            CONST.V1_LAUNCH_POINT_LONG,
+            mission_datetime,
+            CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
+            CONST.DEFAULT_ZERO_WIND,
+            CONST.DEFAULT_WIND_DIRECTION_deg,
+            CONST.DEFAULT_WIND_GUST_ms,
+            CONST.DEFAULT_VISIBILITY_m,
+            CONST.DEFAULT_WEATHER_CONDITION,
         )
     
     mission_az = _Sun_State.azimuth

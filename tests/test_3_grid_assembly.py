@@ -84,3 +84,20 @@ def test_selected_datetime_threads_into_plan():
     assert plan.sun_state.current_day == 15      # metadata reflects the chosen instant,
     assert plan.sun_state.current_hour == 17     # not the V1 default
     assert plan.weather.valid_time == chosen     # weather stub carries the same instant
+
+
+def test_planner_uses_weather_leaf(monkeypatch):
+    # Step B wiring: the planner must call weather.get_weather and, when it returns a
+    # populated Weather (not None), use THAT object on the plan rather than the stub.
+    import weather
+    import objects
+    sentinel = objects.Weather(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG,
+        datetime.datetime(2026, 7, 15, 17, 0, tzinfo=datetime.timezone.utc),
+        42, 7.0, 180, 12.0, 9000, "overcast", source=CONST.WEATHER_SOURCE_NWS,
+    )
+    monkeypatch.setattr(weather, "get_weather", lambda lat, lon, when: sentinel)
+
+    plan = P.plan_default_mission("t3_wx")
+    assert plan.weather is sentinel                          # planner used the leaf's result
+    assert plan.weather._data_source == CONST.WEATHER_SOURCE_NWS

@@ -137,6 +137,70 @@ def _condition_from_skycover (pct):
         return C.DEFAULT_WEATHER_CONDITION
     
     else:
-        
+
         return "partly cloudy"
+
+
+"""
+get_weather(latitude, longitude, when) is weather.py's ONLY public function. It runs the
+helpers above in order and returns a populated Weather object, or None when live weather
+cannot be produced (out of forecast horizon, or any network / parse failure). planner.py
+calls this and falls back to its clear-sky stub whenever it receives None, so Step B can
+never stop a plan from being produced.
+"""
+
+
+def get_weather(latitude, longitude, when):
+
+    # NWS only forecasts ~7 days out (and not the past) -> skip the network entirely otherwise.
+    if not _within_forecast_horizon(when):
+        return None
+
+    # Any failure in the fetch / parse / build collapses to None so the hub uses the stub.
+    try:
+        grid = _grid_data_url(latitude, longitude)
+        if grid is None:
+            return None
+        props = grid["properties"]
+
+        sky_block = props.get("skyCover")
+        cloud_pct = _value_at_time(sky_block, when) if sky_block else None
+
+        wind_block = props.get("windSpeed")
+        wind_ms = _to_ms(_value_at_time(wind_block, when), wind_block.get("uom")) if wind_block else None
+
+        gust_block = props.get("windGust")
+        gust_ms = _to_ms(_value_at_time(gust_block, when), gust_block.get("uom")) if gust_block else None
+
+        dir_block = props.get("windDirection")
+        wind_dir = _value_at_time(dir_block, when) if dir_block else None
+
+        vis_block = props.get("visibility")   # frequently absent (e.g. the MTR grid)
+        visibility_m = _value_at_time(vis_block, when) if vis_block else None
+
+        # Fill any missing field with the same DEFAULT_* the stub uses.
+        cloud_pct = cloud_pct if cloud_pct is not None else C.V1_DEFAULT_MISSION_CLOUD_COVER
+        wind_ms = wind_ms if wind_ms is not None else C.DEFAULT_ZERO_WIND
+        gust_ms = gust_ms if gust_ms is not None else C.DEFAULT_WIND_GUST_ms
+        wind_dir = wind_dir if wind_dir is not None else C.DEFAULT_WIND_DIRECTION_deg
+        visibility_m = visibility_m if visibility_m is not None else C.DEFAULT_VISIBILITY_m
+
+        condition = _condition_from_skycover(cloud_pct)
+
+        return Weather(
+            latitude,
+            longitude,
+            when,
+            cloud_pct,
+            wind_ms,
+            wind_dir,
+            gust_ms,
+            visibility_m,
+            condition,
+            source=C.WEATHER_SOURCE_NWS,
+        )
+
+    except (requests.exceptions.RequestException, KeyError, ValueError):
+        return None
         
+

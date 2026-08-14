@@ -20,8 +20,8 @@ mooring in Monterey Bay. It builds an M1-centered lawnmower grid oriented for
 minimum sun glint (science legs held 135° off the sun) and exports the route as
 `.kml` and `.png`. See [`README.md`](README.md) for the full description.
 
-**V1 (proof-of-engine) is complete and tested. V2 Step A (selectable mission date/time)
-is complete and tested; Step B (weather) is next.** See
+**V1 (proof-of-engine) is complete and tested. V2 Steps A (selectable date/time) and B
+(live NWS weather) are complete and tested; Step C is being scoped.** See
 [V2 roadmap](#v2-roadmap-what-comes-next).
 
 ## Layout
@@ -34,6 +34,7 @@ is complete and tested; Step B (weather) is next.** See
   - `sun.py` — local→UTC datetime resolver (`resolve_mission_datetime`, `mission_datetime`) + pysolar sun azimuth/elevation (`create_sun_state`).
   - `aircraft_math.py` — endurance → distance budget, duration, battery margin.
   - `geo.py` — geodesic math + M1-centered lawnmower grid geometry.
+  - `weather.py` — **leaf**: live NWS weather for a lat/lon/datetime → populated `Weather`, or `None` (planner falls back to the stub).
   - `planner.py` — the hub: assembles objects, scores glint, builds the plan.
   - `outputs.py` — KML + PNG writers.
   - `validator.py` — **empty**, reserved for V2 legality/feasibility gating.
@@ -78,7 +79,7 @@ pytest                                 # all tiers, gated bottom-up
 pytest tests/test_2_derived_math.py -o addopts=""   # one tier, no fail-fast
 ```
 
-## Current state — what V1 actually does (context for future work)
+## Current state — what the engine actually does (context for future work)
 
 Read this before touching the grid, classification, or output code.
 
@@ -86,9 +87,16 @@ Read this before touching the grid, classification, or output code.
   as **Monterey-local** strings; `sun.resolve_mission_datetime` converts them to a tz-aware
   UTC instant (DST-aware via `zoneinfo`), defaulting to the V2 constants when omitted, and
   is lenient (bad input → defaults). `planner._build_dated_objects` builds the sun state /
-  mission request / weather stub **per run** from that instant, so the sun azimuth (and thus
+  mission request / weather **per run** from that instant, so the sun azimuth (and thus
   glint) track the chosen time. `plan_default_mission(name, mission_datetime=None)` falls
   back to the module default. The summary echoes local + UTC.
+
+- **Live weather (V2 Step B, done).** `weather.py` is a **leaf**: `get_weather(lat, lon, when)`
+  returns a `Weather` populated from live NWS data, or `None` (outside the ~7-day forecast
+  horizon, or any network/parse failure). `planner._build_dated_objects` uses it and falls
+  back to the clear-sky / zero-wind stub on `None`, so a plan is always produced. Wind arrives
+  in km/h (`_to_ms` → m/s); `condition` from `skyCover` thresholds; absent fields (often
+  `visibility`) fall to `DEFAULT_*`. Offline tests monkeypatch the fetch (`tests/test_1_weather.py`).
 
 - **5-point flight lines.** `geo.make_line_through_point` emits
   `[turn, collect_start, line_label (center), collect_stop, turn]`
@@ -110,7 +118,7 @@ Read this before touching the grid, classification, or output code.
 - **Metrics.** `science_lines = (N+1)//2`, `traverse_lines = N//2`, `offset_lines = N-1`
   where `N = total_lines` (odd, so the center line passes through M1 → free overflight).
 - **Tests.** Tier 0 (primitives) and Tier 2 (derived math) are pure closed-form math
-  (must never fail); Tier 1 pins the date/time resolver + sun-state wiring; Tiers 3–5 drive
+  (must never fail); Tier 1 pins the date/time resolver, sun-state, and weather-leaf wiring; Tiers 3–5 drive
   the real mission and assert structural invariants as *indicators* that the math is sound.
 - **Known deferred items (V2 candidates):**
   - The **SCIENCE/TRANSIT OFFSET CORRECTION** documented in `geo.make_lawnmower_grid_through_m1`
@@ -132,7 +140,7 @@ optional). `sun.resolve_mission_datetime` fills missing halves from the V2 defau
 attaches `V2_MISSION_INPUT_TIMEZONE` (`America/Los_Angeles`, DST-aware) and converts to a
 tz-aware UTC instant; module-level `sun.mission_datetime` is the default when no flags are
 given. `planner.plan_default_mission(name, mission_datetime=None)` → `_build_dated_objects`
-builds the sun state / mission request / weather stub per run, so sun azimuth (and glint)
+builds the sun state / mission request / weather per run, so sun azimuth (and glint)
 track the chosen time.
 - The old latent bug is fixed: `create_sun_state` now stores `CurrentSunState`'s
   day/hour/minute from the passed `date`, not the constants.
@@ -141,29 +149,30 @@ track the chosen time.
   `date.fromisoformat(None)` raises when a flag is omitted). Switch to hard-reject later if
   strict validation is wanted.
 
-### B. Weather integration (next)
-The `Weather` class (`objects.py`) already models cloud cover, wind speed/direction/gust,
-visibility, condition, and `valid_time`; today `planner._build_dated_objects` builds a
-clear-sky / zero-wind stub from `DEFAULT_*` constants.
-- Add a **leaf** module `weather.py` that fetches NWS for a given lat/lon/datetime and
-  returns a populated `Weather` object; `planner` calls it and falls back to the stub — the
-  leaf never reaches back into the hub.
-- **NWS API facts (verified 2026-07):** REST/JSON at `https://api.weather.gov`, **no API
-  key** — but a **`User-Agent`** header is required (app + contact, e.g.
-  `"CalypsoFlightEngine (rwandel@ucsc.edu)"`; fill in `constants.NWS_USER_AGENT`). Two-call
-  flow: `GET /points/{lat},{lon}` → `properties.forecastGridData` URL (for the launch point
-  that is office **MTR**, grid **91,52**), then `GET` that gridpoint doc. Fields arrive as
-  time-series each with a `uom`: `skyCover` (percent), `windSpeed`/`windGust`
-  (**km/h — ÷3.6 for m/s**), `windDirection` (deg), `temperature` (°C). **`visibility` is
-  often absent** from the gridpoint doc (it is for MTR) → fall back to `DEFAULT_VISIBILITY_m`.
-  `validTime` is an ISO-8601 `start/duration` interval; the value in effect at time T is the
-  latest entry whose start ≤ T (no duration parsing needed).
-- ⚠️ **Horizon:** forecasts only cover ~7 days from *now*. A mission datetime outside
-  `[now, now+7d]` (past or far future) → graceful fallback to the stub.
-- `CLEAR_SKY_THRESHOLD_PERCENTAGE` / `OVERCAST_SKY_THRESHOLD_PERCENTAGE` classify condition
-  from `skyCover`.
+### B. Weather integration ✅ DONE
+`weather.py` is a **leaf** the hub orchestrates: `weather.get_weather(lat, lon, when)` returns
+a `Weather` populated from live NWS data, or `None` (out of forecast horizon, or any
+network/parse failure); `planner._build_dated_objects` falls back to the clear-sky /
+zero-wind stub on `None`, so a plan is always produced. The leaf never reaches back into the hub.
+- **NWS (no API key; `User-Agent` required — `constants.NWS_USER_AGENT`).** Two-call flow:
+  `GET /points/{lat},{lon}` → `properties.forecastGridData` URL (launch point = office **MTR**,
+  grid **91,52**), then `GET` that gridpoint doc. Fields are time-series with a `uom`:
+  `skyCover` (percent), `windSpeed`/`windGust` (**km/h — `_to_ms` ÷3.6 → m/s**),
+  `windDirection` (deg). `visibility` (metres) is **sometimes absent** → `get_weather` fills
+  `DEFAULT_VISIBILITY_m`. `_value_at_time` picks the latest interval whose `validTime` start ≤ T
+  (no duration parsing).
+- `_within_forecast_horizon` short-circuits any datetime outside `[now, now+7d]` to the stub
+  **with no network call** (forecasts cover ~7 days from *now*).
+- `_condition_from_skycover` maps `skyCover` → `"clear"` / `"partly cloudy"` / `"overcast"`
+  via `CLEAR_SKY_THRESHOLD_PERCENTAGE` / `OVERCAST_SKY_THRESHOLD_PERCENTAGE`.
+- Tests: `tests/test_1_weather.py` (offline; fetch monkeypatched) + a Tier 3 check that the
+  planner uses the leaf's populated result.
 
-### C. Fold date/time + weather into glint scoring
+### C. (V2C — in planning)
+Reserved. This slot was opened by shifting the former ranking and legality items down one
+letter (old C → D, old D → E); the V2C spec is being written. Fill in when it lands.
+
+### D. Fold date/time + weather into glint scoring
 Today `planner._score_glint` is the **only** ranking metric and uses the fixed sun
 azimuth (`_score_candidate` / `_passes_glint_gate`, gate = `V1_GLINT_TOLERANCE_DEG`).
 - Date/time (A) already varies the sun azimuth feeding glint.
@@ -172,7 +181,7 @@ azimuth (`_score_candidate` / `_passes_glint_gate`, gate = `V1_GLINT_TOLERANCE_D
   bears on VLOS. Extend scoring into a composite metric and/or add parallel gates
   alongside the glint gate rather than overloading `_score_glint`.
 
-### D. `validator.py` — Part 107 legality/feasibility gating (later in V2)
+### E. `validator.py` — Part 107 legality/feasibility gating (later in V2)
 `validator.py` is empty. Build it to take a `CandidatePlan` and decide legal + feasible
 **before** `outputs.py` writes anything. `CandidatePlan` already carries the result
 fields: `_is_legal`, `_is_aircraft_feasible`, `_validation_messages`, `_passes_over_m1`.
@@ -189,5 +198,6 @@ fields: `_is_legal`, `_is_aircraft_feasible`, `_validation_messages`, `_passes_o
 - Target Python 3.12+ (developed/tested on 3.14.4). `itertools.batched` (used in
   `planner._classify_waypoints`) requires 3.12.
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
-  legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Step A (selectable
-  date/time) is done**; weather (B), weather-aware ranking (C), and legality gating (D) remain.
+  legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time)
+  and B (live NWS weather) are done**; the new **C** (in planning), weather-aware ranking
+  (**D**), and legality gating (**E**) remain.
