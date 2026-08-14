@@ -14,6 +14,21 @@ FOV note: cross-track and along-track FOV are orthogonal.
                         "free" coverage you get past each line endpoint. V1
                         does not consume this for routing; the helper is here
                         for reporting and for future trigger-rate logic.
+
+MOUNTING NOTE (V2C.1) -- READ BEFORE TOUCHING THE FOV MATH:
+The camera is mounted ALONG-track (pitched forward under the nose, 30 deg
+off-nadir). It used to be mounted CROSS-track (rolled sideways, 40 deg).
+
+Only ONE axis is ever tilted, and the tilt decides which formula each axis uses:
+  * tilted axis   -> h * (tan(th + fov/2) - tan(th - fov/2))   asymmetric stretch
+  * untilted axis -> 2 * (h / cos(th)) * tan(fov/2)            symmetric, slant range
+
+When the mount rotated, the tilt moved from cross-track to along-track, so
+ground_swath_width_m and ground_footprint_along_m SWAPPED formula bodies. That
+swap looks like a bug in git blame; it is not. Two consequences worth knowing:
+the cross-track swath is now centred on the ground track (it used to sit entirely
+off to one side, so the M1 overflight imaged nothing), and both leg directions now
+collect science, which is why science_lines == total_lines below.
 '''
 
 import constants as CONST
@@ -73,55 +88,68 @@ def distance_between(point_a, point_b):
     _, _, distance_m = WGS84_GEOD.inv(start.x, start.y, end.x, end.y)
     return abs(distance_m)
 
-def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg=40):
+def ground_swath_width_m(altitude_m, cross_track_fov_deg, off_nadir_deg):
     '''
-    Compute cross-track ground footprint width for an off-nadir camera.
+    Computes the CROSS-TRACK GSW in meters, with the new formula for V2C.1 below.
 
-    Cross-track only. Along-track FOV is orthogonal and handled separately
-    by ground_footprint_along_m; it does not affect swath width or grid
-    spacing.
+    V2C MOUNT CHANGE: the camera is now pitched ALONG-track, so cross-track is no
+    longer the tilted axis. Cross-track the camera just looks down a longer slant
+    range (h / cos(off-nadir)) with no tilt stretch, so this is a plain symmetric
+    FOV projection. The old tan-difference form moved to ground_footprint_along_m,
+    which is now the tilted axis.
 
     Formula:
-        h * (tan(theta + fov / 2) - tan(theta - fov / 2))
+        2 * ( (h/cos(off-nadir)) * tan(cross_fov/2))
     '''
     if altitude_m <= 0:
         raise ValueError("altitude_m must be positive")
     if cross_track_fov_deg <= 0:
         raise ValueError("cross_track_fov_deg must be positive")
+    if abs(off_nadir_deg) >= CONST.DEGREE_NINETY:
+        raise ValueError("off-nadir angle must stay within +/- 90 degrees")
 
-    lower_angle_deg = off_nadir_deg - (cross_track_fov_deg / 2)
-    upper_angle_deg = off_nadir_deg + (cross_track_fov_deg / 2)
+    half_fov_rad = math.radians(cross_track_fov_deg / 2)
+    slant_range_m = altitude_m / math.cos(math.radians(off_nadir_deg))
 
-    if lower_angle_deg <= -90 or upper_angle_deg >= 90:
-        raise ValueError("FOV and off-nadir angle must stay within +/- 90 degrees")
-
-    lower_angle_rad = math.radians(lower_angle_deg)
-    upper_angle_rad = math.radians(upper_angle_deg)
-    return altitude_m * (math.tan(upper_angle_rad) - math.tan(lower_angle_rad))
+    return 2 * (slant_range_m * math.tan(half_fov_rad))
 
 
-def ground_footprint_along_m(altitude_m, along_track_fov_deg, off_nadir_deg=0):
+def ground_footprint_along_m(altitude_m, along_track_fov_deg, off_nadir_deg):
     '''
-    Compute the along-track ground footprint length for a camera that may be
-    cross-track-rolled by off_nadir_deg (V1's camera rolls sideways for glint
-    avoidance, not pitched forward/back).
+    Compute the along-track ground footprint length.
 
-    A tilted camera sees a longer along-track patch because the ground is
-    further away on the slant: slant_range = h / cos(off_nadir).
+    V2C MOUNT CHANGE: the camera is pitched forward ALONG-track, so along-track is
+    now the TILTED axis. The tilt stretches the far edge of the footprint and
+    compresses the near edge -- that asymmetry is exactly what the tan-difference
+    form below captures. Before the remount this axis was untilted and used the
+    slant form, which now lives in ground_swath_width_m.
+
+    Reporting only: nothing in the routing path consumes this. It matters for
+    image trigger rate.
 
     Formula:
-        2 * (h / cos(off_nadir)) * tan(fov_along / 2)
+        h * (tan(off-nadir + (along_fov/2)) - tan(off-nadir - (along_fov/2)))
     '''
     if altitude_m <= 0:
         raise ValueError("altitude_m must be positive")
     if along_track_fov_deg <= 0:
         raise ValueError("along_track_fov_deg must be positive")
-    if abs(off_nadir_deg) >= 90:
+    if abs(off_nadir_deg) >= CONST.DEGREE_NINETY:
         raise ValueError("off_nadir_deg must satisfy |off_nadir| < 90 degrees")
 
-    slant_range_m = altitude_m / math.cos(math.radians(off_nadir_deg))
-    half_fov_rad = math.radians(along_track_fov_deg / 2)
-    return 2 * slant_range_m * math.tan(half_fov_rad)
+    lower_angle_deg = off_nadir_deg - (along_track_fov_deg / 2)
+    upper_angle_deg = off_nadir_deg + (along_track_fov_deg / 2)
+
+    # The tan-difference form diverges as an FOV edge approaches the horizon. This
+    # guard travelled here WITH the formula -- it used to live in ground_swath_width_m
+    # and it protects the tilted axis, whichever axis that currently is.
+    if lower_angle_deg <= -CONST.DEGREE_NINETY or upper_angle_deg >= CONST.DEGREE_NINETY:
+        raise ValueError("FOV and off-nadir angle must stay within +/- 90 degrees")
+
+    lower_angle_rads = math.radians(lower_angle_deg)
+    upper_angle_rads = math.radians(upper_angle_deg)
+
+    return altitude_m * (math.tan(upper_angle_rads) - math.tan(lower_angle_rads))
 
 
 def offset_distance_m(swath_width_m, desired_overlap_pct):
@@ -134,6 +162,27 @@ def offset_distance_m(swath_width_m, desired_overlap_pct):
         raise ValueError("desired_overlap_pct must satisfy 0 <= overlap < 100")
 
     return swath_width_m * (1 - (desired_overlap_pct / 100))
+
+def sensor_parallax_m(altitude_m, off_nadir_deg):
+
+    """
+    Along-track distance between the point the aircraft is OVER (nadir) and the point
+    the camera is LOOKING AT (boresight ground intercept).
+
+    Because the strip is displaced forward by this amount, the same distance at the
+    near end of each line goes un-imaged -- ~8% of a line at the current altitude.
+    **NOTE** NOT used in any corrections as of V2C.1, just simple reporting.
+
+    formula: parallax = h * tan(θ)
+    """
+
+    if altitude_m <= 0:
+        raise ValueError ("Altitude must be positive!")
+    elif abs(off_nadir_deg) >= CONST.DEGREE_NINETY:
+        raise ValueError ("Viewing angle must be < 90.")
+    else:
+        return (altitude_m * math.tan(math.radians(off_nadir_deg)))
+    
 
 
 def calculate_line_length_m(offset_m, total_lines):
@@ -251,7 +300,7 @@ def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lin
 
 def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_distance_m,
                                    altitude_m, cross_track_fov_deg,
-                                   desired_overlap_pct, off_nadir_deg=40):
+                                   desired_overlap_pct, off_nadir_deg):
     '''
     Build the largest V1 M1-centered lawnmower grid that fits usable_distance_m.
 
@@ -269,56 +318,12 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     )
     offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
 
-    # ------------------------------------------------------------------
-    # SCIENCE / TRANSIT OFFSET CORRECTION  (documented, NOT yet active)
-    # ------------------------------------------------------------------
-    # PROBLEM:
-    #   The live offset_m above is sized as the line-to-line spacing
-    #   assuming EVERY adjacent line collects science -- a copter-style
-    #   bidirectional lawnmower. The fixed-wing BlackSwift has no yaw
-    #   axis to de-rotate the camera, so only the legs flown at the
-    #   science heading H collect data; the return legs at H+180 are
-    #   transit (camera off, wrong glint direction).
-    #
-    #   In the serpentine built by _build_centered_grid, even-indexed
-    #   lines are flown at H (science) and odd-indexed lines at H+180
-    #   (transit). So the SCIENCE lines are really spaced 2 * offset_m
-    #   apart, not offset_m. Two consequences:
-    #     1. The science swaths do not abut at the intended overlap --
-    #        they leave cross-track gaps (under-sampled ocean).
-    #     2. metrics["science_lines"] = total_lines overcounts the real
-    #        science lines by roughly 2x.
-    #
-    # FIX:
-    #   Treat the swath/overlap result as the desired SCIENCE-line
-    #   spacing, then halve it to get the physical line spacing, so the
-    #   interleaved transit line falls exactly between two science lines.
-    #
-    #   science_offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
-    #   line_offset_m    = science_offset_m / 2
-    #   offset_m         = line_offset_m   # physical spacing fed to the grid
-    #
-    # METRICS that must change with the fix (total_lines is odd):
-    #   science_lines = (total_lines + 1) // 2   # even-indexed, flown at H
-    #   transit_lines =  total_lines // 2        # odd-indexed, flown at H+180
-    #   offset_lines  =  total_lines - 1
-    #   grid_area_m2  =  science area. With the halved offset the science
-    #                    swaths close their gaps, so the bounding-square
-    #                    area equals true science coverage again -- but for
-    #                    the SAME total_lines the grid is now half the
-    #                    linear size (a quarter of the area), OR you need
-    #                    ~2x the lines (and ~2x the route distance, since
-    #                    half is transit) to cover the same area.
-    #
-    # DOWNSTREAM EFFECT:
-    #   For a fixed endurance budget the honest achievable science area
-    #   roughly halves versus the current optimistic model, because ~50%
-    #   of the flight distance is non-collecting transit. Activate this
-    #   block only once planner/outputs report science vs transit lines
-    #   separately and the area-based ranking expects true science area.
-    # ------------------------------------------------------------------
 
     total_lines = _initial_total_lines_from_budget(usable_distance_m, offset_m)
+
+    # Depends only on altitude + viewing angle, so it is constant across the shrink
+    # loop below -- compute once, outside.
+    parallax_m = sensor_parallax_m(altitude_m, off_nadir_deg)
 
     while total_lines >= 3:
         flight_lines, route_points, m1_route_index = _build_centered_grid(
@@ -338,10 +343,12 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "offset_distance_m": offset_m,
                 "line_length_m": line_length_m,
                 "total_lines": total_lines,
-                "science_lines": (total_lines + 1) // 2,
-                "traverse_lines": (total_lines // 2),
+                "science_lines": total_lines,
+                "traverse_lines": 0,
                 "offset_lines": total_lines - 1,
                 "m1_route_index": m1_route_index,
+                "cross_track_swath_m": swath_width_m,
+                "sensor_parallax_m": parallax_m,
             }
             return flight_lines, route_points, metrics
 

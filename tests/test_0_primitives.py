@@ -113,18 +113,23 @@ def test_angular_distance():
 
 def test_score_glint():
 
-    heading1 = 135
+    # V2C along-track mount: the ideal is SCIENCE_RELATIVE_AZIMUTH_deg (90) off the sun,
+    # and its mirror at 270 -- glint is symmetric about the solar principal plane, so the
+    # sun off either shoulder scores the same.
+
     sun_az1 = 0
-    
-    heading2 = 225
-    
-    heading3 = 90
-    
-    heading4 = 0
-    
+
+    heading1 = 90       # on target
+
+    heading2 = 270      # mirror of the target, equally good
+
+    heading3 = 135      # the retired V1 ideal -- now 45 deg off target
+
+    heading4 = 0        # flying straight at the sun -- worst case
+
     assert P._score_glint(heading1, sun_az1) == pytest.approx(0)
     assert P._score_glint(heading2, sun_az1) == pytest.approx(0)
     assert P._score_glint(heading3, sun_az1) == pytest.approx(45)
-    assert P._score_glint(heading4, sun_az1) == pytest.approx(135)
+    assert P._score_glint(heading4, sun_az1) == pytest.approx(90)
 
 

@@ -146,13 +146,14 @@ better than the other. returns both in a tuple for passing around and proper sec
 These values are then passed as potential_orientation_deg params in other helpers.
 
 2. _score_glint(): Returns how far off one leg of a candidate orientation is
-off from the 135 standard. Scores follow a golf paradigm (lower = better). A score of 0 means
-135 degrees exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
+off from the SCIENCE_RELATIVE_AZIMUTH_deg standard (90 deg for the V2C along-track mount).
+Scores follow a golf paradigm (lower = better). A score of 0 means the target relative azimuth
+exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
 two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
 is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
 
 3. _score_candidate(): scores a candidate based on the
-deviation from the 135 degree ideal based on their science leg. 
+deviation from the target relative azimuth based on their science leg.
 
 4. _passes_glint_gate(): checks if the score of a candidate is within a certain margin, plans are rejected if this
 function returns False, used in function #6.
@@ -177,14 +178,20 @@ final positions. Returns a list of waypoint objects that is "the route."
 def _candidate_orientation(sun_az):
 
     # Two possible heading orientations for minimizing glint, they will
-    # be used as "paths" and then the score for V1 is based off of glint minimization.
+    # be used as "paths" and then the score is based off of glint minimization.
+
+    # NOTE (V2C): with the along-track mount the target is 90 deg of relative
+    # azimuth, so these two candidates come out 180 deg apart -- the SAME grid
+    # axis flown in opposite directions, not two distinct grids. The pair is kept
+    # because _pick_best_orientation still uses it to resolve the entry corner,
+    # and because a future target != 90 would separate them again.
 
     potential_orientation_one = (
-        sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE
+        sun_az + CONST.SCIENCE_RELATIVE_AZIMUTH_deg
     ) % CONST.AZIMUTH_THREE_SIXTY
 
     potential_orientation_two = (
-        sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE
+        sun_az - CONST.SCIENCE_RELATIVE_AZIMUTH_deg
     ) % CONST.AZIMUTH_THREE_SIXTY
 
     return (potential_orientation_one, potential_orientation_two)
@@ -195,21 +202,27 @@ def _candidate_orientation(sun_az):
 # track heading is an az candidate from the function above
 def _score_glint(potential_orientation_deg, sun_az_deg):
     """
-    Golf-style glint penalty: 0 = perfect (track is exactly 135 off sun-azimuth),
-    higher = worse. Symmetric is +- 135 since the camera does not care which way it is tilted.
-    (The aircraft is what maintains the azimuth, not the cam).
+    Golf-style glint penalty: 0 = perfect (the leg sits exactly
+    SCIENCE_RELATIVE_AZIMUTH_deg off the sun azimuth), higher = worse.
 
-    track_heading: heading flown on the leg: (0..360)
-    sun_az: sun azimuth at the mission time: (0..360)
+    Scored against the target AND its mirror (360 - target) because glint
+    geometry is symmetric about the solar principal plane -- sun off the left
+    shoulder is as good as sun off the right.
+
+    potential_orientation_deg: heading flown on the leg (0..360)
+    sun_az_deg: sun azimuth at the mission time (0..360)
     """
 
     # finds how far off each azimuth candidate heading is from the desired 0 score.
     azimuth_delta = (potential_orientation_deg - sun_az_deg) % CONST.AZIMUTH_THREE_SIXTY
 
-    # the lower of the values is the winner and is returned
+    mirror_azimuth_deg = CONST.FULL_CIRCLE_DEG - CONST.SCIENCE_RELATIVE_AZIMUTH_deg
+
+    # _angular_distance wraps correctly for ANY target; a raw abs() difference
+    # only happened to work for the old 135/225 pair.
     return min(
-        (abs(azimuth_delta - CONST.AZIMUTH_ONE_THIRTY_FIVE)),
-        (abs(azimuth_delta - CONST.AZIMUTH_TWO_TWENTY_FIVE)),
+        _angular_distance(azimuth_delta, CONST.SCIENCE_RELATIVE_AZIMUTH_deg),
+        _angular_distance(azimuth_delta, mirror_azimuth_deg),
     )
 
 

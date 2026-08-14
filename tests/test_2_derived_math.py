@@ -78,10 +78,14 @@ def test_initial_total_lines_from_budget():
 
 
 def test_candidate_orientation():
-    assert P._candidate_orientation(0) == (135, 225)      # sun +/- 135
-    assert P._candidate_orientation(300) == (75, 165)     # wraps mod 360
-    # tie-back to Tier 0: both candidates are exactly 135 off the sun -> perfect glint
+    assert P._candidate_orientation(0) == (90, 270)       # sun +/- 90
+    assert P._candidate_orientation(300) == (30, 210)     # wraps mod 360
+    # tie-back to Tier 0: both candidates are exactly 90 off the sun -> perfect glint
     sun = 42
     first, second = P._candidate_orientation(sun)
     assert P._score_glint(first, sun) == pytest.approx(0)
     assert P._score_glint(second, sun) == pytest.approx(0)
+    # V2C: at a 90 deg target the pair comes out 180 deg apart -- the SAME grid axis
+    # flown in opposite directions. This is the structural reason both leg directions
+    # collect science under the along-track mount.
+    assert P._angular_distance(first, second) == pytest.approx(180)

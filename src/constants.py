@@ -55,7 +55,9 @@ V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 
 V1_DEFAULT_LEGAL_STATUS = True
 
-V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 118  # Units = m. 118m = ~385 FT.
+V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 609.6m = 2000 FT exactly.
+# NOTE: 2000 FT AGL is ABOVE the Part 107 ceiling of 400 FT. validator.py (V2 step E)
+# must gate on the ceiling this mission is actually authorized for, not on 400 by default.
 
 V1_DEFAULT_LAND_ALTITUDE_m = 0 #Units = m. 
 
@@ -63,7 +65,10 @@ V1_DEFAULT_LINE_LENGTH_km = 2  # Units = km. 2 km = ~6562 FT.
 
 V1_DEFAULT_LINE_SPACING_km = 0.15  # Units = km. 0.15 km = ~500 FT.
 
-V1_DEFAULT_GRID_WIDTH_km = 2.5  # Units = km. 2.5 km = ~1.55 MI -> ~8202 FT.
+V1_DEFAULT_GRID_WIDTH_km = 3.2187  # Units = km. 3.2187 km = 2.00 MI -> ~10560 FT.
+# NOTE: currently DECLARED BUT NEVER READ. The grid is sized from the endurance budget
+# in geo._initial_total_lines_from_budget, not from this width. Changing this value has
+# no effect on a plan until a width cap is actually wired into the grid builder.
 
 V1_EMERGENCY_RESERVE_FRACTION = (
     0.15  # 15% battery/distance reserve held as a hard limit.
@@ -75,9 +80,11 @@ V1_COLLECTION_INSET_m = 52 #Units = meters. Rollout-of-turn and settle distance 
 
 V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. USING PAYLOAD FROM GREY PAPER
 
-V1_DEFAULT_SENSOR_OFF_NADIR_deg = 40  # Units = degrees.
+V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees.
 
-V1_DEFAULT_OVERLAP_PCT = 30  # Units = %. Placeholder until science overlap requirement is known.
+V1_DEFAULT_OVERLAP_PCT = 50  # Units = %. Side-lap between adjacent science swaths.
+# 50% also buys margin against crab-induced strip shear: at the 15 deg tolerance the
+# imaged strip shifts ~182 m between opposite-direction legs, leaving ~131 m of true overlap.
 
 PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
 
@@ -147,11 +154,9 @@ WAYPOINT_ACTION_LINE_LABEL = "line_label"
 
 # Azimuth Constant for planner.py:
 
-AZIMUTH_ONE_THIRTY_FIVE = 135  # Units = degrees.
+SCIENCE_RELATIVE_AZIMUTH_deg = 90 # Units = degrees.
 
 AZIMUTH_THREE_SIXTY = 360  # Units = degrees.
-
-AZIMUTH_TWO_TWENTY_FIVE = 225  # Units = degrees. 360 - 135, mirror of the ideal offset.
 
 DEGREE_ONE_EIGHTY = 180 # Units = degrees
 
@@ -162,7 +167,7 @@ FULL_CIRCLE_DEG = 360 #Units = degrees, second 360 for readability when not deal
 
 #Glint "Gate threshold" for proper ranking purposes
 
-V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 135 before a plan is rejected
+V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 90 before a plan is rejected
 
 OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 

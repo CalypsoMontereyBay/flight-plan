@@ -185,8 +185,11 @@ azimuth (`_score_candidate` / `_passes_glint_gate`, gate = `V1_GLINT_TOLERANCE_D
 `validator.py` is empty. Build it to take a `CandidatePlan` and decide legal + feasible
 **before** `outputs.py` writes anything. `CandidatePlan` already carries the result
 fields: `_is_legal`, `_is_aircraft_feasible`, `_validation_messages`, `_passes_over_m1`.
-- Part 107 checks to consider: **≤ 400 ft AGL** (current altitude 118 m ≈ 387 ft — under,
-  but validate); **daylight / civil-twilight** operation (use `CurrentSunState.elevation`);
+- Part 107 checks to consider: **≤ 400 ft AGL** — ⚠️ **the current default altitude is
+  609.6 m (2000 ft), 5× the Part 107 ceiling.** Whether E gates at 400 ft or at a
+  waiver/COA ceiling is an **open decision**, deliberately deferred to step E; until it is
+  made, the default plan should not be treated as flyable-as-is. Also: **daylight /
+  civil-twilight** operation (use `CurrentSunState.elevation`);
   **VLOS** (the grid spans several km from launch — a genuine concern); **airspace
   authorization** for Monterey Bay; **wind/weather feasibility** (from B + the aircraft's
   wind rating); over-water operations.
