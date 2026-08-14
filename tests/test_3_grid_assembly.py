@@ -67,9 +67,11 @@ def test_assembled_grid_invariants():
     assert route_distance is not None and budget is not None
     assert route_distance <= budget
 
-    # metric relationships (the documented science/transit split)
-    assert plan.science_lines == (N + 1) // 2
-    assert plan.traverse_lines == N // 2
+    # metric relationships. V2C: the along-track mount put both leg directions the
+    # same angular distance off the sun, so EVERY line collects -- the old
+    # science/transit split is gone and nothing is traverse-only.
+    assert plan.science_lines == N
+    assert plan.traverse_lines == 0
     assert plan.offset_lines == N - 1
 
 

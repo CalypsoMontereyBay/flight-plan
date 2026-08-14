@@ -15,7 +15,7 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 
 from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
+from geo import make_lawnmower_grid_through_m1, distance_between
 from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
@@ -357,8 +357,7 @@ def _classify_waypoints(
     launch_wp: Waypoint,
     land_wp: Waypoint,
     altitude_m,
-    cruise_speed_ms,
-    winning_orientation,
+    cruise_speed_ms
 ):
 
     # Establish a new route list that has each waypoint tagged, as well as a global index
@@ -377,18 +376,6 @@ def _classify_waypoints(
 
     for leg in itertools.batched(route_points, CONST.V1_POINTS_PER_LINE):
 
-        leg_heading = bearing_between(leg[0], leg[-1])
-
-        # A leg is a science leg if the current heading is the mission orientation that minimizes glint (H)
-
-        if _angular_distance(leg_heading, winning_orientation) < CONST.DEGREE_NINETY:
-
-            is_science = True
-
-        else:
-
-            is_science = False
-            
         leg_start = leg_number * CONST.V1_POINTS_PER_LINE
             
         for local_idx, point in enumerate(leg):
@@ -410,11 +397,11 @@ def _classify_waypoints(
                 action = CONST.WAYPOINT_ACTION_LINE_LABEL
                 target_name = None
                 
-            elif is_science and local_idx == 1:
+            elif local_idx == 1:
                     action = CONST.WAYPOINT_ACTION_COLLECT_START
                     target_name = "Camera On"
                     
-            elif is_science and local_idx == 3:
+            elif local_idx == (CONST.V1_POINTS_PER_LINE - 2):
                     action = CONST.WAYPOINT_ACTION_COLLECT_STOP
                     target_name = "Camera Off"
                     
@@ -505,8 +492,7 @@ def build_candidate_plan(
         mission_request.launch_wp,
         mission_request.land_wp,
         mission_request.altitude,
-        mission_aircraft.vehicle_cruise_speed,
-        mission_orientation,
+        mission_aircraft.vehicle_cruise_speed
     )
 
     # Step 5, build the candidate plan

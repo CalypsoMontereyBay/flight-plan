@@ -43,38 +43,50 @@ def test_ground_swath_width_rejects_bad_geometry1():
         G.ground_swath_width_m(0, 48, 40)
         
 def test_ground_swath_width_rejects_bad_geometry2():
-    
+
+    # V2C: cross-track is now the UNTILTED axis, so the slant form has no FOV edge
+    # that can swing up to the horizon -- 70 deg off-nadir is legal here now. The
+    # only remaining geometric limit is the off-nadir angle itself.
     with pytest.raises(ValueError):
-        G.ground_swath_width_m(118, 48, 70)
+        G.ground_swath_width_m(118, 48, 90)
 
 
 def test_ground_swath_width():
-    
-    height= 118 
-    cross_FOV= 48 
-    off_nadir= 40
-    
-    expected = 208.10
-    
+
+    # V2C along-track mount: cross-track uses the SLANT form,
+    #   2 * (h / cos(off_nadir)) * tan(fov / 2)
+    height= 118
+    cross_FOV= 48
+    off_nadir= 30
+
+    expected = 121.329
+
     assert G.ground_swath_width_m(height, cross_FOV, off_nadir) == pytest.approx(expected, abs=0.1)
 
 
 def test_ground_footprint_along():
-    
+
+    # V2C along-track mount: along-track is now the TILTED axis and uses the
+    # tan-difference form, h * (tan(th + fov/2) - tan(th - fov/2)).
     height=118
     along_FOV=36.8
-    off_nadir=40
-    expected = 102.5
-    
+    off_nadir=30
+    expected = 108.685
+
     with pytest.raises(ValueError):
         G.ground_footprint_along_m(0, along_FOV, off_nadir)
-        
+
     with pytest.raises(ValueError):
         G.ground_footprint_along_m(height, along_FOV, 90)
-        
+
     with pytest.raises(ValueError):
         G.ground_footprint_along_m(height, along_FOV, 100)
- 
+
+    # The FOV-edge guard MOVED here with the tan-difference formula: 70 + 48/2 = 94 deg
+    # puts the far edge past the horizon. It used to live in ground_swath_width_m.
+    with pytest.raises(ValueError):
+        G.ground_footprint_along_m(height, 48, 70)
+
     assert G.ground_footprint_along_m(height, along_FOV, off_nadir) == pytest.approx(expected, abs=0.1)
 
 

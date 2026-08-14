@@ -42,9 +42,11 @@ def test_action_counts():
     assert counts[CONST.WAYPOINT_ACTION_TURN] == 2 * N            # 2 turns per line
     assert counts[CONST.WAYPOINT_ACTION_M1_OVERFLIGHT] == 1
     assert counts[CONST.WAYPOINT_ACTION_LINE_LABEL] == N - 1      # centers, minus the M1 override
-    assert counts[CONST.WAYPOINT_ACTION_COLLECT_START] == (N + 1) // 2
-    assert counts[CONST.WAYPOINT_ACTION_COLLECT_STOP] == (N + 1) // 2
-    assert counts[CONST.WAYPOINT_ACTION_TRANSIT] == 2 * (N // 2)  # 2 interior pts per transit line
+    # V2C: every leg is a science leg under the along-track mount, so collection is
+    # tagged on ALL N legs and no grid waypoint is left over as transit.
+    assert counts[CONST.WAYPOINT_ACTION_COLLECT_START] == N
+    assert counts[CONST.WAYPOINT_ACTION_COLLECT_STOP] == N
+    assert counts[CONST.WAYPOINT_ACTION_TRANSIT] == 0
 
 
 def test_collection_ordering():
@@ -60,20 +62,29 @@ def test_collection_ordering():
 
 
 def test_heading_safety():
-    # CROWN JEWEL: a leg is science-tagged if and only if it is actually flown at the
-    # winning orientation H. This holds regardless of whether _reorient_to_launch reversed
-    # the route (which flips every leg's heading), because tagging follows measured bearing.
+    # CROWN JEWEL (V2C): every leg collects now, so the old "is this leg flown at H?"
+    # proxy has nothing left to decide. What must still hold is the PHYSICAL
+    # requirement the proxy was standing in for -- every collecting leg's flown
+    # bearing sits within the glint tolerance of the target relative azimuth to the
+    # sun, in EITHER direction, because glint is symmetric about the solar principal
+    # plane. Still reversal-safe for the same reason the old test was: it measures
+    # the bearing actually flown, never an index or a parity.
+    #
+    # This is strictly stronger than what it replaces: it pins that the route the
+    # planner actually built satisfies the gate the planner claims to enforce.
+    # Using _score_glint as the measuring instrument is not circular -- Tier 0
+    # already pins its behaviour against hard literals.
     plan = _plan()
-    H = plan.chosen_orientation
+    sun_az = plan.sun_state.azimuth
     grid = plan.waypoints[1:-1]
 
     for leg in _legs(grid):
         start = Point(leg[0].longitude, leg[0].latitude)
         end = Point(leg[-1].longitude, leg[-1].latitude)
-        flown_at_H = P._angular_distance(G.bearing_between(start, end), H) < CONST.DEGREE_NINETY
 
-        has_collection = CONST.WAYPOINT_ACTION_COLLECT_START in {w.action for w in leg}
-        assert has_collection == flown_at_H
+        assert CONST.WAYPOINT_ACTION_COLLECT_START in {w.action for w in leg}
+        assert P._score_glint(G.bearing_between(start, end), sun_az) \
+            <= CONST.V1_GLINT_TOLERANCE_DEG
 
 
 def test_glint_gate_helpers():
