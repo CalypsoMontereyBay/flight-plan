@@ -306,6 +306,12 @@ class Sensor:
     Sensor stores the camera geometry values that drive grid spacing.
     The engine uses the cross-track FOV to determine line-to-line offset
     distance, while QGroundControl remains responsible for waypoint headings.
+
+    `mounting` records WHICH AXIS THE CAMERA IS TILTED ON (see the mounting note in
+    geo.py). It is data, not dispatch -- geo.py implements the along-track case only,
+    and planner._build_grid_for_orientation raises if a Sensor declares anything else.
+    It exists because the V2C refactor was caused by a mount change that no code
+    recorded: the assumption lived silently inside two formula bodies.
     """
 
     def __init__(
@@ -313,7 +319,8 @@ class Sensor:
         cross_track_fov_deg,
         along_track_fov_deg,
         desired_overlap_pct,
-        off_nadir_deg=40,
+        off_nadir_deg,
+        mounting=None,
         sensor_name=None,
     ):
 
@@ -321,6 +328,7 @@ class Sensor:
         self._along_track_fov_deg = along_track_fov_deg
         self._desired_overlap_pct = desired_overlap_pct
         self._off_nadir_deg = off_nadir_deg
+        self._mounting = mounting
         self._sensor_name = sensor_name
 
     @property
@@ -338,6 +346,10 @@ class Sensor:
     @property
     def off_nadir(self):
         return self._off_nadir_deg
+    
+    @property
+    def mounting(self):
+        return self._mounting
 
     @property
     def sensor_name(self):
@@ -566,6 +578,9 @@ class CandidatePlan:
 
         self._score = None
         self._validation_messages = []
+        
+        self._parallax_m = None
+        self._cross_track_width_m = None
 
     # V1 properties for the candidate plan are listed below:
 
@@ -629,6 +644,18 @@ class CandidatePlan:
     def offset_lines(self):
         return self._offset_lines
 
+    # V2C viewing-geometry metrics. Both are measured by geo during grid assembly and
+    # arrive in the same metrics dict as the fields above, so they are set by
+    # set_grid_metrics. Reporting only in V2C-1: parallax is NOT corrected for yet.
+
+    @property
+    def parallax_m(self):
+        return self._parallax_m
+
+    @property
+    def cross_track_width_m(self):
+        return self._cross_track_width_m
+
     @property
     def chosen_orientation(self):
         return self._chosen_orientation_deg
@@ -672,6 +699,8 @@ class CandidatePlan:
         self._science_lines = metrics.get("science_lines")
         self._traverse_lines = metrics.get("traverse_lines")
         self._offset_lines = metrics.get("offset_lines")
+        self._parallax_m = metrics.get("sensor_parallax_m")
+        self._cross_track_width_m = metrics.get("cross_track_swath_m")
         return
 
     def has_m1_overflight(self):

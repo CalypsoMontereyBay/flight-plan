@@ -17,12 +17,12 @@ Guidance for Claude Code when working in this repository.
 Calypso Monterey Bay flight-planning engine. A sun-aware flight planner for a
 fixed-wing UAV (BlackSwift S2) collecting ocean-color / SST data over the M1
 mooring in Monterey Bay. It builds an M1-centered lawnmower grid oriented for
-minimum sun glint (science legs held 135° off the sun) and exports the route as
+minimum sun glint (science legs held **90° off the sun**) and exports the route as
 `.kml` and `.png`. See [`README.md`](README.md) for the full description.
 
-**V1 (proof-of-engine) is complete and tested. V2 Steps A (selectable date/time) and B
-(live NWS weather) are complete and tested; Step C is being scoped.** See
-[V2 roadmap](#v2-roadmap-what-comes-next).
+**V1 (proof-of-engine) is complete and tested. V2 Steps A (selectable date/time), B
+(live NWS weather) and C-1 (along-track payload mount) are complete and tested;
+C-2 (boresight/crab) is next.** See [V2 roadmap](#v2-roadmap-what-comes-next).
 
 ## Layout
 
@@ -98,34 +98,59 @@ Read this before touching the grid, classification, or output code.
   in km/h (`_to_ms` → m/s); `condition` from `skyCover` thresholds; absent fields (often
   `visibility`) fall to `DEFAULT_*`. Offline tests monkeypatch the fetch (`tests/test_1_weather.py`).
 
+- **Along-track payload mount (V2 Step C-1, done).** ⚠️ **Read the MOUNTING NOTE at the top
+  of `geo.py` before touching any FOV math.** The SST camera is now pitched **along-track**
+  (forward, under the nose, 30° off-nadir); it used to be rolled **cross-track** at 40°.
+  Only one axis is ever tilted, and the tilt decides which formula each axis uses:
+  tilted → `h·(tan(θ+fov/2) − tan(θ−fov/2))`, untilted → `2·(h/cos θ)·tan(fov/2)`.
+  When the mount rotated, `ground_swath_width_m` and `ground_footprint_along_m`
+  **swapped formula bodies** — that swap looks like a bug in `git blame` and is not.
+  Three consequences drive everything else below:
+  1. Science legs are held **90° off the sun** (was 135°), gated at `V1_GLINT_TOLERANCE_DEG`
+     (held at 15°, not tightened — see the note on that constant).
+  2. The cross-track swath is now **centered on the ground track**. Under the old roll it
+     sat 33.8–241.9 m off to *one side*, so the "free M1 overflight" imaged nothing at M1.
+  3. **Both leg directions collect science**, because `sun ± 90` describes one grid axis
+     flown both ways. This is why `_candidate_orientation`'s two candidates come out 180°
+     apart — documented, not a bug.
+  `Sensor.mounting` records the assumption; `planner._build_grid_for_orientation` raises if
+  a `Sensor` declares anything other than along-track. `geo.sensor_parallax_m` reports the
+  **352 m** offset between nadir and the boresight ground point — reporting only, **not
+  corrected for**; see step C-2.
 - **5-point flight lines.** `geo.make_line_through_point` emits
   `[turn, collect_start, line_label (center), collect_stop, turn]`
   (`V1_POINTS_PER_LINE = 5`, the single source of truth — do not re-hardcode `5`).
-  On a science leg the center is the M1 overflight if it's the center line; the
+  The center is the M1 overflight if it's the center line; the
   `collect_start`/`collect_stop` inset points sit one `V1_COLLECTION_INSET_m` in from
-  each turn (camera on/off after roll-out).
-  The serpentine alternates heading **H** (science, camera on) and **H+180**
-  (transit, camera off); only H legs collect valid science.
-- **Heading-based classification.** `planner._classify_waypoints` tags a leg science
-  vs transit by its **actual flown bearing** vs the winning orientation, measured
-  *after* `_reorient_to_launch` (which may reverse the route and flip every leg's
-  heading). This is deliberately reversal-safe — the Tier 3 "heading-safety" test
-  pins it; don't regress to index/parity-based tagging.
+  each turn (camera on/off after roll-out). **Every** leg collects, so the serpentine no
+  longer alternates science/transit.
+- **Classification.** `planner._classify_waypoints` tags purely by position within the
+  5-point leg — there is no science-vs-transit decision left to make. The old
+  reversal-safety hazard (that `_reorient_to_launch` flips every leg's heading) is
+  **designed out** rather than guarded: reversal cannot change which legs collect when
+  all of them do. The invariant now lives in the Tier 4 "heading-safety" test, which pins
+  the physical requirement — every leg's flown bearing is within tolerance of 90° relative
+  azimuth to the sun. Don't regress to index/parity tagging, and don't reintroduce a
+  heading branch here.
 - **Delimiter rendering.** `outputs._segment_builder` walks the route with a
   `collecting` flag: `collect_start` opens a green (science) run, `collect_stop`
   closes it, everything between (incl. `line_label`) is green. Science legs render as
   full lines with small symmetric gray gaps at the turns.
-- **Metrics.** `science_lines = (N+1)//2`, `traverse_lines = N//2`, `offset_lines = N-1`
+- **Metrics.** `science_lines = N`, `traverse_lines = 0`, `offset_lines = N-1`
   where `N = total_lines` (odd, so the center line passes through M1 → free overflight).
+  `cross_track_swath_m` and `sensor_parallax_m` ride the same metrics dict and reach the
+  plan via `set_grid_metrics`.
 - **Tests.** Tier 0 (primitives) and Tier 2 (derived math) are pure closed-form math
   (must never fail); Tier 1 pins the date/time resolver, sun-state, and weather-leaf wiring; Tiers 3–5 drive
   the real mission and assert structural invariants as *indicators* that the math is sound.
 - **Known deferred items (V2 candidates):**
-  - The **SCIENCE/TRANSIT OFFSET CORRECTION** documented in `geo.make_lawnmower_grid_through_m1`
-    is written up but **not active**: science lines are spaced `2 × offset` apart, so
-    the science swaths leave cross-track gaps and `grid_area_m2` is the bounding-box
-    area, not true science coverage. Activate only once ranking expects true science area.
-  - `geo.calculate_total_lines` (even-forcing) is **dead code** — a removal candidate.
+  - **Parallax is reported, not corrected.** The imaged strip sits 352 m forward of the
+    collection window, so ~8% of each line goes un-imaged at the near end and the strip
+    overruns the far turn. Deferred to C-2 so it lands together with crab shear — both are
+    along-track displacements and should be handled by the same code.
+  - `V1_DEFAULT_GRID_WIDTH_km`, `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km`
+    are **declared but never read** — the grid is sized from the endurance budget in
+    `geo._initial_total_lines_from_budget`. Removal candidates.
 
 ## V2 roadmap — what comes next
 
@@ -168,18 +193,48 @@ zero-wind stub on `None`, so a plan is always produced. The leaf never reaches b
 - Tests: `tests/test_1_weather.py` (offline; fetch monkeypatched) + a Tier 3 check that the
   planner uses the leaf's populated result.
 
-### C. (V2C — in planning)
-Reserved. This slot was opened by shifting the former ranking and legality items down one
-letter (old C → D, old D → E); the V2C spec is being written. Fill in when it lands.
+### C-1. Along-track payload mount ✅ DONE
+The SST camera was remounted: **yawed to face forward under the nose and pitched to 30°
+off-nadir**, replacing the cross-track roll at 40°. See the C-1 bullet in
+[Current state](#current-state--what-the-engine-actually-does-context-for-future-work)
+for what that changed and why the two FOV formulas traded places.
+- Target relative azimuth moved 135° → **90°** (`SCIENCE_RELATIVE_AZIMUTH_deg`), tolerance
+  **held at 15°**. Also raised in the same pass: altitude → 609.6 m (2000 ft), overlap → 50%.
+- Both leg directions now collect, which made the old **SCIENCE/TRANSIT OFFSET CORRECTION**
+  block in `geo.py` obsolete — its premise (only alternate lines collect) is dead, so
+  `offset_m` as computed is already correct. It was **deleted**, not deferred.
+- `geo.sensor_parallax_m` added; `Sensor.mounting` added and guarded in `planner`.
 
-### D. Fold date/time + weather into glint scoring
-Today `planner._score_glint` is the **only** ranking metric and uses the fixed sun
-azimuth (`_score_candidate` / `_passes_glint_gate`, gate = `V1_GLINT_TOLERANCE_DEG`).
+### C-2. Boresight referencing — crosswind crab (next)
+Q4 of the C-scoping decided the 90° ± 15 is measured on the **camera boresight**, i.e. the
+fuselage heading — not the ground track. The camera points where the nose points, so
+crosswind crab spends the tolerance budget before the grid geometry gets any of it.
+- **The closed form:** flying ground track χ, the outbound heading is χ+δ and the return is
+  χ−δ (**not** reciprocal — they differ from reciprocal by 2δ). Putting the grid axis exactly
+  on the target lands the two directions at **+δ and −δ**, so worst-case error is exactly δ.
+  Rotating the axis within the tolerance window to chase a smaller δ **provably never helps**
+  (|dδ/dα| ≤ w/V < 1), so α = 0 is always optimal.
+- Therefore the tolerance is a **pure feasibility gate on crosswind**: `|δ| ≤ 15°` ⟺ crosswind
+  across the science axis ≤ `V·sin(15°)` ≈ **4.66 m/s**. Compute and report in C-2; *enforce*
+  in step E.
+- Wind-triangle helpers (`wind_correction_angle_deg`, `max_crosswind_for_tolerance_ms`,
+  `ground_speed_ms`) belong in `aircraft_math.py` — it already owns aircraft performance and
+  is a leaf. `Weather` still needs `wind_direction` / `visibility` getters.
+- Fold in the **parallax correction** deferred from C-1 (extend the collection window) and
+  `cross_track_strip_offset_m = parallax · sin(crab)`; both are along-track displacements and
+  should be solved together.
+
+### D. Fold weather into scoring
+Today `planner._score_glint` is the **only** ranking metric. C-2 takes the wind half of this
+step (crab is a feasibility gate, not a preference), so D inherits the rest:
 - Date/time (A) already varies the sun azimuth feeding glint.
-- Add weather (B) as a factor: e.g. overcast diffuses sunlight so glint matters less;
-  wind above `BLACKSWIFT_WIND_RATING_ms` (15 m/s) should gate feasibility; low visibility
-  bears on VLOS. Extend scoring into a composite metric and/or add parallel gates
-  alongside the glint gate rather than overloading `_score_glint`.
+- Add the remaining weather (B) factors: overcast diffuses sunlight so glint matters less;
+  wind above `BLACKSWIFT_WIND_RATING_ms` (15 m/s) gates feasibility; low visibility bears on
+  VLOS. Extend into a composite metric and/or parallel gates rather than overloading
+  `_score_glint`.
+- `aircraft_math.route_duration_min` still uses cruise **airspeed** for the whole route. With
+  wind modelled it should use per-leg **ground** speed — deliberately left for D because
+  changing it shifts every duration and every Tier 2 expectation.
 
 ### E. `validator.py` — Part 107 legality/feasibility gating (later in V2)
 `validator.py` is empty. Build it to take a `CandidatePlan` and decide legal + feasible
@@ -201,6 +256,9 @@ fields: `_is_legal`, `_is_aircraft_feasible`, `_validation_messages`, `_passes_o
 - Target Python 3.12+ (developed/tested on 3.14.4). `itertools.batched` (used in
   `planner._classify_waypoints`) requires 3.12.
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
-  legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time)
-  and B (live NWS weather) are done**; the new **C** (in planning), weather-aware ranking
-  (**D**), and legality gating (**E**) remain.
+  legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
+  B (live NWS weather) and C-1 (along-track mount) are done**; boresight/crab (**C-2**),
+  weather-aware ranking (**D**), and legality gating (**E**) remain.
+- Many constants still carry `V1_` prefixes but hold V2 values (e.g.
+  `V1_DEFAULT_SENSOR_OFF_NADIR_deg` is 30, the V2C angle). The prefix records where the
+  constant was introduced, not which version's value it holds — don't infer currency from it.

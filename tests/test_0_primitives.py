@@ -4,6 +4,8 @@ math. If these functions fail, the entire system should be stopped.
 """
 
 # imports:
+import math
+
 import pytest
 from shapely.geometry import Point
 #red squiggles are just warnings, proper virtual environment setup and usage
@@ -88,6 +90,47 @@ def test_ground_footprint_along():
         G.ground_footprint_along_m(height, 48, 70)
 
     assert G.ground_footprint_along_m(height, along_FOV, off_nadir) == pytest.approx(expected, abs=0.1)
+
+
+def test_swath_uses_the_untilted_slant_form():
+
+    # GUARDS THE V2C FORMULA SWAP. Both the slant form and the retired tan-difference
+    # form agree at nadir and diverge as the camera tilts, so a nadir check alone
+    # proves nothing. The discriminator is the GROWTH LAW: the untilted (slant) axis
+    # obeys s(theta) = s(0) / cos(theta) exactly. The tilted form does not -- at 30 deg
+    # it returns 150.01 against the slant form's 121.33, a ~24% over-report that would
+    # feed straight into line spacing and silently under-sample the ocean.
+    #
+    # NOTE: sign symmetry does NOT discriminate. tan is odd, so tan(th+f) - tan(th-f)
+    # is even in theta and BOTH forms are symmetric in the sign of off-nadir.
+
+    height = 118
+    cross_FOV = 48
+    off_nadir = 30
+
+    at_nadir = 2 * height * math.tan(math.radians(cross_FOV / 2))
+
+    assert G.ground_swath_width_m(height, cross_FOV, 0) == pytest.approx(at_nadir, abs=0.01)
+    assert G.ground_swath_width_m(height, cross_FOV, off_nadir) == pytest.approx(
+        at_nadir / math.cos(math.radians(off_nadir)), abs=0.01
+    )
+
+
+def test_sensor_parallax_m():
+
+    # Along-track distance between the point the aircraft is OVER and the point the
+    # camera is LOOKING AT. Reporting only in V2C-1 -- nothing corrects for it yet.
+
+    assert G.sensor_parallax_m(118, 30) == pytest.approx(68.127, abs=0.01)
+
+    # a nadir-pointing camera has no parallax at all
+    assert G.sensor_parallax_m(118, 0) == pytest.approx(0)
+
+    with pytest.raises(ValueError):
+        G.sensor_parallax_m(0, 30)
+
+    with pytest.raises(ValueError):
+        G.sensor_parallax_m(118, 90)
 
 
 def test_offset_distance():

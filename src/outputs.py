@@ -209,14 +209,20 @@ def _png_color(category: str):
 
 
 # converts azimuth to a (dx, dy) for PNG arrow denoting sun position/angle
-def _sun_vector(sun_az_deg, length):
+def _sun_vector(sun_az_deg, length, latitude_deg):
 
     # math.sin/cos expect RADIANS; azimuth comes in as degrees (0 = north,
     # clockwise), so convert first. dx uses sin, dy uses cos so the arrow
     # points along the compass bearing with north = +y.
     sun_az_rad = math.radians(sun_az_deg)
 
-    dx = length * math.sin(sun_az_rad)
+    # LATITUDE CORRECTION: dx/dy are DEGREES of lon/lat, and a degree of longitude
+    # is shorter on the ground than a degree of latitude by cos(lat). The axes carry
+    # the matching aspect (1/cos(lat)), so without dividing dx by cos(lat) the arrow
+    # renders ~5.5 deg off true at Monterey -- it drew the sun-to-track angle as 84.5
+    # deg when the plan actually holds 90.0. The flight lines are unaffected because
+    # they are real geodesic points; only this synthetic vector needed the correction.
+    dx = (length * math.sin(sun_az_rad)) / math.cos(math.radians(latitude_deg))
 
     dy = length * math.cos(sun_az_rad)
 
@@ -437,7 +443,11 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     span = max((upper_lon - lower_lon), (upper_lat - lower_lat))
 
-    dx, dy = _sun_vector(sun_az, length=(0.15 * span))
+    dx, dy = _sun_vector(
+        sun_az,
+        length=(0.15 * span),
+        latitude_deg=plan.mission_request.m1_wp.latitude,
+    )
 
     axes.annotate(
         "",

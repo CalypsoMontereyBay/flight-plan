@@ -75,6 +75,34 @@ def test_assembled_grid_invariants():
     assert plan.offset_lines == N - 1
 
 
+def test_viewing_geometry_reaches_the_plan():
+    # V2C-1 wiring: geo measures the swath and the parallax during grid assembly and
+    # ships them in the metrics dict. Before set_grid_metrics learned to read those two
+    # keys they died at that boundary -- computed, carried, and silently dropped. This
+    # pins the whole path, so a typo'd metrics key (which .get() swallows into None)
+    # can never go unnoticed again.
+    plan = P.plan_default_mission("t2_geom")
+
+    assert plan.sensor is not None            # a built plan always carries its payload
+    assert plan.cross_track_width_m is not None
+    assert plan.parallax_m is not None
+
+    # both are pure functions of altitude + off-nadir, so they must agree with the
+    # primitives called directly on the plan's own altitude
+    altitude = plan.mission_request.altitude
+    off_nadir = plan.sensor.off_nadir
+
+    assert plan.parallax_m == pytest.approx(G.sensor_parallax_m(altitude, off_nadir))
+    assert plan.cross_track_width_m == pytest.approx(
+        G.ground_swath_width_m(altitude, plan.sensor.cross_track_fov, off_nadir)
+    )
+
+    # the swath is what sets line spacing: offset = swath * (1 - overlap)
+    assert plan.offset_distance_m == pytest.approx(
+        G.offset_distance_m(plan.cross_track_width_m, plan.sensor.desired_overlap)
+    )
+
+
 def test_selected_datetime_threads_into_plan():
     # Step A end-to-end indicator: an explicitly chosen mission instant flows all
     # the way through plan_default_mission into the built plan's sun state. If the

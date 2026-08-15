@@ -50,7 +50,8 @@ _Calypso_payload = Sensor(
     CONST.V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG,
     CONST.V1_DEFAULT_OVERLAP_PCT,
     CONST.V1_DEFAULT_SENSOR_OFF_NADIR_deg,
-    "Micasense from Grey Paper",
+    mounting=CONST.V2_SENSOR_MOUNTING,
+    sensor_name=CONST.V2_SENSOR_NAME
 )
 
 # Step 1.3: Mission Request object for launch, land, and M1, then route assembly:
@@ -248,6 +249,10 @@ def _build_grid_for_orientation(
 
     Returns geo's (flight_lines, route_points, metrics) tuple unchanged.
     """
+    
+    if payload.mounting != CONST.SENSOR_MOUNT_ALONG_TRACK:
+        raise ValueError (f"V2 only allows for along track payload mounting in accordance with geo.py math; Sensor declares: {payload.mounting}")
+    
     return make_lawnmower_grid_through_m1(
         mission_request.m1_wp,
         orientation_deg,

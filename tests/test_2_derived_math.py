@@ -60,9 +60,9 @@ def test_calculate_grid_area():
     assert G.calculate_grid_area_m2(140, 11) == pytest.approx(1_960_000)  # 1400 ** 2
 
 
-# NOTE: geo.calculate_total_lines (the EVEN-forcing helper) has no callers -- the grid
-# path uses _initial_total_lines_from_budget below. It is a removal candidate for V2 and
-# is intentionally left untested here rather than pinning dead code.
+# NOTE: the ODD result here is load-bearing, not cosmetic. An odd total_lines is what puts
+# the center line through M1, which is what makes the M1 overflight free (no detour) and
+# what geo's m1_route_index assumes. An even count silently moves M1 off every flight line.
 def test_initial_total_lines_from_budget():
     # 4*10000/100 = 400 -> (1 + sqrt(401)) / 2 = 10.51 -> floor 10 -> even, -1 -> 9
     assert G._initial_total_lines_from_budget(10000, 100) == 9

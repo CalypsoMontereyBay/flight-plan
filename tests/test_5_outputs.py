@@ -7,6 +7,8 @@ The aliasing assert specifically guards the flush bug we fixed (segments must no
 a mutable list object).
 """
 
+import math
+
 import pytest
 import planner as P, outputs as OUT, constants as CONST
 
@@ -54,11 +56,32 @@ def test_route_extent():
 
 
 def test_sun_vector():
-    # dx = length * sin(az), dy = length * cos(az); azimuth is compass (0 = north = +y)
-    dx, dy = OUT._sun_vector(0, 10)
+    # dx = length * sin(az), dy = length * cos(az); azimuth is compass (0 = north = +y).
+    # dx is additionally divided by cos(lat) -- see test_sun_arrow_points_true.
+    lat = CONST.M1_MOORING_LAT
+
+    dx, dy = OUT._sun_vector(0, 10, lat)
     assert dx == pytest.approx(0, abs=1e-9)
     assert dy == pytest.approx(10)
 
-    dx, dy = OUT._sun_vector(90, 10)
-    assert dx == pytest.approx(10)
+    dx, dy = OUT._sun_vector(90, 10, lat)
+    assert dx == pytest.approx(10 / math.cos(math.radians(lat)))
     assert dy == pytest.approx(0, abs=1e-9)
+
+
+def test_sun_arrow_points_true():
+    # REGRESSION: the arrow is drawn in DEGREES of lon/lat onto axes whose aspect is
+    # 1/cos(lat). A degree of longitude is shorter than a degree of latitude by
+    # cos(lat), so without that correction the arrow renders ~5.5 deg off true at
+    # Monterey -- it drew the sun-to-track angle as 84.5 deg on a plan holding 90.0,
+    # which is exactly the kind of error that makes a correct plan look broken.
+    #
+    # This pins the PROPERTY (the arrow points where the sun actually is) rather than
+    # the formula, so it survives any future change to how the vector is built.
+    lat = CONST.M1_MOORING_LAT
+    aspect = 1 / math.cos(math.radians(lat))   # matches axes.set_aspect in write_png
+
+    for azimuth in (0, 45, 90, 147.18, 180, 237.18, 315):
+        dx, dy = OUT._sun_vector(azimuth, 10, lat)
+        rendered = math.degrees(math.atan2(dx, dy * aspect)) % CONST.FULL_CIRCLE_DEG
+        assert rendered == pytest.approx(azimuth % CONST.FULL_CIRCLE_DEG, abs=1e-6)

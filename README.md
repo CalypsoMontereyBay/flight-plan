@@ -2,8 +2,14 @@
 
 A **sun-aware** flight-planning engine for a fixed-wing UAV (Currently the BlackSwift S2) that
 collects ocean-color and Sea Surface Temperature data. The aircraft can only
-collect valid science when its science legs are flown **135° in azimuth relative
+collect valid science when its science legs are flown **90° in azimuth relative
 to the sun** (to avoid sun glint), so the engine builds a lawnmower data collection grid centered on the M1 Mooring Station in the Pacific Ocean, orients it for minimum glint, picks the launch-nearest corner as the start, and exports the route for review.
+
+> **Payload note:** the SST camera is mounted **along-track** — pitched forward under the
+> nose at 30° off-nadir. Because a ±90° relative azimuth is satisfied flying the grid axis in
+> *either* direction, **every** leg of the lawnmower collects science, not just alternating
+> ones. The engine was built around a cross-track mount (135°, 40° off-nadir) through V1;
+> see the mounting note at the top of `src/geo.py` before changing any field-of-view math.
 
 The engine produces two artifacts per run:
 
@@ -82,8 +88,8 @@ That single command runs the whole engine and writes a timestamped `.kml` and
 ```
 Mission : V2 Plan
 When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
-Lines   : 23  |  Glint Score: 0.0
-Duration: 74.9 min | Margin: 15.1 min
+Lines   : 15  |  Glint Score: 0.0
+Duration: 67.3 min | Margin: 22.7 min
 KML -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.kml
 PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.png
 ```
@@ -168,13 +174,23 @@ To see every test in one tier despite a failure: `pytest tests/test_2_derived_ma
 
 V1 (proof-of-engine) is complete. V2 makes the mission situation-aware one step at a
 time. **Done:** Step A — selectable mission date/time (`--date` / `--time`, Monterey
-local → UTC), which drives the sun azimuth and therefore glint; and Step B — live
+local → UTC), which drives the sun azimuth and therefore glint; Step B — live
 **NWS weather** (`weather.py`), a leaf that populates the `Weather` object for
-in-horizon dates and gracefully falls back to a clear-sky stub otherwise.
+in-horizon dates and gracefully falls back to a clear-sky stub otherwise; and Step C-1 —
+the **along-track payload mount** (90° relative azimuth, 30° off-nadir, every leg
+collecting).
 
 Still assumed (V2 work in progress):
 
 - A fixed aircraft (**BlackSwift S2**) with constant endurance/speed/turn values.
-- **Legal** to fly (no airspace / Part 107 checks yet — step **E**).
+- **Legal** to fly (no airspace / Part 107 checks yet — step **E**). ⚠️ The default
+  altitude is **2000 ft**, five times the Part 107 ceiling of 400 ft; whether the engine
+  should gate at 400 ft or at a waiver/COA ceiling is an open decision deferred to step E.
+  Until then, **do not treat a generated plan as flyable as-is**.
 - The grid is always centered on the **M1 mooring**, and the route always includes an **M1 overflight**.
-- **Sun glint** is the only ranking metric (science legs held 135° off the sun, gated at a 15° tolerance) — weather is fetched but not yet folded into ranking (step **D**).
+- **Sun glint** is the only ranking metric (science legs held 90° off the sun, gated at a 15° tolerance) — weather is fetched but not yet folded into ranking (step **D**).
+- The 90° is measured on the **camera boresight**, which follows the fuselage — so
+  crosswind crab eats the 15° budget. The engine does **not** yet account for it (step
+  **C-2**); at cruise, roughly 4.7 m/s of crosswind across the science axis consumes it entirely.
+- The imaged strip sits **352 m forward** of the aircraft (30° off-nadir at 2000 ft). This is
+  reported but not corrected, so ~8% of each line goes un-imaged at the near end (step **C-2**).

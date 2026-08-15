@@ -74,13 +74,20 @@ V1_EMERGENCY_RESERVE_FRACTION = (
     0.15  # 15% battery/distance reserve held as a hard limit.
 )
 
-V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. USING PAYLOAD FROM GREY PAPER
+# FOV values are AIRFRAME-RELATIVE, not camera-relative: "cross-track" means across the
+# ground track regardless of how the camera body is bolted on. Which airframe axis is
+# TILTED is recorded by V2_SENSOR_MOUNTING below and decides which formula geo.py uses
+# for each axis -- see the MOUNTING NOTE at the top of geo.py before changing either.
+# PROVISIONAL: these are still the Grey Paper payload numbers. The SST camera is now a
+# FLIR Boson (Teledyne), unconfirmed; its lens FOV will change both values.
+
+V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. Across the ground track.
 
 V1_COLLECTION_INSET_m = 52 #Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
 
-V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. USING PAYLOAD FROM GREY PAPER
+V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. Along the ground track (the TILTED axis).
 
-V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees.
+V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees. Camera pitched forward under the nose.
 
 V1_DEFAULT_OVERLAP_PCT = 50  # Units = %. Side-lap between adjacent science swaths.
 # 50% also buys margin against crab-induced strip shear: at the 15 deg tolerance the
@@ -150,6 +157,13 @@ WAYPOINT_ACTION_COLLECT_START = "collect_start"
 WAYPOINT_ACTION_COLLECT_STOP = "collect_stop"
 WAYPOINT_ACTION_LINE_LABEL = "line_label"
 
+# SENSOR ACTIONS AND MOUNTING CONSTANTS:
+
+SENSOR_MOUNT_ALONG_TRACK = "along_track"
+SENSOR_MOUNT_CROSS_TRACK = "cross_track"
+V2_SENSOR_MOUNTING = SENSOR_MOUNT_ALONG_TRACK
+V2_SENSOR_NAME = "FLIR Boson -- PROVISIONAL"
+
 
 
 # Azimuth Constant for planner.py:
@@ -168,6 +182,10 @@ FULL_CIRCLE_DEG = 360 #Units = degrees, second 360 for readability when not deal
 #Glint "Gate threshold" for proper ranking purposes
 
 V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 90 before a plan is rejected
+# Held at 15 rather than tightened to 10 for V2C: the camera boresight follows the FUSELAGE,
+# so crosswind crab spends this budget before the grid geometry gets any of it. 15 deg allows
+# ~4.66 m/s of crosswind across the science axis at cruise; 10 deg would allow only 3.13 m/s.
+# V2C-2 turns that relationship into a real feasibility gate.
 
 OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 
