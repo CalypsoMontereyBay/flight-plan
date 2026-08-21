@@ -70,9 +70,13 @@ V1_DEFAULT_GRID_WIDTH_km = 3.2187  # Units = km. 3.2187 km = 2.00 MI -> ~10560 F
 # in geo._initial_total_lines_from_budget, not from this width. Changing this value has
 # no effect on a plan until a width cap is actually wired into the grid builder.
 
+"""
 V1_EMERGENCY_RESERVE_FRACTION = (
     0.15  # 15% battery/distance reserve held as a hard limit.
 )
+
+**NOTE** RETIRED AS OF CFE V2C-2!!!! SEE RTH_SEED_RESERVE_FRACTION
+"""
 
 # FOV values are AIRFRAME-RELATIVE, not camera-relative: "cross-track" means across the
 # ground track regardless of how the camera body is bolted on. Which airframe axis is
@@ -196,3 +200,24 @@ EXTENSION_PNG = "png"
 #FOR V2 ONLY:
 
 EXTENSION_JSON = "json"
+
+# V2C-2 EMERGENCY CONSTANTS AND RTH CONSTANTS:
+
+RTH_SAFETY_FACTOR = 1.25 # See explanation below
+"""
+Manual operation of a UAS vs. Autopilot is far less efficient. However,
+it is paramount that a human operator has the ability to assume manual control
+in the event of an emergency. That being said, humans aren't perfect. This safety factor
+is multipled with the derived minimum amount of battery needed to make it safely home
+from anywhere on the route, fully manually.
+"""
+
+RTH_TERMINAL_ALLOWANCE_min = 3.0 # flight time set aside for go-arounds/pattern once above landing location.
+
+MANUAL_RTH_MAX_CROSSWIND_ms = 7.5 # Units: m/s. Half the aircraft's autopilot wind rating, but ultimately pilot dependent
+
+RTH_INCLUDES_GLIDE = False # RTH procedures never lack thrust from the motors.
+
+RTH_SEED_RESERVE_FRACTION = 0.15 #Fixed point iteration seed for calculating emergency flight distances and RTH feasability.
+
+RTH_MAX_ITERATIONS = 12 #Prevents the engine from creating a grid whose derived RTH battery time blows up so high that no grid fits.

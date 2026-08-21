@@ -241,8 +241,14 @@ class Weather:
         wind_gusting_ms,
         visibility_m,
         condition_str,
+        wind_is_measured=False,
+        stale_fields=None,
         source="STUB",
     ):
+        # Both default FAIL-SAFE. Omitting wind_is_measured means "provenance unknown",
+        # which makes validator refuse to certify RTH rather than quietly certifying it.
+        # A caller must positively CLAIM measured wind; it can never be acquired by
+        # forgetting an argument.
 
         if not isinstance(valid_time, datetime):
             raise TypeError("valid_time must be a datetime.datetime instance")
@@ -256,6 +262,9 @@ class Weather:
         self._wind_gust_speed_ms = wind_gusting_ms
         self._visibility_m = visibility_m
         self._condition = condition_str
+        self._measured_wind = wind_is_measured
+        # Normalized so consumers never have to null-check before asking "is X stale?"
+        self._stale_fields = frozenset(stale_fields) if stale_fields else frozenset()
         self._data_source = source
 
     # The necessary getters for this object (since most is based on api), are listed below:
@@ -271,6 +280,35 @@ class Weather:
     @property
     def wind_gusts(self):
         return self._wind_gust_speed_ms
+    
+    @property
+    def wind_direction(self):
+        return self._wind_direction_deg
+
+    # PROVENANCE. Safety math must be able to tell "measured calm" from "no idea".
+    # DEFAULT_ZERO_WIND makes an absent wind field look like a dead-calm day, which is
+    # the most PERMISSIVE possible input to an RTH gate -- exactly backwards. validator
+    # reads these to refuse certification rather than certify on assumed conditions.
+
+    @property
+    def wind_is_measured(self):
+        return self._measured_wind
+
+    @property
+    def stale_fields(self):
+        return self._stale_fields
+
+    def is_stale(self, field_name):
+        return field_name in self._stale_fields
+
+    @property
+    def source(self):
+        return self._data_source
+
+
+    @property
+    def visibility(self):
+        return self._visibility_m
 
     @property
     def condition(self):
@@ -579,8 +617,14 @@ class CandidatePlan:
         self._score = None
         self._validation_messages = []
         
-        self._parallax_m = None
-        self._cross_track_width_m = None
+        self._crab_deg = None
+        self._boresight_error_deg = None
+        
+        self._worst_distance_m = None
+        self._worst_bearing_deg = None
+        self._return_min = None
+        self._reserve_min = None
+        
 
     # V1 properties for the candidate plan are listed below:
 
@@ -643,6 +687,18 @@ class CandidatePlan:
     @property
     def offset_lines(self):
         return self._offset_lines
+    
+    @property
+    def aircraft_feasibility(self):
+        return self._is_aircraft_feasible
+    
+    @property
+    def legality(self):
+        return self._is_legal
+    
+    @property
+    def validation_messages(self):
+        return self._validation_messages
 
     # V2C viewing-geometry metrics. Both are measured by geo during grid assembly and
     # arrive in the same metrics dict as the fields above, so they are set by
@@ -655,6 +711,34 @@ class CandidatePlan:
     @property
     def cross_track_width_m(self):
         return self._cross_track_width_m
+
+    # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
+    # the terminal summary read these. validator does NOT: it re-derives every one of
+    # them from the plan's own waypoints, so a bug in the builder cannot certify itself.
+
+    @property
+    def crab_deg(self):
+        return self._crab_deg
+
+    @property
+    def boresight_error_deg(self):
+        return self._boresight_error_deg
+
+    @property
+    def worst_return_distance_m(self):
+        return self._worst_distance_m
+
+    @property
+    def worst_return_bearing_deg(self):
+        return self._worst_bearing_deg
+
+    @property
+    def return_min(self):
+        return self._return_min
+
+    @property
+    def required_reserve_min(self):
+        return self._reserve_min
 
     @property
     def chosen_orientation(self):
@@ -728,4 +812,24 @@ class CandidatePlan:
 
     def change_name(self, new_name):
         self._name = new_name
+        return
+
+    """
+    V2C-2 requires a few new setters for the new viewing geometry numbers/functions and RTH considerations
+    """
+    
+    def set_aircraft_feasible(self, feasibility):
+        self._is_aircraft_feasible = feasibility
+        return
+    
+    def set_viewing_geometry(self, crab_deg, boresight_error_deg):
+        self._crab_deg = crab_deg
+        self._boresight_error_deg = boresight_error_deg
+        return
+    
+    def set_rth_assessment(self, worst_distance, worst_bearing, return_min, reserve_min):
+        self._worst_distance_m = worst_distance
+        self._worst_bearing_deg = worst_bearing
+        self._return_min = return_min
+        self._reserve_min = reserve_min
         return

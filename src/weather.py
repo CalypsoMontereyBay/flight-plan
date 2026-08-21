@@ -178,6 +178,18 @@ def get_weather(latitude, longitude, when):
         vis_block = props.get("visibility")   # frequently absent (e.g. the MTR grid)
         visibility_m = _value_at_time(vis_block, when) if vis_block else None
 
+        # Wind counts as MEASURED only when BOTH halves of the vector came back from the
+        # API. Captured BEFORE the DEFAULT_* fill below, because that fill is exactly what
+        # erases the distinction -- a missing wind field becomes DEFAULT_ZERO_WIND, i.e.
+        # assumed dead calm, which is the most permissive possible input to an RTH gate.
+        # validator must not certify a return against assumed conditions.
+        #
+        # NOTE: this does NOT yet catch STALE values. _value_at_time ignores the interval
+        # duration, so a field whose coverage has ended silently returns its last entry
+        # forever (visibility covers only ~29 h against a 7-day horizon). Fixing that is
+        # what will populate stale_fields; until then it is left empty, and honestly so.
+        wind_measured = wind_ms is not None and wind_dir is not None
+
         # Fill any missing field with the same DEFAULT_* the stub uses.
         cloud_pct = cloud_pct if cloud_pct is not None else C.V1_DEFAULT_MISSION_CLOUD_COVER
         wind_ms = wind_ms if wind_ms is not None else C.DEFAULT_ZERO_WIND
@@ -197,6 +209,7 @@ def get_weather(latitude, longitude, when):
             gust_ms,
             visibility_m,
             condition,
+            wind_is_measured=wind_measured,
             source=C.WEATHER_SOURCE_NWS,
         )
 

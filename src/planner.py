@@ -39,8 +39,12 @@ _Black_Swift = Aircraft(
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
+# V2C-2 INTERIM: the reserve is no longer a policy constant -- it is DERIVED per mission
+# from the worst-case return-to-home time. This module-level budget uses the iteration
+# SEED only, and is replaced by _rth_safe_budget() once that lands (step 5). Until then a
+# plan is sized against an unverified reserve; do not treat it as RTH-cleared.
 _Black_Swift_usable_endurance_m = max_planned_distance_m(
-    _Black_Swift, CONST.V1_EMERGENCY_RESERVE_FRACTION
+    _Black_Swift, CONST.RTH_SEED_RESERVE_FRACTION
 )
 
 # Step 1.2: Assemble the Sensor object
