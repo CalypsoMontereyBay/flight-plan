@@ -182,6 +182,15 @@ def effective_lawnmower_speed_ms (blowing_from_deg, wind_speed_ms, axis_deg, air
     vector sideways, so wind is never free.
     """
     
+    out_bound_ground_speed_ms = ground_speed_ms(blowing_from_deg, wind_speed_ms, axis_deg, airspeed_ms)
+    
+    return_bound_ground_speed_ms = ground_speed_ms(blowing_from_deg, wind_speed_ms, (axis_deg + C.DEGREE_ONE_EIGHTY), airspeed_ms)
+    
+    if out_bound_ground_speed_ms is None or return_bound_ground_speed_ms is None:
+        return None
+    else:
+        return (2/ ((1/out_bound_ground_speed_ms) + (1/return_bound_ground_speed_ms)))
+    
 
 def max_crosswind_tolerance_ms(airspeed_ms, tolerance_deg):
     """
@@ -195,7 +204,9 @@ def max_crosswind_tolerance_ms(airspeed_ms, tolerance_deg):
     reported to the RPIC. Not to be confused with MANUAL_RTH_MAX_CROSSWIND_ms, which is
     a direct m/s limit on the HOMEWARD leg rather than an angle-derived one.
     """
-    pass
+    max_cross_wind_ms = airspeed_ms * math.sin(math.radians(tolerance_deg))
+    
+    return max_cross_wind_ms
 
 # bearing_home_deg is the TRACK flown to get home -- geo.bearing_between(worst_point, land).
 # altitude_m and the aircraft come in as PARAMETERS, never read from constants: this module
@@ -216,7 +227,7 @@ def return_time_min (blowing_from_deg, wind_speed_ms, bearing_home_deg, aircraft
     cruise_seconds = dist_from_landing_m / returning_ground_speed_ms
     descent_seconds = altitude_m / aircraft.vehicle_descent_rate
 
-    return (max(cruise_seconds, descent_seconds) / SECONDS_PER_MINUTE)
+    return (max(cruise_seconds, descent_seconds) / (SECONDS_PER_MINUTE))
 
 # mission's required return time accounting for manual takeover and/or go arounds above landing.
 def required_reserve_time_min (return_time_min: float):
@@ -237,7 +248,11 @@ def wind_aware_usable_distance_m (blowing_from_deg, wind_speed_ms, axis_deg,
     flyable_min = aircraft.vehicle_endurance - reserve_min
 
     # A reserve larger than the endurance means there is no mission left to fly.
+    # ONE sentinel: None, matching every other wind function here, because that is what
+    # planner will branch on. Returning 0.0 instead would flow into geo's
+    # _initial_total_lines_from_budget, which RAISES on a non-positive budget -- turning a
+    # legitimate "too windy today" verdict into an exception in the plan path.
     if flyable_min <= 0:
-        return 0.0
-
-    return (flyable_min * SECONDS_PER_MINUTE * effective_speed)
+        return None
+    else:
+        return (flyable_min * SECONDS_PER_MINUTE * effective_speed)

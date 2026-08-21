@@ -11,6 +11,7 @@ paradigm, no other file in the engine is aware of weather.py.
 from objects import Weather
 import constants as C
 import requests
+import re
 from datetime import datetime, timedelta, timezone
 #from zoneinfo import ZoneInfo
 
@@ -77,34 +78,64 @@ _value_at_time returns the current weather values at the specified time,
 This helper handles data as it comes. Data is converted to CFE usable units as needed later.
 """
 
+def _parse_iso_duration (text: str):
+    """
+    Parse the duration half of an NWS validTime ("PT1H", "PT6H", "P1DT6H", "PT30M").
+
+    Returns a timedelta, or None when it cannot be parsed. Callers treat None as
+    "coverage unknown" and decline to use the value rather than guessing at it.
+    """
+
+    match = re.fullmatch(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", text or "")
+
+    if match is None or not any(match.groups()):
+        return None
+
+    days, hours, minutes, seconds = (int(g) if g else 0 for g in match.groups())
+
+    return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+
+
 def _value_at_time (property_block, when):
-    
-    covering_value = None
-    
+    """
+    Value of the interval that CONTAINS `when`, or None if no interval does.
+
+    The duration matters. Each NWS field has its OWN coverage span -- wind runs ~172 h
+    while visibility runs ~29 h -- so past the end of a field's series there is simply
+    no forecast for the requested time. Ignoring the duration and returning the final
+    entry (the pre-V2C-2 behaviour) handed callers a days-old reading dressed up as a
+    forecast, which for the RTH gate means a confident verdict from expired data.
+    Returning None instead lets get_weather substitute the honest DEFAULT_* and record
+    the field as stale.
+    """
+
     for entry in property_block.get("values", []):
-        
-        start_str = entry["validTime"].split("/")[0]
-        
+
+        start_str, _, duration_str = entry["validTime"].partition("/")
+
         start = datetime.fromisoformat(start_str)
-        
-        if start <= when:
-            
-            #Since the valid times end right when another begins, we want the valid time that 'when' sits inside, not before.
-            #the covering value tells us which valid time value we are looking at, we keep the one that came most
-            #recently before 'when'
-            covering_value = entry["value"]
-            
-        else:
+
+        # The series is ordered, so once an interval STARTS after `when`, no later
+        # interval can contain it either.
+        if start > when:
             break
-        
-    return covering_value
+
+        duration = _parse_iso_duration(duration_str)
+
+        if duration is None:
+            continue
+
+        if when < (start + duration):
+            return entry["value"]
+
+    return None
 
 
 """
 _to_ms(value, uom) Takes a kmh (or whatever unit NWS uses in the future) value and convers to m/s.
 """
 
-def _to_ms (value, uom:str):
+def _to_ms (value, uom: str | None):
     
     if value is None:
         return None
@@ -119,6 +150,51 @@ def _to_ms (value, uom:str):
     # Unknown unit: don't feed a wrong-unit number into the wind gate; treat as missing.
     return None
     
+
+
+"""
+_degrees_or_none mirrors _to_ms for angles. Wind DIRECTION previously had no unit check at
+all while wind SPEED did, so an unexpected unit would have flowed straight into the crab
+and RTH math unchallenged. Safety math does not get unvalidated inputs.
+"""
+
+
+def _degrees_or_none (value, uom: str | None):
+
+    if value is None:
+        return None
+
+    if uom == "wmoUnit:degree_(angle)":     # NWS wind direction unit (verified live)
+        return value
+
+    return None
+
+
+"""
+_field_at_time reads one gridpoint field and records whether the answer is real.
+
+A field is STALE when the block is missing entirely, when no interval covers the requested
+time, or when the unit is not one we recognise. All three end in the same DEFAULT_*, and
+all three mean the same thing to a safety gate: the number being held is not a forecast
+for this mission. validator reads the set to decline certification rather than certify on
+a default that happens to look like fair weather.
+"""
+
+
+def _field_at_time (props, field_name: str, when, stale_fields: set):
+
+    block = props.get(field_name)
+
+    if block is None:
+        stale_fields.add(field_name)
+        return None, None
+
+    value = _value_at_time(block, when)
+
+    if value is None:
+        stale_fields.add(field_name)
+
+    return value, block.get("uom")
 
 
 """
@@ -163,31 +239,38 @@ def get_weather(latitude, longitude, when):
             return None
         props = grid["properties"]
 
-        sky_block = props.get("skyCover")
-        cloud_pct = _value_at_time(sky_block, when) if sky_block else None
+        # Every field records its own provenance. Coverage spans differ per field -- wind
+        # runs ~172 h while visibility runs ~29 h -- so one mission datetime can be well
+        # inside the forecast for wind and past the end of it for visibility.
+        stale = set()
 
-        wind_block = props.get("windSpeed")
-        wind_ms = _to_ms(_value_at_time(wind_block, when), wind_block.get("uom")) if wind_block else None
+        cloud_pct, _uom = _field_at_time(props, "skyCover", when, stale)
 
-        gust_block = props.get("windGust")
-        gust_ms = _to_ms(_value_at_time(gust_block, when), gust_block.get("uom")) if gust_block else None
+        wind_raw, wind_uom = _field_at_time(props, "windSpeed", when, stale)
+        wind_ms = _to_ms(wind_raw, wind_uom)
 
-        dir_block = props.get("windDirection")
-        wind_dir = _value_at_time(dir_block, when) if dir_block else None
+        gust_raw, gust_uom = _field_at_time(props, "windGust", when, stale)
+        gust_ms = _to_ms(gust_raw, gust_uom)
 
-        vis_block = props.get("visibility")   # frequently absent (e.g. the MTR grid)
-        visibility_m = _value_at_time(vis_block, when) if vis_block else None
+        dir_raw, dir_uom = _field_at_time(props, "windDirection", when, stale)
+        wind_dir = _degrees_or_none(dir_raw, dir_uom)
 
-        # Wind counts as MEASURED only when BOTH halves of the vector came back from the
-        # API. Captured BEFORE the DEFAULT_* fill below, because that fill is exactly what
-        # erases the distinction -- a missing wind field becomes DEFAULT_ZERO_WIND, i.e.
-        # assumed dead calm, which is the most permissive possible input to an RTH gate.
-        # validator must not certify a return against assumed conditions.
-        #
-        # NOTE: this does NOT yet catch STALE values. _value_at_time ignores the interval
-        # duration, so a field whose coverage has ended silently returns its last entry
-        # forever (visibility covers only ~29 h against a 7-day horizon). Fixing that is
-        # what will populate stale_fields; until then it is left empty, and honestly so.
+        vis_raw, _uom = _field_at_time(props, "visibility", when, stale)
+        visibility_m = vis_raw
+
+        # A recognised value that failed UNIT conversion is just as unusable as a missing
+        # one, so it joins the stale set too. _field_at_time cannot see this -- it hands
+        # back the raw value and leaves conversion to the caller.
+        if wind_raw is not None and wind_ms is None:
+            stale.add("windSpeed")
+        if dir_raw is not None and wind_dir is None:
+            stale.add("windDirection")
+
+        # Wind counts as MEASURED only when BOTH halves of the vector are real. Captured
+        # BEFORE the DEFAULT_* fill below, because that fill is exactly what erases the
+        # distinction -- a missing wind field becomes DEFAULT_ZERO_WIND, i.e. assumed dead
+        # calm, which is the most permissive possible input to an RTH gate. validator must
+        # not certify a return against assumed conditions.
         wind_measured = wind_ms is not None and wind_dir is not None
 
         # Fill any missing field with the same DEFAULT_* the stub uses.
@@ -210,6 +293,7 @@ def get_weather(latitude, longitude, when):
             visibility_m,
             condition,
             wind_is_measured=wind_measured,
+            stale_fields=stale,
             source=C.WEATHER_SOURCE_NWS,
         )
 
