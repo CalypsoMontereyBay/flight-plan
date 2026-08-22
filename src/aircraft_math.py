@@ -1,6 +1,8 @@
 """
 Aircraft-level math helpers.
 
+Hi there!
+
 This file converts aircraft endurance into distance budgets and, as of V2C-2, owns the
 wind triangle: crab angle, ground speed, and the return-to-home timing the RTH safety
 gate is built on. Route geometry stays in geo.py; this file only answers what the
