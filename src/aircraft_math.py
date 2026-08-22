@@ -57,10 +57,39 @@ def max_planned_distance_m(aircraft, reserve_fraction=C.RTH_SEED_RESERVE_FRACTIO
 # route duration minute is used to understand how long the finished route is going
 # to take in real life minutes.
 
-def route_duration_min(total_route_distance_m: float, total_lines, aircraft: Aircraft, weather=None, axis=None):
-    
+def route_duration_min(total_route_distance_m: float, total_lines, aircraft: Aircraft,
+                       weather=None, axis_deg=None):
+
+    # Still-air cruise is both the floor and the fallback. `speed` is a valid number from
+    # here on and is only ever REPLACED by another valid number, so the division below can
+    # never see None. That is what keeps this change to three lines instead of pushing
+    # None-checks out to every call site.
+    speed = aircraft.vehicle_cruise_speed
+
+    # Wind-aware only when BOTH are supplied. Note what is NOT in the signature: the wind
+    # direction, wind speed, and airspeed. Weather already carries the wind vector and
+    # `aircraft` already carries the airspeed -- passing them separately would create two
+    # sources of truth for the same numbers and is what blew up the parameter list.
+    if weather is not None and axis_deg is not None:
+
+        effective_speed = effective_lawnmower_speed_ms(
+            weather.wind_direction,
+            weather.wind_speed,
+            axis_deg,
+            aircraft.vehicle_cruise_speed,
+        )
+
+        # None means this wind cannot fly this axis at all. Fall back to still air rather
+        # than propagating None: duration is a REPORTING number and every consumer
+        # (_metrics_caption, battery_margin_min, the terminal summary) formats it as a
+        # float. An optimistic duration cannot become a safety hole, because the
+        # feasibility verdict for that same wind belongs to validator, which re-derives it
+        # independently and rejects the plan regardless of what this number says.
+        if effective_speed is not None:
+            speed = effective_speed
+
     # time spent flying in a straight line (cruising)
-    cruise_seconds = total_route_distance_m / aircraft.vehicle_cruise_speed
+    cruise_seconds = total_route_distance_m / speed
     
     # time spent flying in a turn
     # total number of turns is N-lines - 1

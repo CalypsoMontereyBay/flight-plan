@@ -183,6 +183,39 @@ def sensor_parallax_m(altitude_m, off_nadir_deg):
     else:
         return (altitude_m * math.tan(math.radians(off_nadir_deg)))
     
+    
+def furthest_point_distance_m (reference_point, points: list):
+    '''
+    Distance from reference_point to whichever of `points` lies furthest from it, plus
+    that point itself.
+
+    The RTH gate needs the worst case: if the aircraft can reach home from the furthest
+    point on the route, it can reach home from any of them. The point is returned as well
+    so the caller can take bearing_between(point, reference_point) without searching twice.
+
+    Max over ALL route points rather than the four grid corners. For a convex rectangle
+    those are equivalent, but this form is trivially correct and survives any future
+    non-rectangular grid.
+    '''
+    if len(points) == 0 :
+        raise ValueError ("List of Points is empty, expected non-zero.")
+
+    # Every distance is measured FROM reference_point -- the landing waypoint. Measuring
+    # between route points instead answers a different (and much smaller) question: the
+    # grid's own diagonal rather than how far from home its far corner sits.
+    furthest_point = points[0]
+    max_dist_m = distance_between(reference_point, furthest_point)
+
+    for point in points:
+
+        distance_m = distance_between(reference_point, point)
+
+        if distance_m > max_dist_m:
+
+            max_dist_m = distance_m
+            furthest_point = point
+
+    return (max_dist_m, furthest_point)
 
 
 def calculate_line_length_m(offset_m, total_lines):
@@ -264,8 +297,8 @@ def _initial_total_lines_from_budget(usable_distance_m, offset_m):
     return max(3, total_lines)
 
 
-def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines):
-    line_length_m = calculate_line_length_m(offset_m, total_lines)
+def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines, line_extension_m=0):
+    line_length_m = (calculate_line_length_m(offset_m, total_lines) + line_extension_m)
     center_line = make_line_through_point(center_point, grid_orientation_deg, line_length_m)
     perpendicular_heading = normalize_heading(grid_orientation_deg + 90)
     opposite_perpendicular_heading = normalize_heading(grid_orientation_deg - 90)
@@ -324,6 +357,8 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     # Depends only on altitude + viewing angle, so it is constant across the shrink
     # loop below -- compute once, outside.
     parallax_m = sensor_parallax_m(altitude_m, off_nadir_deg)
+    
+    extension_m = ((parallax_m + CONST.V1_COLLECTION_INSET_m) * 2)
 
     while total_lines >= 3:
         flight_lines, route_points, m1_route_index = _build_centered_grid(
@@ -331,6 +366,7 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
             grid_orientation_deg,
             offset_m,
             total_lines,
+            line_extension_m=extension_m
         )
         total_route_distance_m = _route_distance_m(route_points)
 
@@ -341,14 +377,24 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "usable_endurance_distance_m": usable_distance_m,
                 "grid_area_m2": calculate_grid_area_m2(offset_m, total_lines),
                 "offset_distance_m": offset_m,
+                # TWO lengths, because they answer different questions and are no longer
+                # the same number. line_length_m is the SCIENCE length -- the intended
+                # coverage, and what grid_area_m2 is built from, so reported area stays
+                # true coverage. physical_line_length_m is what actually gets FLOWN,
+                # extended so the imaged strip covers that science box instead of sitting
+                # forward of it. Feeding the physical length into area would overstate
+                # coverage; feeding the science length into route distance would
+                # understate the flight.
                 "line_length_m": line_length_m,
+                "physical_line_length_m": line_length_m + extension_m,
+                "line_extension_m": extension_m,
                 "total_lines": total_lines,
                 "science_lines": total_lines,
                 "traverse_lines": 0,
                 "offset_lines": total_lines - 1,
                 "m1_route_index": m1_route_index,
                 "cross_track_swath_m": swath_width_m,
-                "sensor_parallax_m": parallax_m,
+                "sensor_parallax_m": parallax_m
             }
             return flight_lines, route_points, metrics
 

@@ -5,6 +5,19 @@ The availability of forecasting data also means that CFE plans can be generated 
 to a week in advance, allowing for operational flexibility around agencies with
 administrative delays such as UCSC, MBARI, and the FAA. weather.py follows the design
 paradigm, no other file in the engine is aware of weather.py.
+
+COVERAGE IS PER FIELD, NOT PER REQUEST. Every gridpoint field carries its own series with
+its own span, and they differ enormously:
+
+    windSpeed / windDirection / windGust   ~176 h   covers the full 7-day horizon
+    skyCover                               ~179 h   covers the full 7-day horizon
+    visibility                             8-30 h   SHORT TERM ONLY, and volatile
+
+So a single mission datetime can be well inside the forecast for wind and long past the
+end of it for visibility. That is why _value_at_time honours the interval DURATION and
+returns None outside coverage, and why every field records itself in
+Weather.stale_fields when its answer is a DEFAULT_* rather than a forecast. Consumers must
+ask before trusting: a defaulted 10-mile visibility looks like a perfect day.
 """
 
 # Imports:

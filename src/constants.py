@@ -144,6 +144,15 @@ DEFAULT_WIND_DIRECTION_deg = None
 DEFAULT_WIND_GUST_ms = 0
 
 DEFAULT_VISIBILITY_m = 16100  # ~10 miles (METAR reports max out at +10 SM)
+# ⚠️ VISIBILITY IS A SHORT-TERM FORECAST ONLY. NWS publishes visibility for roughly the
+# next 8-30 HOURS -- the span is volatile and has been measured as low as 8.7 h -- while
+# windSpeed / windDirection / skyCover all run ~176 h and comfortably cover the 7-day
+# NWS_FORECAST_HORIZON_days below. So on any plan more than about a day out, visibility is
+# NOT a forecast: weather.py marks it in Weather.stale_fields and substitutes this default.
+# Never gate VLOS on visibility without first checking Weather.is_stale("visibility") --
+# a defaulted 10 miles reads as perfect conditions and is the most permissive possible
+# input to a legality check. The horizon stays at 7 days because it fits the WIND fields,
+# which are what the RTH safety gate actually consumes.
 
 DEFAULT_WEATHER_CONDITION = "clear"
 
