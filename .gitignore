@@ -224,3 +224,6 @@ __marimo__/
 
 # Calypso Output Artifacts
 /CALYPSO_OUTPUT
+
+#test .plan files
+*.plan

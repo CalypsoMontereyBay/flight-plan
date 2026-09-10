@@ -19,6 +19,7 @@
 # imports:
 from shapely.geometry import Point
 from datetime import datetime
+import warnings
 
 
 class Aircraft:
@@ -135,6 +136,53 @@ class Aircraft:
         self._max_ground_speed = 1.5 * new_cruise_speed_ms
         self.set_vehicle_cruise_speed(new_cruise_speed_ms)
         return
+
+'''
+QGC JSON uses special integers to denote firmware and vehicle types.
+See the following link for a table of the vehicle types and firmware types recognized
+by the MAVLINK protocol. The sets below denote the current firmwares and vehicle types
+the CFE is designed for.:
+https://mavlink.io/en/messages/common.html
+'''
+
+VALID_FIRMWARE_TYPES = frozenset({0, 3, 5, 6, 7, 12})    
+VALID_VEHICLE_TYPES = frozenset({1, 2, 13, 14, 21, 22, 43})
+
+class Vehicle (Aircraft):
+    
+    def __init__(self, 
+                 endurance_min, 
+                 wind_rating_ms, 
+                 climb_rate_ms, 
+                 descent_rate_ms, 
+                 turn_radius_m, 
+                 turn_penalty_s, 
+                 min_ground_speed_ms, 
+                 cruise_speed_ms,
+                 vehicle_type,
+                 firmware_type
+                 ):
+        
+        super().__init__(endurance_min, 
+                         wind_rating_ms, 
+                         climb_rate_ms, 
+                         descent_rate_ms, 
+                         turn_radius_m, 
+                         turn_penalty_s, 
+                         min_ground_speed_ms, 
+                         cruise_speed_ms)
+        
+        if vehicle_type in VALID_VEHICLE_TYPES:
+            self._vehicle_type = vehicle_type
+        else:
+            raise ValueError("Invalid Vehicle Type!")
+            
+        if firmware_type in VALID_FIRMWARE_TYPES:
+            self._firmware_type = firmware_type
+        else:
+            self._firmware_type = 12
+            warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.", RuntimeWarning)
+        
 
 
 class CurrentSunState:
@@ -715,6 +763,11 @@ class CandidatePlan:
     # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
     # the terminal summary read these. validator does NOT: it re-derives every one of
     # them from the plan's own waypoints, so a bug in the builder cannot certify itself.
+    #
+    # ⚠️ 2026-09-08: "reporting only" is now the WHOLE story. The RTH gate that would have
+    # consumed these is cancelled -- aircraft compensate for wind in flight, so the engine
+    # neither vetoes nor reshapes a plan on wind. Their destination is the pilot-notes
+    # document. Nothing populates them yet; every one reads None on a plan built today.
 
     @property
     def crab_deg(self):

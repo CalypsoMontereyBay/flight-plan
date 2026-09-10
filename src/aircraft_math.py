@@ -10,6 +10,21 @@ LEAF: imports constants and objects, nothing else. It does not know what a grid 
 M1 is, or what a CandidatePlan looks like. The RTH fixed-point loop needs both geometry
 and performance, so it lives in planner -- the only module allowed to know both.
 
+⚠️ WIRING STATUS: every wind function below still has ZERO CALLERS. They are written and
+covered by Tier 2 vectors, but planner does not use them, so none of them affects a
+generated plan. route_duration_min accepts weather/axis_deg and the hub still calls it with
+three arguments, meaning duration is computed in still air.
+
+⚠️ 2026-09-08 -- THEIR DESTINATION CHANGED. These functions were built to feed a
+return-to-home safety GATE (planner._rth_safe_budget, a wind-derived reserve, a crosswind
+veto). That gate is CANCELLED: aircraft are now assumed to sense wind and compensate in
+flight, so the engine may not reject a plan or reshape a grid on wind. The math stays and
+stays correct; what it loses is authority. It was built to DECIDE and now exists to INFORM
+-- these numbers belong in a pilot-notes document for the RPIC. See CLAUDE.md, "Operating
+constraints -- 2026-09-08".
+
+Note also that everything here is sidelined behind Step J (QGC .plan JSON output).
+
 It also makes no POLICY decisions. Handed stub weather it reports zero crab and airspeed
 ground speed, honestly, because that is what the numbers say. Whether a plan may be
 CERTIFIED on those numbers is validator's call, made by reading weather.wind_is_measured.

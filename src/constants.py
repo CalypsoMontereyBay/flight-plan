@@ -23,13 +23,27 @@ M1_MOORING_LONG = -122.020
 M1_MOORING_LAT = 36.750
 
 # Launch point coordinate constants (Closest point to M1 station.)
-V1_LAUNCH_POINT_LONG = -121.936
-V1_LAUNCH_POINT_LAT = 36.637
+# 🔴 STALE AS OF 2026-09-08. The standing default launch/land site is the UCSC Coastal
+# Science Campus -- TERRACE POINT, Santa Cruz (north shore):
+#
+#       36.94840 N,  -122.06538   <- replace BOTH pairs below with this (Step J-1)
+#
+# LAUNCH AND LAND ARE THE SAME POINT now; the V1 split into a beach launch and a separate
+# road landing collapses to one pad. The values below are a SOUTH-shore position 14,615 m
+# from M1, while planner's waypoint NAMES already say "Seymour-*" -- names and coordinates
+# have disagreed since V1.
+#
+# Terrace Point measures 22,386 m from M1 (bearing 169.6 deg), 53% further than these
+# values encode. Round-trip transit alone is ~44.8 km = ~41.5 min of a 90 min endurance,
+# which is what makes the transit-budget defect binding -- see CLAUDE.md, Step J.
+V1_LAUNCH_POINT_LONG = -122.06538
+V1_LAUNCH_POINT_LAT = 36.94840
 
 # Land point coordinate constants (Beach near launch point.)
+# 🔴 Same staleness applies, and these become IDENTICAL to the launch point above.
 
-V1_LAND_POINT_LONG = -121.938
-V1_LAND_POINT_LAT = 36.634
+V1_LAND_POINT_LONG = -122.065
+V1_LAND_POINT_LAT = 36.948
 
 # Engine Version 2 constants are defined below:
 
@@ -69,6 +83,9 @@ V1_DEFAULT_GRID_WIDTH_km = 3.2187  # Units = km. 3.2187 km = 2.00 MI -> ~10560 F
 # NOTE: currently DECLARED BUT NEVER READ. The grid is sized from the endurance budget
 # in geo._initial_total_lines_from_budget, not from this width. Changing this value has
 # no effect on a plan until a width cap is actually wired into the grid builder.
+# ⚠️ 2026-09-08: this and the two length/spacing constants above were removal candidates.
+# They are now REINSTATED as the defaults behind user-settable grid dimensions (Step F).
+# Do not delete them.
 
 """
 V1_EMERGENCY_RESERVE_FRACTION = (
@@ -159,6 +176,7 @@ DEFAULT_WEATHER_CONDITION = "clear"
 KMH_TO_MS = 1/3.6 # conversion factor for wind speed
 
 # WAYPOINT DEFAULTS AND ACTION CONSTANTS HERE:
+#NOTE: NOT QGC ACTIONS, SIMPLE STRINGS FOR DENOTATION
 
 WAYPOINT_ACTION_LAUNCH = "launch"
 WAYPOINT_ACTION_TRANSIT = "transit"
@@ -198,7 +216,10 @@ V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the scie
 # Held at 15 rather than tightened to 10 for V2C: the camera boresight follows the FUSELAGE,
 # so crosswind crab spends this budget before the grid geometry gets any of it. 15 deg allows
 # ~4.66 m/s of crosswind across the science axis at cruise; 10 deg would allow only 3.13 m/s.
-# V2C-2 turns that relationship into a real feasibility gate.
+# ⚠️ 2026-09-08: that crosswind relationship is REPORTED to the RPIC as science-quality
+# headroom, never enforced -- the feasibility gate C-2 was going to build is cancelled. This
+# constant still gates ORIENTATION SELECTION in planner._passes_glint_gate, which is grid
+# geometry vs. the sun and has nothing to do with wind. That use stays.
 
 OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 
@@ -208,9 +229,20 @@ EXTENSION_PNG = "png"
 
 #FOR V2 ONLY:
 
-EXTENSION_JSON = "json"
+#NOTE: unneeded as of 09/09/2026
+#EXTENSION_JSON = "json"
+
+EXTENSION_PLAN = "plan"
 
 # V2C-2 EMERGENCY CONSTANTS AND RTH CONSTANTS:
+#
+# ⚠️ 2026-09-08: the RTH safety GATE these were sized for is CANCELLED. Aircraft are now
+# assumed to sense wind and compensate in flight, so the engine may not reject a plan or
+# shrink a grid on wind. RTH_SEED_RESERVE_FRACTION is still read (it is the reserve the
+# distance budget uses). The rest are now REPORTING inputs at best -- their fate is decided
+# when C-2 resumes as a reporting step. DO NOT DELETE THEM before then: the reasoning behind
+# each number is recorded here and in the 2026-08-19 log entry, and re-deriving it is
+# expensive. See CLAUDE.md, "Operating constraints -- 2026-09-08".
 
 RTH_SAFETY_FACTOR = 1.25 # See explanation below
 """
@@ -230,3 +262,34 @@ RTH_INCLUDES_GLIDE = False # RTH procedures never lack thrust from the motors.
 RTH_SEED_RESERVE_FRACTION = 0.15 #Fixed point iteration seed for calculating emergency flight distances and RTH feasability.
 
 RTH_MAX_ITERATIONS = 12 #Prevents the engine from creating a grid whose derived RTH battery time blows up so high that no grid fits.
+
+
+'''
+======================================================================================
+QGROUNDCONTROL JSON FIELD CONSTANTS ARE LISTED BELOW.
+QGC requires very precise strings and values for '.plan' files to function correctly.
+Therefore, these constants are protected for proper use.
+======================================================================================
+'''
+
+
+_QGC_FILETYPE = "Plan"
+
+_QGC_VERSION = 1
+
+_QGC_MISSION_VERSION = 2
+
+_QGC_GROUNDSTATION = "QGroundControl"
+
+#OPTIONAL GEOFENCE PARAMETER, OMITTED FOR NOW
+_QGC_GEOFENCE = {
+    "circles": [],
+    "polygons": [],
+    "version": 2
+}
+
+#OPTIONAL SAFE RETURN COORDINATE LOCATIONS, OMITTED FOR NOW, WILL INCORPORATE LATER
+_QGC_RALLYPOINTS = {
+    "points": [],
+    "version": 2
+}

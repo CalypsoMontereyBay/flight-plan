@@ -1,7 +1,13 @@
 """
 The outputs.py file takes the data from our candidate plan and produces
 human readable output. V1 produces two artifacts: a KML file and a PNG file.
-(A QGC ".plan" JSON writer is planned for V2 -- see EXTENSION_JSON in constants.)
+
+⚠️ 2026-09-08 -- THE QGC ".plan" (JSON) WRITER IS THE ENGINE'S TOP PRIORITY (Step J), and
+it belongs in this file alongside write_kml / write_png. EXTENSION_JSON already exists.
+Everything else on the V2 roadmap is sidelined until it ships, because a KML is
+visualization-only in QGC: today this engine cannot emit anything that can be uploaded and
+flown. A fourth artifact -- a PILOT-NOTES document carrying the wind / crab / return-time
+reporting -- is planned alongside it, deliberately kept OUT of the machine-readable outputs.
 
 KML's can be uploaded to QGroundControl, BlackSwift's FMS, or Google Earth.
 
