@@ -148,6 +148,22 @@ https://mavlink.io/en/messages/common.html
 VALID_FIRMWARE_TYPES = frozenset({0, 3, 5, 6, 7, 12})    
 VALID_VEHICLE_TYPES = frozenset({1, 2, 13, 14, 21, 22, 43})
 
+VALID_FIRMWARE_TYPES_DICT = {"Generic Autopilot (Full Support)": 0, 
+                             "Ardupilot": 3,
+                             "Autopilot w/only Waypoint Support": 5,
+                             "Autopilot w/only Waypoint & Nav Support": 6,
+                             "Generic Autopilot Full Cmd Set": 7,
+                             "Px4": 12}
+
+VALID_VEHICLE_TYPES_DICT = {"Fixed Wing": 1,
+                            "Quadrotor": 2,
+                            "Hexrotor": 13,
+                            "Octorotor": 14,
+                            "TiltRotor VTOL": 21,
+                            "FixedRotor VTOL": 22,
+                            "Generic Multirotor": 43
+                            }
+
 class Vehicle (Aircraft):
     
     def __init__(self, 
@@ -160,7 +176,8 @@ class Vehicle (Aircraft):
                  min_ground_speed_ms, 
                  cruise_speed_ms,
                  vehicle_type,
-                 firmware_type
+                 firmware_type,
+                 hover_speed_ms = 0
                  ):
         
         super().__init__(endurance_min, 
@@ -175,14 +192,74 @@ class Vehicle (Aircraft):
         if vehicle_type in VALID_VEHICLE_TYPES:
             self._vehicle_type = vehicle_type
         else:
-            raise ValueError("Invalid Vehicle Type!")
+            raise ValueError ("Invalid vehicle type detected, please retry with a valid vehicle type.")
+            
             
         if firmware_type in VALID_FIRMWARE_TYPES:
             self._firmware_type = firmware_type
         else:
             self._firmware_type = 12
-            warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.", RuntimeWarning)
+            warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.")
+
+        self._hover_speed_ms = hover_speed_ms
         
+        if vehicle_type in VALID_VEHICLE_TYPES - {1}:
+            #exposing a boolean instead of an integer to refine J-5 refinement #1
+            self._vertical_takeoff = True
+            
+        else:
+            self._vertical_takeoff = False
+            #manually setting hover speed to zero for fixed wing aircraft in-case user made mistake
+            self._hover_speed_ms = 0
+    
+    '''
+    ======================================================================================================
+    Getters and setters for the hover speed, hover capability, as well as the vehicle and firmware types
+    are below:
+    *NOTE*: setters are not written for hover speed and hover capability because correctness of these params
+    should be handled by the engine and should catch mistakes. More specifically, an incorrect aircraft type
+    and hover capability directly influence the kind of plan sent to QGC, and could create massive errors.
+    ======================================================================================================
+    '''
+    
+    
+    @property
+    def hover_speed_ms(self):
+        return self._hover_speed_ms
+    
+    @property
+    def can_hover(self):
+        return self._vertical_takeoff
+    
+    @property
+    def vehicle_type(self):
+        for key, value in VALID_VEHICLE_TYPES_DICT.items():
+            if value == self._vehicle_type:
+                return key
+            
+    @property
+    def firmware_type(self):
+        for key, value in VALID_FIRMWARE_TYPES_DICT.items():
+            if value == self._firmware_type:
+                return key
+        
+    
+    def set_vehicle_type (self, vehicle_type: int):
+        if vehicle_type in VALID_VEHICLE_TYPES:
+                    self._vehicle_type = vehicle_type
+        else:
+            self._vehicle_type = 1
+            warnings.warn("Warning: Invalid vehicle type detected, defaulting to Fixed Wing.")
+    
+    def set_firmware_type (self, firmware_type: int):
+        if firmware_type in VALID_FIRMWARE_TYPES:
+                    self._firmware_type = firmware_type
+        else:
+            self._firmware_type = 12
+            warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.")
+    
+    
+    
 
 
 class CurrentSunState:

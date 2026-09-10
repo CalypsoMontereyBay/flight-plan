@@ -45,7 +45,11 @@ V1_LAUNCH_POINT_LAT = 36.94840
 V1_LAND_POINT_LONG = -122.065
 V1_LAND_POINT_LAT = 36.948
 
-# Engine Version 2 constants are defined below:
+'''
+CFE VERSION 2 CONSTANTS ARE DEFINED BELOW:
+ASSUMPTIONS REMANING FROM V1 ARE ALSO DEFINED BELOW
+========================================================================================
+'''
 
 #Local date/time defaults if user does not specify:
 
@@ -114,11 +118,15 @@ V1_DEFAULT_OVERLAP_PCT = 50  # Units = %. Side-lap between adjacent science swat
 # 50% also buys margin against crab-induced strip shear: at the 15 deg tolerance the
 # imaged strip shifts ~182 m between opposite-direction legs, leaving ~131 m of true overlap.
 
-PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
+'''
+========================================================================================
+'''
 
-# Engine Version 1 aircraft defaults are defined below:
-
-# AIRCRAFT PARAMS ARE DEFINED WITH RESPECT TO THE BLACKSWIFT S2 FIXED-WING UAV
+'''
+BlackSwift specific constants are below, and should only be used when making plans for
+the BlackSwift S2 as of 09/10/2026.
+========================================================================================
+'''
 
 BLACKSWIFT_ENDURANCE_min = 90  # Units = minutes
 
@@ -136,7 +144,15 @@ BLACKSWIFT_MIN_GROUND_SPEED_ms = 12  # Units = m/s
 
 BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
 
-# NATIONAL WEATHER SERVICE API CONSTANTS BELOW:
+'''
+========================================================================================
+'''
+
+
+'''
+NWS SERVICE CONSTANTS:
+========================================================================================
+'''
 
 NWS_BASE_URL = "https://api.weather.gov"
 NWS_USER_AGENT = "Calypso Flight Engine (rwandel@ucsc.edu)"
@@ -147,8 +163,14 @@ NWS_FORECAST_HORIZON_days = 7 #NWS forecasting horizon
 WEATHER_SOURCE_NWS = "NWS" #tags a Weather object as live NWS data (vs the "STUB" fallback)
 WEATHER_SOURCE = "NWS"
 
+'''
+========================================================================================
+'''
 
-# WEATHER OBJECT AND API CONSTANTS FOR V1 ARE LISTED BELOW:
+'''
+WEATHER OBJECT ASSUMPTIONS FOR TESTING AND IDEAL WEATHER SCENARIOS ARE DEFINED BELOW:
+========================================================================================
+'''
 
 DEFAULT_ZERO_WIND = 0  # Units = m/s
 
@@ -175,6 +197,17 @@ DEFAULT_WEATHER_CONDITION = "clear"
 
 KMH_TO_MS = 1/3.6 # conversion factor for wind speed
 
+'''
+========================================================================================
+
+'''
+
+'''
+WAYPOINT ACTION CONSTANTS FOR TRANSLATING BETWEEN CFE LANGUAGE AND QGC JSON VALUES:
+========================================================================================
+
+'''
+
 # WAYPOINT DEFAULTS AND ACTION CONSTANTS HERE:
 #NOTE: NOT QGC ACTIONS, SIMPLE STRINGS FOR DENOTATION
 
@@ -188,13 +221,31 @@ WAYPOINT_ACTION_COLLECT_START = "collect_start"
 WAYPOINT_ACTION_COLLECT_STOP = "collect_stop"
 WAYPOINT_ACTION_LINE_LABEL = "line_label"
 
-# SENSOR ACTIONS AND MOUNTING CONSTANTS:
+'''
+========================================================================================
+
+'''
+
+'''
+SENSOR MOUNTING CONSTANTS FOR V2:
+========================================================================================
+
+'''
 
 SENSOR_MOUNT_ALONG_TRACK = "along_track"
 SENSOR_MOUNT_CROSS_TRACK = "cross_track"
 V2_SENSOR_MOUNTING = SENSOR_MOUNT_ALONG_TRACK
 V2_SENSOR_NAME = "FLIR Boson -- PROVISIONAL"
 
+'''
+========================================================================================
+'''
+
+'''
+SUN AZIMUTH AND OTHER ANGULAR CONSTANTS:
+========================================================================================
+
+'''
 
 
 # Azimuth Constant for planner.py:
@@ -221,11 +272,23 @@ V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the scie
 # constant still gates ORIENTATION SELECTION in planner._passes_glint_gate, which is grid
 # geometry vs. the sun and has nothing to do with wind. That use stays.
 
+'''
+========================================================================================
+'''
+
+'''
+OUTPUT CONSTANTS FOR V2:
+========================================================================================
+'''
+
+
 OUTPUT_DIRECTORY = "./CALYPSO_OUTPUT"
 
 EXTENSION_KML = "kml"
 
 EXTENSION_PNG = "png"
+
+PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
 
 #FOR V2 ONLY:
 
@@ -233,6 +296,17 @@ EXTENSION_PNG = "png"
 #EXTENSION_JSON = "json"
 
 EXTENSION_PLAN = "plan"
+
+'''
+========================================================================================
+'''
+
+'''
+CFE V2C DEPRECATED EMERGENCY AND RTH CONSTANTS:
+========================================================================================
+'''
+
+
 
 # V2C-2 EMERGENCY CONSTANTS AND RTH CONSTANTS:
 #
@@ -262,6 +336,10 @@ RTH_INCLUDES_GLIDE = False # RTH procedures never lack thrust from the motors.
 RTH_SEED_RESERVE_FRACTION = 0.15 #Fixed point iteration seed for calculating emergency flight distances and RTH feasability.
 
 RTH_MAX_ITERATIONS = 12 #Prevents the engine from creating a grid whose derived RTH battery time blows up so high that no grid fits.
+
+'''
+========================================================================================
+'''
 
 
 '''
@@ -293,3 +371,7 @@ _QGC_RALLYPOINTS = {
     "points": [],
     "version": 2
 }
+
+#FAA height regs most often matter above "Ground Level", ie: the launch point.
+#Therefore, Altitude must be relative to the launch pad.
+_QGC_GLOBAL_PLAN_ALTITUDE_MODE = 1
