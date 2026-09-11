@@ -189,28 +189,45 @@ class Vehicle (Aircraft):
                          min_ground_speed_ms, 
                          cruise_speed_ms)
         
+        # Setting Vehicle or aborting
         if vehicle_type in VALID_VEHICLE_TYPES:
             self._vehicle_type = vehicle_type
         else:
             raise ValueError ("Invalid vehicle type detected, please retry with a valid vehicle type.")
             
-            
+        # Setting Firmware type or defaulting
         if firmware_type in VALID_FIRMWARE_TYPES:
             self._firmware_type = firmware_type
         else:
             self._firmware_type = 12
             warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.")
 
+        #====================================================================================================
+        
         self._hover_speed_ms = hover_speed_ms
         
-        if vehicle_type in VALID_VEHICLE_TYPES - {1}:
+        #====================================================================================================
+        
+        if vehicle_type in VALID_VEHICLE_TYPES - {1, 21, 22}:
             #exposing a boolean instead of an integer to refine J-5 refinement #1
             self._vertical_takeoff = True
+            self._isVTOL = False
+            #QGC uses Cruising speed for all non-rotor craft, rotor craft only use hover speed
+            self._cruising_speed = 0
+            
+        elif vehicle_type in VALID_VEHICLE_TYPES - {1, 2, 13, 14, 43}:
+            #VTOL's have both a hover speed and a cruising speed
+            self._vertical_takeoff = True
+            self._isVTOL = True
             
         else:
             self._vertical_takeoff = False
-            #manually setting hover speed to zero for fixed wing aircraft in-case user made mistake
+            self._isVTOL = False
+            # Manually setting hover speed to zero for fixed wing aircraft in-case user made mistake
+            # Fixed wings cannot have a non-zero hover speed.
             self._hover_speed_ms = 0
+            
+        #=====================================================================================================
     
     '''
     ======================================================================================================
@@ -235,21 +252,13 @@ class Vehicle (Aircraft):
     def vehicle_type(self):
         for key, value in VALID_VEHICLE_TYPES_DICT.items():
             if value == self._vehicle_type:
-                return key
+                return key, value
             
     @property
     def firmware_type(self):
         for key, value in VALID_FIRMWARE_TYPES_DICT.items():
             if value == self._firmware_type:
-                return key
-        
-    
-    def set_vehicle_type (self, vehicle_type: int):
-        if vehicle_type in VALID_VEHICLE_TYPES:
-                    self._vehicle_type = vehicle_type
-        else:
-            self._vehicle_type = 1
-            warnings.warn("Warning: Invalid vehicle type detected, defaulting to Fixed Wing.")
+                return key, value
     
     def set_firmware_type (self, firmware_type: int):
         if firmware_type in VALID_FIRMWARE_TYPES:
@@ -481,7 +490,8 @@ class Sensor:
         self,
         cross_track_fov_deg,
         along_track_fov_deg,
-        desired_overlap_pct,
+        desired_crosstrack_overlap_pct,
+        desired_alongtrack_overlap_pct,
         off_nadir_deg,
         mounting=None,
         sensor_name=None,
@@ -489,7 +499,8 @@ class Sensor:
 
         self._cross_track_fov_deg = cross_track_fov_deg
         self._along_track_fov_deg = along_track_fov_deg
-        self._desired_overlap_pct = desired_overlap_pct
+        self._desired_cross_track_overlap_pct = desired_crosstrack_overlap_pct
+        self._desired_along_track_overlap_pct = desired_alongtrack_overlap_pct
         self._off_nadir_deg = off_nadir_deg
         self._mounting = mounting
         self._sensor_name = sensor_name
@@ -503,8 +514,12 @@ class Sensor:
         return self._along_track_fov_deg
 
     @property
-    def desired_overlap(self):
-        return self._desired_overlap_pct
+    def cross_track_overlap(self):
+        return self._desired_cross_track_overlap_pct
+    
+    @property
+    def along_track_overlap(self):
+        return self._desired_along_track_overlap_pct
 
     @property
     def off_nadir(self):
@@ -705,6 +720,8 @@ class CandidatePlan:
         currentSunState,
         weather,
         chosen_orientation_deg,
+        camera_trigger_dist_m,
+        total_flight_distance_m,
         sensor=None,
         waypoints=None,
     ):
@@ -714,6 +731,8 @@ class CandidatePlan:
         self._currentSunState = currentSunState
         self._weather = weather
         self._chosen_orientation_deg = chosen_orientation_deg
+        self._camera_trigger_distance_m = camera_trigger_dist_m
+        self._total_flight_distance_m = total_flight_distance_m
         self._sensor = sensor
 
         if waypoints is None:
@@ -768,6 +787,14 @@ class CandidatePlan:
     @property
     def weather(self):
         return self._weather
+    
+    @property
+    def camera_trigger_distance(self):
+        return self._camera_trigger_distance_m
+    
+    @property
+    def total_flight_distance(self):
+        return self._total_flight_distance_m
 
     @property
     def sensor(self):

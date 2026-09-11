@@ -42,8 +42,10 @@ V1_LAUNCH_POINT_LAT = 36.94840
 # Land point coordinate constants (Beach near launch point.)
 # 🔴 Same staleness applies, and these become IDENTICAL to the launch point above.
 
-V1_LAND_POINT_LONG = -122.065
-V1_LAND_POINT_LAT = 36.948
+V1_LAND_POINT_LONG = -122.06538
+V1_LAND_POINT_LAT = 36.94840
+
+TERRACE_POINT_AMSL_m = 16
 
 '''
 CFE VERSION 2 CONSTANTS ARE DEFINED BELOW:
@@ -374,4 +376,109 @@ _QGC_RALLYPOINTS = {
 
 #FAA height regs most often matter above "Ground Level", ie: the launch point.
 #Therefore, Altitude must be relative to the launch pad.
+# 1 now matches _QGC_MISSION_GLOBAL_RELATIVE_ALT_FRAME when it is set to 1.
 _QGC_GLOBAL_PLAN_ALTITUDE_MODE = 1
+
+
+'''
+MAVLINK COMMAND & CONTROL CONSTANTS ARE LISTED BELOW
+(INTEGERS REPRESENT MAV_CMD & MAV_FRAME VALUES IN THE QGC JSON FOR EACH WAYPOINT)
+THESE COMMANDS WILL BE ASSIGNED AND PROPERLY TRANSLATED BETWEEN THE ENGINE AND QGC VIA
+THE WAYPOINT AND CANDIDATE PLAN OBJECTS.
+
+LISTED ORDER: [2, 3, 16, 21, 22, 84, 85, 206]
+
+See More: https://mavlink.io/en/messages/common.html#mav_commands
+
+EACH SECTION OF CONSTANTS BELOW FOLLOWS THE ABOVE LISTED ORDER
+========================================================================================
+'''
+
+_QGC_MISSION_FRAME = 2
+
+_QGC_MISSION_GLOBAL_RELATIVE_ALT_FRAME = 1
+
+'''
+========================================================================================
+'''
+
+#For CMD #16: Alt, Long, Lat are filled in by CFE plan generated waypoints
+HOLD_TIME_s = 0
+
+ACCEPTANCE_RADIUS_m = 28.5 #sphere with a diamter of B.S S2 turn radius (Radius of (turn radius/2))
+
+PASS_RADIUS_m = 0
+
+# Yaw angle must be null or some other NaN to follow generated waypoint headings from CFE
+WP_YAW_deg = None
+
+'''
+========================================================================================
+'''
+
+ABORT_ASML_m = 50
+
+LAND_YAW_deg = None
+
+LANDING_ASML_m = 0
+
+'''
+========================================================================================
+'''
+
+#FIXED WING TAKEOFF
+
+TAKEOFF_PITCH_deg = 15
+
+TAKEOFF_YAW_deg = None
+
+TAKEOFF_ASML_m = 50
+
+# Homepoint position constant and its necessary values go with takeoff, since takeoffs will always happen at the home point
+# [LAT, LONG, SEA LEVEL ALTITUDE]
+
+_QGC_PLANNED_HOME_POSITION = [V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, TERRACE_POINT_AMSL_m]
+
+'''
+========================================================================================
+'''
+
+#VTOL TAKEOFF
+
+TRANSITION_HEADING_SETTING = 3
+
+TRANSITION_YAW_deg = None
+
+TRANSITION_ASML_m = 50
+
+'''
+========================================================================================
+'''
+
+LANDING_BEHAVIOR = 0
+
+APPROACH_ASML_m = None
+
+LANDING_YAW_deg = None
+
+GROUND_ASML_m = None
+
+'''
+========================================================================================
+'''
+
+'''
+**NOTE** MAY BECOME DEPRECATED DEPENDING ON BOSON INTEGRATION
+WITH FCU
+'''
+
+CAM_TRIGGER_DIST_m = V1_DEFAULT_OVERLAP_PCT
+
+#**CLAUDE**: Replace "stub" with actuall FLIR BOSON Shutter speed
+CAM_SHUTTER_INTEGRATION_millis = 0
+
+CAM_TRIGGER_START = 1
+
+CAM_TRIGGER_END = 0
+
+TARGET_CAM_ID = 0
