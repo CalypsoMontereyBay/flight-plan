@@ -99,7 +99,7 @@ def test_viewing_geometry_reaches_the_plan():
 
     # the swath is what sets line spacing: offset = swath * (1 - overlap)
     assert plan.offset_distance_m == pytest.approx(
-        G.offset_distance_m(plan.cross_track_width_m, plan.sensor.desired_overlap)
+        G.offset_distance_m(plan.cross_track_width_m, plan.sensor.cross_track_overlap)
     )
 
 

@@ -147,6 +147,9 @@ https://mavlink.io/en/messages/common.html
 
 VALID_FIRMWARE_TYPES = frozenset({0, 3, 5, 6, 7, 12})    
 VALID_VEHICLE_TYPES = frozenset({1, 2, 13, 14, 21, 22, 43})
+MULTIROTOR_TYPES = {2, 13, 14, 43}
+VTOL_TYPES = {21, 22}
+
 
 VALID_FIRMWARE_TYPES_DICT = {"Generic Autopilot (Full Support)": 0, 
                              "Ardupilot": 3,
@@ -208,14 +211,12 @@ class Vehicle (Aircraft):
         
         #====================================================================================================
         
-        if vehicle_type in VALID_VEHICLE_TYPES - {1, 21, 22}:
+        if vehicle_type in MULTIROTOR_TYPES:
             #exposing a boolean instead of an integer to refine J-5 refinement #1
             self._vertical_takeoff = True
             self._isVTOL = False
-            #QGC uses Cruising speed for all non-rotor craft, rotor craft only use hover speed
-            self._cruising_speed = 0
             
-        elif vehicle_type in VALID_VEHICLE_TYPES - {1, 2, 13, 14, 43}:
+        elif vehicle_type in VTOL_TYPES:
             #VTOL's have both a hover speed and a cruising speed
             self._vertical_takeoff = True
             self._isVTOL = True
@@ -250,15 +251,31 @@ class Vehicle (Aircraft):
     
     @property
     def vehicle_type(self):
+        for value in VALID_VEHICLE_TYPES_DICT.values():
+            if value == self._vehicle_type:
+                return value
+            
+    @property
+    def vehicle_type_name(self):
         for key, value in VALID_VEHICLE_TYPES_DICT.items():
             if value == self._vehicle_type:
-                return key, value
+                return key
             
     @property
     def firmware_type(self):
+        for value in VALID_FIRMWARE_TYPES_DICT.values():
+            if value == self._firmware_type:
+                return value
+            
+    @property
+    def firmware_type_name(self):
         for key, value in VALID_FIRMWARE_TYPES_DICT.items():
             if value == self._firmware_type:
-                return key, value
+                return key
+    
+    @property
+    def is_VTOL(self):
+        return self._isVTOL
     
     def set_firmware_type (self, firmware_type: int):
         if firmware_type in VALID_FIRMWARE_TYPES:

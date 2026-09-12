@@ -52,7 +52,8 @@ _Black_Swift_usable_endurance_m = max_planned_distance_m(
 _Calypso_payload = Sensor(
     CONST.V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg,
     CONST.V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG,
-    CONST.V1_DEFAULT_OVERLAP_PCT,
+    CONST.V1_DEFAULT_CROSSTRACK_OVERLAP_PCT,
+    CONST.V2_DEFAULT_ALONGTRACK_OVERLAP_PCT,
     CONST.V1_DEFAULT_SENSOR_OFF_NADIR_deg,
     mounting=CONST.V2_SENSOR_MOUNTING,
     sensor_name=CONST.V2_SENSOR_NAME
@@ -263,7 +264,7 @@ def _build_grid_for_orientation(
         usable_distance_m,
         mission_request.altitude,
         payload.cross_track_fov,
-        payload.desired_overlap,
+        payload.cross_track_overlap,
         off_nadir_deg=payload.off_nadir,
     )
 
@@ -468,6 +469,8 @@ def build_candidate_plan(
     mission_azimuth,
     mission_sun_state,
     candidate_name,
+    camera_trigger_distance_m,
+    total_flight_distance_m
 ):
 
     # Step 1, generate the potential orientation candidates
@@ -513,8 +516,10 @@ def build_candidate_plan(
         mission_sun_state,
         mission_weather,
         mission_orientation,
+        camera_trigger_distance_m,
+        total_flight_distance_m,
         payload,
-        mission_route_list_classified,
+        mission_route_list_classified
     )
 
     # Step 6, set the plan metrics using the object's setter
@@ -557,13 +562,15 @@ def plan_default_mission(candidate_name, mission_datetime=None):
     _Sun_State, _Mission_Request, _Weather_State, _Sun_az = _build_dated_objects(mission_datetime)
         
     return build_candidate_plan(
-        _Black_Swift,
-        _Black_Swift_usable_endurance_m,
-        _Calypso_payload,
-        _Mission_Request,
-        _Weather_State,
-        _Sun_az,
-        _Sun_State,
-        candidate_name=candidate_name
+        mission_aircraft= _Black_Swift,
+        mission_aircraft_endurance_m= _Black_Swift_usable_endurance_m,
+        payload= _Calypso_payload,
+        mission_request= _Mission_Request,
+        mission_weather= _Weather_State,
+        mission_azimuth= _Sun_az,
+        mission_sun_state= _Sun_State,
+        candidate_name=candidate_name,
+        camera_trigger_distance_m= None, #Stub until J-3 derives it into the metrics dict.
+        total_flight_distance_m= 0 #Zero is a stub currently.
     )
     

@@ -75,7 +75,8 @@ V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 
 V1_DEFAULT_LEGAL_STATUS = True
 
-V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 609.6m = 2000 FT exactly.
+V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 593.6m = 2000 FT exactly when accounting for takeoff
+#elevation.
 # NOTE: 2000 FT AGL is ABOVE the Part 107 ceiling of 400 FT. validator.py (V2 step E)
 # must gate on the ceiling this mission is actually authorized for, not on 400 by default.
 
@@ -116,7 +117,8 @@ V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. Along the groun
 
 V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees. Camera pitched forward under the nose.
 
-V1_DEFAULT_OVERLAP_PCT = 50  # Units = %. Side-lap between adjacent science swaths.
+V1_DEFAULT_CROSSTRACK_OVERLAP_PCT = 50
+V2_DEFAULT_ALONGTRACK_OVERLAP_PCT = 50# Units = %. Side-lap between adjacent science swaths.
 # 50% also buys margin against crab-induced strip shear: at the 15 deg tolerance the
 # imaged strip shifts ~182 m between opposite-direction legs, leaving ~131 m of true overlap.
 
@@ -294,8 +296,7 @@ PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 
 
 #FOR V2 ONLY:
 
-#NOTE: unneeded as of 09/09/2026
-#EXTENSION_JSON = "json"
+EXTENSION_JSON = "json"
 
 EXTENSION_PLAN = "plan"
 
@@ -376,8 +377,8 @@ _QGC_RALLYPOINTS = {
 
 #FAA height regs most often matter above "Ground Level", ie: the launch point.
 #Therefore, Altitude must be relative to the launch pad.
-# 1 now matches _QGC_MISSION_GLOBAL_RELATIVE_ALT_FRAME when it is set to 1.
-_QGC_GLOBAL_PLAN_ALTITUDE_MODE = 1
+# 1 now matches _QGC_MISSION_GLOBAL_RELATIVE_ALT_FRAME when it is set to 3.
+_QGC_GLOBAL_PLAN_ALTITUDE_MODE = 0
 
 
 '''
@@ -394,9 +395,18 @@ EACH SECTION OF CONSTANTS BELOW FOLLOWS THE ABOVE LISTED ORDER
 ========================================================================================
 '''
 
-_QGC_MISSION_FRAME = 2
+_TAKEOFF_LANDING_ALT_FRAME = 3
+_TAKEOFF_LAND_ALT_MODE = 1
 
-_QGC_MISSION_GLOBAL_RELATIVE_ALT_FRAME = 1
+_CRUISING_MISSION_ALT_FRAME = 0
+_CRUISING_MISSION_ALT_MODE = 2
+
+_QGC_AMSL_ALT_ABOVE_TERRAIN = None
+
+#.plan files do not have a field for a mission frame, just a global altitude mode??? (CLAUDE see exp2.plan)
+_QGC_MAV_FRAME_MISSION = 2
+
+
 
 '''
 ========================================================================================
@@ -416,11 +426,15 @@ WP_YAW_deg = None
 ========================================================================================
 '''
 
-ABORT_ASML_m = 50
+ABORT_REL_m = 50
+
+ABORT_AMSL_m = 50 + TERRACE_POINT_AMSL_m
 
 LAND_YAW_deg = None
 
-LANDING_ASML_m = 0
+LANDING_REL_m = 0
+
+LANDING_AMSL_m = TERRACE_POINT_AMSL_m
 
 '''
 ========================================================================================
@@ -432,7 +446,9 @@ TAKEOFF_PITCH_deg = 15
 
 TAKEOFF_YAW_deg = None
 
-TAKEOFF_ASML_m = 50
+TAKEOFF_REL_m = 50
+
+TAKEOFF_AMSL_m = 50 + TERRACE_POINT_AMSL_m
 
 # Homepoint position constant and its necessary values go with takeoff, since takeoffs will always happen at the home point
 # [LAT, LONG, SEA LEVEL ALTITUDE]
@@ -449,7 +465,9 @@ TRANSITION_HEADING_SETTING = 3
 
 TRANSITION_YAW_deg = None
 
-TRANSITION_ASML_m = 50
+TRANSITION_REL_m = 50
+
+TRANSITION_AMSL_m = 50 + TERRACE_POINT_AMSL_m
 
 '''
 ========================================================================================
@@ -457,11 +475,13 @@ TRANSITION_ASML_m = 50
 
 LANDING_BEHAVIOR = 0
 
-APPROACH_ASML_m = None
+APPROACH_AMSL_m = None
 
 LANDING_YAW_deg = None
 
-GROUND_ASML_m = None
+GROUND_REL_m = 0
+
+GROUND_AMSL_m = TERRACE_POINT_AMSL_m
 
 '''
 ========================================================================================
@@ -471,8 +491,6 @@ GROUND_ASML_m = None
 **NOTE** MAY BECOME DEPRECATED DEPENDING ON BOSON INTEGRATION
 WITH FCU
 '''
-
-CAM_TRIGGER_DIST_m = V1_DEFAULT_OVERLAP_PCT
 
 #**CLAUDE**: Replace "stub" with actuall FLIR BOSON Shutter speed
 CAM_SHUTTER_INTEGRATION_millis = 0
