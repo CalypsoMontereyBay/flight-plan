@@ -75,7 +75,7 @@ V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 
 V1_DEFAULT_LEGAL_STATUS = True
 
-V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 593.6m = 2000 FT exactly when accounting for takeoff
+V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 609.6m = 2000 FT exactly when accounting for takeoff
 #elevation.
 # NOTE: 2000 FT AGL is ABOVE the Part 107 ceiling of 400 FT. validator.py (V2 step E)
 # must gate on the ceiling this mission is actually authorized for, not on 400 by default.
