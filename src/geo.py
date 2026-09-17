@@ -358,6 +358,10 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     # loop below -- compute once, outside.
     parallax_m = sensor_parallax_m(altitude_m, off_nadir_deg)
     
+    #Calculates the along-track spacing:
+    #FORMULA: (Along_track footprint distance (meters)) * (1 - along-track overlap/100)
+    camera_trigger_distance_m = ((ground_footprint_along_m(altitude_m, CONST.V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG, off_nadir_deg)) * (1 - (CONST.V2_DEFAULT_ALONGTRACK_OVERLAP_PCT/100)))
+    
     extension_m = ((parallax_m + CONST.V1_COLLECTION_INSET_m) * 2)
 
     while total_lines >= 3:
@@ -368,12 +372,12 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
             total_lines,
             line_extension_m=extension_m
         )
-        total_route_distance_m = _route_distance_m(route_points)
+        total_grid_distance_m = _route_distance_m(route_points)
 
-        if total_route_distance_m <= usable_distance_m:
+        if total_grid_distance_m <= usable_distance_m:
             line_length_m = calculate_line_length_m(offset_m, total_lines)
             metrics = {
-                "total_route_distance_m": total_route_distance_m,
+                "total_grid_distance_m": total_grid_distance_m,
                 "usable_endurance_distance_m": usable_distance_m,
                 "grid_area_m2": calculate_grid_area_m2(offset_m, total_lines),
                 "offset_distance_m": offset_m,
@@ -394,7 +398,8 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "offset_lines": total_lines - 1,
                 "m1_route_index": m1_route_index,
                 "cross_track_swath_m": swath_width_m,
-                "sensor_parallax_m": parallax_m
+                "sensor_parallax_m": parallax_m,
+                "camera_trigger_distance_m": camera_trigger_distance_m
             }
             return flight_lines, route_points, metrics
 

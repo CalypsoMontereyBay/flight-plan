@@ -737,7 +737,6 @@ class CandidatePlan:
         currentSunState,
         weather,
         chosen_orientation_deg,
-        camera_trigger_dist_m,
         total_flight_distance_m,
         sensor=None,
         waypoints=None,
@@ -748,7 +747,6 @@ class CandidatePlan:
         self._currentSunState = currentSunState
         self._weather = weather
         self._chosen_orientation_deg = chosen_orientation_deg
-        self._camera_trigger_distance_m = camera_trigger_dist_m
         self._total_flight_distance_m = total_flight_distance_m
         self._sensor = sensor
 
@@ -806,10 +804,6 @@ class CandidatePlan:
         return self._weather
     
     @property
-    def camera_trigger_distance(self):
-        return self._camera_trigger_distance_m
-    
-    @property
     def total_flight_distance(self):
         return self._total_flight_distance_m
 
@@ -822,8 +816,8 @@ class CandidatePlan:
         return self._waypoints
 
     @property
-    def total_route_distance_m(self):
-        return self._total_route_distance_m
+    def total_grid_distance_m(self):
+        return self._total_grid_distance_m
 
     @property
     def usable_endurance_distance_m(self):
@@ -933,6 +927,10 @@ class CandidatePlan:
     @property
     def score(self):
         return self._score
+    
+    @property
+    def camera_trigger_dist(self):
+        return self._camera_trigger_distance_m
 
     """
     Below are the methods needed or that will be convenient during the 
@@ -948,7 +946,7 @@ class CandidatePlan:
         return
 
     def set_grid_metrics(self, metrics):
-        self._total_route_distance_m = metrics.get("total_route_distance_m")
+        self._total_grid_distance_m = metrics.get("total_grid_distance_m")
         self._usable_endurance_distance_m = metrics.get("usable_endurance_distance_m")
         self._grid_area_m2 = metrics.get("grid_area_m2")
         self._offset_distance_m = metrics.get("offset_distance_m")
@@ -959,6 +957,7 @@ class CandidatePlan:
         self._offset_lines = metrics.get("offset_lines")
         self._parallax_m = metrics.get("sensor_parallax_m")
         self._cross_track_width_m = metrics.get("cross_track_swath_m")
+        self._camera_trigger_distance_m = metrics.get("camera_trigger_distance_m")
         return
 
     def has_m1_overflight(self):

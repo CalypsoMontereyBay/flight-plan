@@ -469,7 +469,6 @@ def build_candidate_plan(
     mission_azimuth,
     mission_sun_state,
     candidate_name,
-    camera_trigger_distance_m,
     total_flight_distance_m
 ):
 
@@ -516,7 +515,6 @@ def build_candidate_plan(
         mission_sun_state,
         mission_weather,
         mission_orientation,
-        camera_trigger_distance_m,
         total_flight_distance_m,
         payload,
         mission_route_list_classified
@@ -529,7 +527,7 @@ def build_candidate_plan(
     # Step 7, calculate the duration of the flight in minutes and then send it to the candidate
 
     candidate_plan_estimated_duration_min = route_duration_min(
-        metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft
+        metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
     )
 
     candidate_plan_estimated_battery_margin_min = battery_margin_min(
@@ -570,7 +568,6 @@ def plan_default_mission(candidate_name, mission_datetime=None):
         mission_azimuth= _Sun_az,
         mission_sun_state= _Sun_State,
         candidate_name=candidate_name,
-        camera_trigger_distance_m= None, #Stub until J-3 derives it into the metrics dict.
         total_flight_distance_m= 0 #Zero is a stub currently.
     )
     
