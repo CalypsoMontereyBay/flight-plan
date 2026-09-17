@@ -57,9 +57,16 @@ flight plan, and the pilot can take manual control of the landing as with any QG
 
 A third artifact — a **PDF pilot-notes document** carrying the wind/crab/return numbers — is
 planned after the JSON, so that reporting stays out of the machine-readable outputs. Its
-first job is that landing recommendation: the plan always arrives on a fixed **344.6°**
-bearing (the M1 → Terrace Point reciprocal), so the notes compare that against the into-wind
-heading and state the wind component the pilot will actually meet on approach.
+first job is that landing recommendation, and **the engine already computes the input**:
+every plan carries the bearing it departs on (**174.8°** from Terrace Point) and the one it
+arrives home on (**344.6°**). The notes compare the arrival against the into-wind heading
+and state the component the pilot will actually meet — a wind from about **164.6°** is a
+pure tailwind on that approach, which is the case worth warning about on an airframe that
+lands on its belly.
+
+> The arrival bearing is **recomputed for every plan, never assumed.** From shore it barely
+> moves, because the 22 km run to the mooring dominates a grid a few kilometres across. From
+> a boat 2 km off M1 it swings by more than 30°.
 
 ---
 
@@ -129,19 +136,23 @@ That single command runs the whole engine and writes a timestamped `.kml` and
 ```
 Mission : V2 Plan
 When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
-Lines   : 15  |  Glint Score: 0.0
-Duration: 78.6 min | Margin: 11.4 min
-KML -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.kml
-PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260720-1329.png
+Lines   : 9  |  Glint Score: 0.0
+Duration: 72.9 min | Margin: 17.1 min
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20260917-1357.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260917-1357.png
 ```
 
 > The `When` line shows the mission time you selected in **Monterey local** and the
 > **UTC** instant the engine actually computed the sun position with.
 >
-> ⚠️ **`Duration` and `Margin` cover the grid only** — the transit out to the grid and back
-> is not included in either. On the mission above the true flown time is ~106 min, so the
-> real margin is **negative**. See the warning under
-> [V2 status](#v2-status--remaining-assumptions).
+> ✅ **`Duration` and `Margin` now cover the whole flight**, transit included — fixed
+> 2026-09-17. They used to measure the grid alone, which made a 106-minute flight look like
+> it had 11 minutes to spare on a 90-minute battery. The engine now reserves the round trip
+> to the mooring *before* deciding how many flight lines fit, which is why the default
+> mission is **9 lines rather than 15**.
+>
+> ⚠️ One optimism remains: **climb and descent are still counted as zero time.** At 609.6 m
+> that is worth several minutes out of the 17.1 shown. Do not read the margin as slack.
 
 ### Options
 
@@ -202,7 +213,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 66 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 71 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -226,6 +237,12 @@ object for in-horizon dates and gracefully falls back to a clear-sky stub otherw
 Step C-1 — the **along-track payload mount** (90° relative azimuth, 30° off-nadir, every
 leg collecting).
 
+**Step J is underway and most of the way there.** As of 2026-09-17 the engine sizes the
+mission against a budget that pays for the transit, reports the duration of the route it
+would actually fly, carries the camera trigger spacing (280.7 m) and knows its own
+departure and arrival bearings. **What is left is the writer itself** — turning a finished
+plan into QGroundControl's JSON. Everything upstream of that file is done and tested.
+
 **Remaining work, in execution order:** **J** — QGC `.plan` JSON output (*active, and the
 only active step*); **F** — mission configurability; **G** — aircraft configurability;
 **C-2** — wind/boresight reporting (half built, re-scoped from a safety gate to
@@ -234,30 +251,34 @@ J is sidelined until J ships.
 
 > ### ⚠️ A generated plan is a planning sketch, not a flyable mission
 >
-> Three separate reasons, largest first:
+> This box used to list three reasons. **Two were fixed on 2026-09-17.** What is left:
 >
-> **1. The distance budget and the printed duration leave out the transit legs.** The
-> engine budgets and reports the **grid only**; the flight from launch out to the grid and
-> back to the landing site is not counted. Measured on the current default mission: grid
-> 82,320 m + transit 29,867 m = **112,187 m actually flown → 106.2 min against a 90-minute
-> endurance.** The summary prints **+11.4 min of margin on a flight that is 16.2 minutes
-> over the battery.** This is an arithmetic gap, not a weather one — onboard wind
-> compensation does not help it. **The fix is scheduled into Step J**; afterwards the
-> default mission from Terrace Point is 9 lines / 77,296 m / 72.9 min, with a 17.1 min
-> margin.
->
-> **2. The launch/land coordinates in `constants.py` are stale.** They still hold a
-> south-shore position (14,615 m from M1) while their waypoint names say Seymour. The
-> standing default site is **Terrace Point** (36.94840 N, 122.06538 W) on the north shore —
-> a single pad for both launch and land — which measures **22,386 m from M1, 53% further**.
-> Round-trip transit alone is **44.8 km ≈ 41.5 min of a 90-minute battery**. Taken together
-> with defect 1, an honest budget from Terrace Point supports **9 flight lines, not the 15
-> the engine emits** (15 lines works out to 120.4 min of flying).
->
-> **3. Nothing validates anything.** `src/validator.py` holds a docstring and no code. Note
+> **1. Nothing validates anything.** `src/validator.py` holds a docstring and no code. Note
 > that its docstring describes the **cancelled** return-to-home gate: per the 2026-09-08
 > constraints the engine no longer gates on wind at all. Whether **battery/endurance**
-> feasibility remains a gate is an open decision.
+> feasibility remains a gate is an open decision — though the everyday case is now handled
+> by sizing rather than gating (see below).
+>
+> **2. No output has ever been flown, or even round-tripped through QGC.** The `.plan`
+> writer does not exist yet. Until a generated file has been loaded into QGroundControl,
+> re-exported and compared, treat the format as unverified.
+>
+> **3. Climb and descent are counted as zero time.** The whole route is timed at cruise.
+> At 609.6 m a full vertical profile is worth several minutes, against a reported 17.1 min
+> margin. This is now the largest remaining optimism in the duration.
+>
+> #### ✅ Fixed on 2026-09-17
+>
+> **The distance budget used to leave out the transit legs.** The engine budgeted and
+> reported the **grid only**, so nothing paid for the flight out to the mooring and back —
+> 112,187 m actually flown against a 90-minute battery, reported as +11.4 min of margin.
+> The engine now reserves the round trip *before* choosing how many flight lines fit. The
+> default mission is **9 lines / 77,296 m / 72.9 min / 17.1 min margin**, and `Duration`
+> and `Margin` describe the route that would actually be flown.
+>
+> **The launch/land coordinates used to be stale**, holding a south-shore position while
+> their waypoint names said Seymour. They now hold **Terrace Point** (36.94840 N,
+> 122.06538 W) — a single pad for both launch and land, **22,386 m from M1**.
 
 Still assumed (V2 work in progress):
 
@@ -276,6 +297,11 @@ Still assumed (V2 work in progress):
   and is always sized from the endurance budget rather than from a requested size. All
   three become user-settable in step **F**, along with line length, grid width, launch and
   landing points, along- and cross-track overlap, and the camera viewing angle.
+- **Where you launch from is the biggest lever on how much science you get.** From Terrace
+  Point the round trip to the mooring consumes **54% of the battery** before a single
+  science line is flown. Launching from a stationary boat 2 km off M1 takes the same
+  aircraft from 9 flight lines to 13. Making the launch point user-settable (step **F**) is
+  therefore an efficiency feature, not just a convenience one.
 - **Sun glint** is the only ranking metric (science legs held 90° off the sun at a 15°
   tolerance). Cloud cover is fetched but not yet folded into ranking (step **D**).
 - The 90° is measured on the **camera boresight**, which follows the fuselage, so crosswind

@@ -28,6 +28,13 @@ is SIDELINED behind Step J (JSON output).** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
+**Step J progress as of 2026-09-17: J-0 through J-4.5 are DONE and tested (71 tests
+green). J-5 (the writer) is the next step and the only substantial one left.** The two
+largest defects the warning box used to carry — the transit-blind budget and the stale
+launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
+the commute, reports a duration for the route actually flown, and carries the approach
+and departure bearings it commits the aircraft to.
+
 ## Operating constraints — 2026-09-08 (SUPERSEDES EARLIER SCOPING)
 
 The engine is no longer a single-mission tool for one aircraft flying one site. It is
@@ -80,44 +87,48 @@ takeoff/land commands Step J must emit):
 
 > ## ⚠️ READ THIS BEFORE TRUSTING A GENERATED PLAN
 >
-> A generated plan is a **planning sketch for review**, never a flyable mission. Three
-> separate reasons, in order of size:
+> A generated plan is a **planning sketch for review**, never a flyable mission. This box
+> used to carry three reasons. **Two are fixed as of 2026-09-17** and are recorded below
+> as history, because the reasoning is worth keeping and because re-measuring is expensive.
 >
-> **1. The distance budget ignores the transit legs.** `metrics["total_route_distance_m"]`
-> is `geo._route_distance_m(route_points)` over **grid points only**; launch and land are
-> prepended/appended afterwards in `planner._classify_waypoints`, and
-> `route_duration_min` is handed the grid-only number. Measured on the current default
-> mission: grid 82,320 m + transit 29,867 m = **112,187 m actually flown → 106.2 min
-> against a 90 min endurance.** The summary prints **+11.4 min of margin on a flight that
-> is 16.2 min over the battery.** This is arithmetic, not weather — onboard wind
-> compensation does not touch it. Fixing it is a prerequisite for any honest budget.
->
-> **2. The launch point in `constants.py` is stale.** `V1_LAUNCH_POINT_*` /
-> `V1_LAND_POINT_*` still hold **36.637, −121.936** (south shore, 14,615 m from M1) while
-> the waypoint *names* say `Seymour-Beach-Launch` / `Seymour-Road-Land`. The real site is
-> **Terrace Point, 36.94840 N / 122.06538 W** (north shore), a single pad serving as both
-> launch and land, and it measures **22,386 m from M1 — 53% further**. Round-trip transit
-> becomes **44.8 km ≈ 41.5 min of a 90 min battery.** Combined with defect 1, an honest
-> budget from Terrace Point supports **N=9 lines, not the 15 the engine emits**
-> (N=9 → 77,296 m / 72.9 min; N=15 → 127,559 m / 120.4 min).
->
-> **3. Nothing validates anything.** `validator.py` holds a docstring and no code. Note
+> **1. Nothing validates anything.** `validator.py` holds a docstring and no code. Note
 > that under the 2026-09-08 constraints this is *no longer* about wind: the RTH/crosswind
 > gate C-2 was scoping is **cancelled**. What survives as a genuine open question is
 > whether **battery/endurance feasibility** stays a gate or also becomes a report — see
-> [Step E](#e-validatorpy--legalityfeasibility-gating-sidelined-and-narrowed).
+> [Step E](#e-validatorpy--legalityfeasibility-gating-sidelined-and-narrowed). Note that
+> J-4 makes the *sizing* honest; it does not add a *gate*, and the two are different jobs.
+>
+> **2. No output has been flown, or even round-tripped through QGC.** The `.plan` writer
+> does not exist yet (J-5). Until a generated file has been loaded into QGC, re-exported
+> and diffed, treat the format as unverified.
+>
+> ### ✅ FIXED — kept as history, do not re-diagnose
+>
+> **~~The distance budget ignores the transit legs.~~ Fixed in J-4.** `geo` was handed the
+> entire 82,620 m budget and allowed to size a grid that consumed all of it, so nothing
+> paid for the 44.8 km round trip to M1. The engine emitted **N=15 = 127,559 m = 120.4 min
+> against a 90 min battery, and printed +11.4 min of margin.** `planner` now reserves the
+> transit before `geo` chooses N. Default mission is **N=9 / 77,296 m / 72.9 min /
+> 17.1 min margin**. See the J step table in the roadmap.
+>
+> **~~The launch point in `constants.py` is stale.~~ Fixed in J-1.** The constants held
+> the south shore (36.637, −121.936) while the waypoint names said Seymour. They now hold
+> **Terrace Point, 36.94840 N / 122.06538 W**, one pad for both launch and land, **22,386 m
+> from M1**. ⚠️ **The waypoint NAMES in `planner.py` are still `Seymour-Beach-Launch` /
+> `Seymour-Road-Land`** — cosmetic, reaches the KML labels, worth fixing in J-8.
 >
 > The one V2C-2 change that IS live is the parallax line extension in
-> `geo.make_lawnmower_grid_through_m1` — it lengthens every line by 808 m, which is why
-> grid distance is 82,320 m against an 82,620 m budget.
+> `geo.make_lawnmower_grid_through_m1` — it lengthens every line by 808 m.
 
 ## Layout
 
 - `flight_plan_maker.py` — terminal entry point (run this). CLI flags: `--name`, `--out-dir`, `--date`, `--time`.
 - `src/` — engine modules:
   - `constants.py` — engine constants (aircraft, M1, sensor, date/time defaults + timezone, weather, actions).
-  - `objects.py` — core classes (Aircraft, Sensor, Weather, CurrentSunState,
-    Waypoint, MissionRequest, CandidatePlan).
+  - `objects.py` — core classes (Aircraft, **Vehicle**, Sensor, Weather, CurrentSunState,
+    Waypoint, MissionRequest, CandidatePlan). `Vehicle(Aircraft)` adds the MAVLink protocol
+    identity Step J needs — `vehicle_type`, `firmware_type`, `is_VTOL`, `hover_speed_ms`.
+    ⚠️ **Nothing constructs a `Vehicle` yet** — see the J-5 prerequisite in the roadmap.
   - `sun.py` — local→UTC datetime resolver (`resolve_mission_datetime`, `mission_datetime`) + pysolar sun azimuth/elevation (`create_sun_state`).
   - `aircraft_math.py` — endurance → distance budget, duration, battery margin, plus the
     V2C wind triangle (**reporting only** as of 2026-09-08 — see constraint 4).
@@ -130,7 +141,11 @@ takeoff/land commands Step J must emit):
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
-- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** tiers, 66 tests); see [Setup & run](#setup--run).
+- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** tiers, 71 tests); see [Setup & run](#setup--run).
+- `exp2.plan` — a **real QGroundControl export for this site**, and the only ground truth
+  the repo has for the `.plan` format. J-5 must be checked against it; several format
+  questions that docs left ambiguous are settled by reading it. See
+  [What `exp2.plan` settles](#what-exp2plan-settles).
 - `conftest.py`, `pytest.ini`, `requirements-dev.txt`, `pyrightconfig.json` — test wiring
   and editor import resolution (`pyrightconfig` sets `extraPaths: ["src"]` so Pylance
   resolves the flat `import geo` / `planner` / `constants` style).
@@ -151,6 +166,23 @@ takeoff/land commands Step J must emit):
   being allowed to veto or steer a plan. Wind math *reports*; it does not decide.
 - Modules import flat (`import constants as CONST`, `from geo import ...`); the entry
   point and `conftest.py` put `src/` on `sys.path`.
+- **Functions work from their parameters, not from module-level singletons.** `planner`
+  declares `_Black_Swift`, `_Launch_Waypoint`, `_M1_Waypoint` and
+  `_Black_Swift_usable_endurance_m` at module scope, and `build_candidate_plan` also
+  *receives* all of them. Reaching for the global inside the function is silently correct
+  today — the singleton is what gets passed — and wrong the moment Step F makes the launch
+  point user-settable or Step G deletes the aircraft singleton. It also makes the function
+  untestable with any other site or airframe, which is not hypothetical: the J-4 retry and
+  boat-launch tests both require passing a different `MissionRequest`.
+- **⚠️ When a name stops describing its contents, SPLIT it — do not redefine it.** This is
+  the single most repeated defect shape in this codebase, three times and counting:
+  - `line_length_m` (science coverage) vs `physical_line_length_m` (what gets flown)
+  - `total_grid_distance_m` (the grid) vs `total_flight_distance_m` (the whole route)
+  - `grid_budget_m` (what `geo` was handed) vs `usable_endurance_distance_m` (the battery)
+
+  Each time, one name quietly came to mean two things, every caller kept working, and the
+  error only surfaced as an impossible number much later. Before reusing an existing field
+  for a changed quantity, add a second field instead.
 
 ## Setup & run
 
@@ -236,33 +268,86 @@ Read this before touching the grid, classification, or output code.
   full lines with small symmetric gray gaps at the turns.
 - **Metrics.** `science_lines = N`, `traverse_lines = 0`, `offset_lines = N-1`
   where `N = total_lines` (odd, so the center line passes through M1 → free overflight).
-  `cross_track_swath_m` and `sensor_parallax_m` ride the same metrics dict and reach the
-  plan via `set_grid_metrics`.
+  `cross_track_swath_m`, `sensor_parallax_m` and `camera_trigger_distance_m` ride the same
+  metrics dict and reach the plan via `set_grid_metrics`.
+
+- **Transit-aware sizing (V2 Step J-4, done).** ⚠️ **Read this before touching the budget,
+  `geo`'s signature, or anything named `*_distance_m`.** `planner.build_candidate_plan`
+  reserves the transit *before* `geo` is allowed to choose N:
+  1. `seed = 2 × distance(launch, M1)` — accurate to **+0.40%** against the measured
+     entry/exit legs at the Terrace Point geometry, so one pass normally suffices.
+  2. `grid_budget = usable_endurance − seed`, handed to `_pick_best_orientation`.
+  3. After `_reorient_to_launch` and `_classify_waypoints`, the **true** transit is measured
+     from the real corners: `d(launch_wp, route[1]) + d(route[-2], land_wp)`.
+  4. If the total does not fit, re-seed with the **measured** transit and loop, bounded by
+     `CONST.TRANSIT_FIT_MAX_PASSES`. The measured value is strictly larger than the estimate
+     that just failed, so the budget strictly shrinks and the loop **cannot spin**. If it
+     shrinks past a 3-line grid, `geo` raises — the honest "no grid fits this launch point".
+  - **The subtraction lives in `planner`, never `geo`.** `make_lawnmower_grid_through_m1`
+    takes a centre, an orientation and a distance; it does not know where launch is and
+    **must not learn**. Passing launch/land into `geo` is the naive fix and it breaks
+    unidirectionality.
+  - **⚠️ `CONST.TRANSIT_FIT_MAX_PASSES` is NOT `RTH_MAX_ITERATIONS`.** The RTH loop bounded a
+    *weather* gate that was cancelled; this one bounds a *geometric* convergence. Do not
+    merge them.
+  - **Four names, four distances** — the distinction is load-bearing:
+    - `plan.usable_endurance_distance_m` — what the **battery** affords (82,620 m). Set by
+      `planner`, because only the hub knows it.
+    - `plan.grid_budget_m` — what `geo` was **handed** (endurance − transit, 37,847 m).
+      Arrives via the metrics dict.
+    - `plan.total_grid_distance_m` — what the **grid** costs (32,343 m). From `geo`.
+    - `plan.total_flight_distance` — what is actually **flown** (77,296 m). Computed by
+      `planner` over the classified route, and what `route_duration_min` consumes.
+
+    Collapsing any two of these reintroduces the defect. It has already happened twice under
+    different names — see the last bullet in [Design conventions](#design-conventions).
+
+- **Transit bearings (V2 Step J-4.5, done).** `plan.departure_bearing_deg` (**174.8°**) and
+  `plan.approach_bearing_deg` (**344.6°**) are set by `set_transit_bearings` from the same
+  two waypoint pairs J-4 measures for the transit. **Reporting only** — they reach the
+  terminal summary and the pilot-notes PDF, never the `.plan` (a heading in the file would
+  mean a commanded yaw, which the null-yaw decision rules out).
+  - ⚠️ **Measure after `_reorient_to_launch`, never before.** Reorientation decides which end
+    of the serpentine the aircraft exits from; read off the raw grid the approach comes out
+    ~10° wrong. Pinned by a Tier 4 assertion that the reported approach equals
+    `bearing_between(waypoints[-2], waypoints[-1])`, mutation-verified to fail otherwise.
+  - The approach sits **5.0° off the pad→M1 reciprocal** (349.6°) for a shore launch,
+    because 22.4 km of transit dominates a few-km grid. **A boat launch breaks that** —
+    from 2 km out it swings to 308.5°. Never brief the number from memory; recompute it.
+  - Operational use: a wind **from ~164.6°** is a pure tailwind on the approach, which is
+    the case worth warning about on a belly-landing airframe. Crab on approach at 18 m/s
+    cruise: 6.4° at 2 m/s crosswind, 12.8° at 4, 19.5° at 6, 26.4° at 8, 33.8° at 10.
+
 - **Tests.** Tier 0 (primitives) and Tier 2 (derived math) are pure closed-form math
   (must never fail); Tier 1 pins the date/time resolver, sun-state, and weather-leaf wiring; Tiers 3–5 drive
   the real mission and assert structural invariants as *indicators* that the math is sound.
+  **Tier 2 needed no rebasing for J-4** — those tests check `route_duration_min` in closed
+  form rather than asserting the default mission's N, which is exactly what the tiering was
+  for. The J-4/J-4.5 additions live in Tier 3 (`test_4_grid_assembly.py`: both budget
+  assertions, the retry-convergence probe, the boat-launch science gain and bearing swing)
+  and Tier 4 (`test_5_classification.py`: bearings reach the plan, are measured on the final
+  route, and track the M1 reciprocal from shore).
 - **Known defects and deferred items:**
-  - 🔴 **The budget and the reported duration exclude the transit legs.** See reason 1 in
-    the warning box above. Grid-only 82,320 m is what gets budgeted and printed; the flown
-    route is 112,187 m (106.2 min vs. 90 min endurance). Every duration, margin, and
-    grid-size number the engine has ever produced is optimistic by the transit. This is the
-    largest known defect in the engine and it is **not** weather-related. **Fix is scheduled
-    into Step J-4** — after it, the default mission is N=9 / 77,296 m / 72.9 min / 17.1 min
-    margin from Terrace Point.
-  - 🔴 **Launch/land constants are stale.** `V1_LAUNCH_POINT_*` / `V1_LAND_POINT_*` point at
-    the south shore while their waypoint names say Seymour. The standing default is Terrace
-    Point (36.94840 N, 122.06538 W), **one pad for both launch and land**, 22,386 m from M1
-    — 53% further than the constants encode.
+  - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
+  - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1.** The *waypoint names* in
+    `planner.py` are still `Seymour-Beach-Launch` / `Seymour-Road-Land` and reach the KML
+    labels — cosmetic, fix in J-8.
+  - ✅ ~~Along-track overlap does not exist.~~ **Built in J-2/J-3.** `Sensor` carries
+    `cross_track_overlap` and `along_track_overlap` separately;
+    `metrics["camera_trigger_distance_m"]` is **280.74 m** (561.48 m footprint × 50%) and
+    reaches the plan. `ground_footprint_along_m` finally has a caller.
+  - 🔴 **`Vehicle` is never instantiated.** `planner._Black_Swift` is a plain `Aircraft`, so
+    `plan.aircraft` has no `is_VTOL`, `vehicle_type`, `firmware_type` or `hover_speed_ms`.
+    **This blocks J-5** — the writer branches on all four. See the J-5 prerequisite.
   - **Grid sizing is budget-derived, not requested.** `geo._initial_total_lines_from_budget`
     picks N from the endurance budget. `V1_DEFAULT_GRID_WIDTH_km`,
     `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km` are declared but never
     read. They were removal candidates; under **Step F they are reinstated** as the defaults
     behind user-settable dimensions. Do not delete them.
-  - **Along-track overlap does not exist yet.** Only cross-track overlap
-    (`V1_DEFAULT_OVERLAP_PCT`) is modelled, and it drives line spacing. Step F adds an
-    along-track overlap, which is a different quantity: it governs image **trigger spacing**
-    along a line, something the engine does not currently compute at all
-    (`ground_footprint_along_m` exists and is reporting-only).
+  - **Climb and descent are still unmodeled.** The whole route is costed at cruise speed
+    with zero vertical time, which J-4 did not change — it made the *horizontal* distance
+    honest, nothing more. At 609.6 m that is ~3 min of climb and ~5.6 min of descent counted
+    as zero, against a 17.1 min margin. Scoped into Step G.
   - **Parallax is reported, and only half-corrected.** The line extension is live; the
     crab-shear term is cancelled per constraint 4.
 
@@ -285,6 +370,11 @@ A `.plan` (JSON) writer, so a plan can be uploaded and flown instead of merely l
 the intended helper (`write_qgc_plan`). Today's KML is **visualization only** in QGC — it
 does not import as a flyable mission — which is the entire reason this jumped the queue.
 **No other roadmap step may start until this ships.**
+
+> **STATUS 2026-09-17 — J-0 through J-4.5 are DONE, 71 tests green.** The engine produces
+> a correct, honest, fully-populated `CandidatePlan`; what is missing is the serializer.
+> **J-5 is the next step and the only substantial one left.** Everything below marked
+> "settled" or "done" is history — read it for the reasoning, not as work to do.
 
 **Scoping settled 2026-09-08:**
 - **Two consumers.** QGroundControl driving **PX4** (custom rotorcraft), and BlackSwift's
@@ -322,19 +412,23 @@ list — the engine's truth — and `_serialize_qgc(items, plan)` renders it. A 
 `_serialize_blackswift(...)` is then a sibling, not a rewrite. This split is what keeps the
 two-consumer requirement from becoming a fork.
 
-**Two slices of later steps are pulled forward, because J cannot emit a correct file
-without them:**
-- *From G:* `Aircraft` must declare its **vehicle class** — pure fixed wing / multirotor /
-  VTOL fixed wing — because the takeoff and land commands differ. Same move `Sensor.mounting`
-  already makes: record the assumption as data on the object instead of burying it in a
-  formula. Note that **neither class in use today needs a transition altitude** (the S2 is a
-  pure fixed wing; custom vehicles are pure rotorcraft). `VTOL_TRANSITION_ALTITUDE_m = 50`
-  is provisional, applies to the VTOL class only, and that class currently has no instance.
-- *From F:* an **along-track overlap** on `Sensor`, because distance triggering needs a
-  spacing. `geo.ground_footprint_along_m` already computes the input (**561.5 m** at current
-  geometry) and is otherwise unused. Cross-track overlap stays at 50%; along-track default
-  stays as-is for now. Spacing = footprint × (1 − overlap): **280.7 m at 50%** = one frame
-  every 15.6 s at cruise.
+**Two slices of later steps were pulled forward, because J cannot emit a correct file
+without them. Both are BUILT as of J-2/J-3:**
+- ✅ *From G:* the **vehicle class**, built as `Vehicle(Aircraft)` rather than as a field on
+  `Aircraft` — it carries `vehicle_type`, `firmware_type`, `is_VTOL` and `hover_speed_ms`.
+  Same move `Sensor.mounting` already makes: record the assumption as data on the object
+  instead of burying it in a formula. **Neither class in use today needs a transition
+  altitude** (the S2 is a pure fixed wing; custom vehicles are pure rotorcraft);
+  `TRANSITION_REL_m = 50` is provisional, applies to the VTOL class only, and that class has
+  no instance. ⚠️ **The class exists but nothing constructs one** — see the J-5 prerequisite.
+- ✅ *From F:* the **along-track overlap** on `Sensor`, because distance triggering needs a
+  spacing. `Sensor` now carries `cross_track_overlap` and `along_track_overlap` separately,
+  and `geo.ground_footprint_along_m` finally has a caller. Measured: footprint **561.48 m**,
+  spacing = footprint × (1 − overlap) = **280.74 m at 50%** = one frame every 15.6 s at
+  cruise, carried as `metrics["camera_trigger_distance_m"]`.
+  ⚠️ **`geo` takes both as parameters and reads neither from `constants`** — the same
+  contract `cross_track_fov_deg` already had. Step F makes them user-settable, and a
+  `Sensor` read inside `geo` would be silently ignored.
 
 **Where the numbers come from — follow the existing metrics path.** `geo` already computes
 `sensor_parallax_m` and `cross_track_swath_m` during grid assembly and they ride the metrics
@@ -342,15 +436,17 @@ dict into `set_grid_metrics`. Along-track footprint and trigger distance go the 
 new plumbing, and `outputs` stays a black box rendering what the plan carries — a third
 sibling to `write_kml` / `write_png`, not a new decision layer.
 
-**✅ THE TRANSIT FIX IS IN SCOPE FOR J** (decided 2026-09-08). A `.plan` is
+**✅ THE TRANSIT FIX — SHIPPED IN J-4** (scoped 2026-09-08, built 2026-09-17). A `.plan` is
 machine-consumed — unlike a KML that a human eyeballs, this file gets uploaded and flown —
 so the engine may not ship its first flyable artifact on a budget that omits a third of the
-flight.
+flight. Implementation detail is in
+[Current state](#current-state--what-the-engine-actually-does-context-for-future-work);
+what follows is the measurement, kept because re-deriving it is expensive.
 
 Measured from Terrace Point: **22,386 m to M1**, bearing 169.6°, round-trip transit
 **44.8 km ≈ 41.5 min of a 90 min battery**, barely varying with grid size (45,239 m at N=15
-vs. 44,800 m at N=3) because M1 dominates. Today's engine emits **N=15 = 127,559 m =
-120.4 min**, thirty minutes past the battery. After the fix:
+vs. 44,800 m at N=3) because M1 dominates. The old engine emitted **N=15 = 127,559 m =
+120.4 min**, thirty minutes past the battery, and printed +11.4 min of margin. Now:
 
 ```
 usable (15% reserve)      82,620 m
@@ -360,26 +456,19 @@ true transit (entry 21,952 + exit 23,001)  44,953 m   [seed error +180 m, +0.40%
 TOTAL FLIGHT              77,296 m  |  72.9 min  |  margin 17.1 min   FITS
 ```
 
-- **The seed is accurate to 0.40%, so one pass suffices** — no fixed-point loop. Seed with
-  `2 × distance(launch, M1)`, size the grid, recompute the exact transit from the real
-  entry/exit corners, verify it still fits. Keep a shrink fallback for the case where it
-  does not.
-- **⚠️ The subtraction MUST happen in `planner`, not `geo`.** `make_lawnmower_grid_through_m1`
-  receives the M1 center, an orientation and a distance — **it does not know where launch
-  is, and must not learn.** Passing launch/land into `geo` would be the naive fix and it
-  breaks unidirectionality. `planner` knows both the mission request and `geo`, so `planner`
-  computes the transit, hands `geo` the reduced budget, and `geo` stays a leaf.
-- **Two distances, two names.** `metrics["total_route_distance_m"]` has always been the
-  **grid** figure despite its name — that mismatch is the whole defect. Split it the way
-  `geo` already splits `line_length_m` (science coverage) from `physical_line_length_m`
-  (what gets flown): a grid-route figure from `geo`, and a total-flight figure computed by
-  `planner` over the classified route once launch and land are in it. Duration consumes the
-  total. Blast radius is small and known: `geo.py:371–376`, `planner.py:527`,
-  `objects.py:600/656/782`, `tests/test_4_grid_assembly.py:65`.
-- **This shifts every Tier 2 duration expectation.** Deliberate, one-time.
-- **"or a stationary boat" is the escape hatch.** A launch point near M1 collapses the
-  45 km transit and hands nearly the whole battery to science. That reframes Step F from
-  partner convenience to the thing that makes this mission efficient.
+- **A sizing correction, NOT a gate.** This is the distinction that keeps it consistent with
+  constraint 4, and it is worth restating because the two look alike. Wind and RTH reason
+  about *conditions* the aircraft compensates for in flight — hence cancelled. Transit
+  distance is *geometry*, known exactly at plan time, and **no onboard sensor makes a route
+  shorter**. J-4 changed which number `geo` is handed; it rejects nothing. The open Step E
+  question (does endurance feasibility become a gate?) is separate and unprejudiced by it.
+- **Tier 2 duration expectations did NOT shift** — the earlier prediction that they would
+  was wrong. Those tests check `route_duration_min` in closed form rather than asserting the
+  default mission's N, so the tiering absorbed the change.
+- **"or a stationary boat" is the escape hatch, and it is now measurable.** A launch 2 km
+  from M1 yields **N=13 instead of N=9**, pinned by a Tier 3 test. Transit is **54% of the
+  battery** before a single science line is flown. That reframes Step F from partner
+  convenience into the largest efficiency lever the engine has.
 
 **✅ LAUNCH AND RECOVERY — SETTLED, AND SIMPLER THAN FEARED** (decided 2026-09-08).
 The S2 **launches from a stand** and **lands on its belly at a very low stall speed with
@@ -390,40 +479,100 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
   delivered in the pilot-notes PDF — never baked into the `.plan`. This is constraint 4
   applied to landing: the engine computes and advises, the pilot decides. **The RPIC can
   always take manual control of the landing, as with any QGC plan.**
-- **⚠️ Know that the `.plan` still encodes an approach direction implicitly.** The aircraft
-  arrives on the bearing from the last grid waypoint to the pad — measured at **344.6°** and
-  effectively fixed, since it is the M1→Terrace Point transit reciprocal. That is a *fact of
-  the geometry*, not a wind decision, and the RPIC must be told it. It gives the pilot-notes
-  document its **first genuinely operational customer**: compare the plan's implicit 344.6°
-  approach against the into-wind heading and state the headwind/crosswind/tailwind component
-  the pilot will meet, so they know before launch whether they intend to take over. A
-  belly-landing airframe on a tailwind approach is exactly the case worth warning about.
+- **⚠️ The `.plan` still encodes an approach direction implicitly**, and as of **J-4.5 the
+  engine now computes and carries it** — `plan.approach_bearing_deg` = **344.6°**,
+  `plan.departure_bearing_deg` = **174.8°**. A *fact of the geometry*, not a wind decision,
+  and the RPIC must be told it. This gives the pilot-notes document its **first genuinely
+  operational customer**: compare the arrival bearing against the into-wind heading and
+  state the headwind/crosswind/tailwind component the pilot will meet. A belly-landing
+  airframe on a tailwind approach is exactly the case worth warning about. Details and
+  caveats in [Current state](#current-state--what-the-engine-actually-does-context-for-future-work).
 - The **launch item's altitude** is a climb-out altitude, not the 609.6 m mission altitude
-  the launch waypoint carries today. Set it in J-1.
+  the launch waypoint carries. Set in J-1 as `TAKEOFF_REL_m = 50` (relative frame), with
+  `LANDING_REL_m = 0` for the land item.
 
 **Step table:**
 
 | Step | File | Work | State |
 |---|---|---|---|
-| J-0 | — | Pin schema against the user's field list; confirm takeoff/land commands per vehicle class | ❌ |
-| J-1 | `constants.py` | Terrace Point coords (launch = land); along-track overlap; launch climb-out altitude; `VTOL_TRANSITION_ALTITUDE_m = 50` (provisional, no instance); vehicle-class + command constants; schema literals | ❌ |
-| J-2 | `objects.py` | `Aircraft` vehicle class; `Sensor` along-track overlap; `CandidatePlan` trigger-distance + total-flight-distance fields | ❌ |
-| J-3 | `geo.py` | Along-track spacing into the metrics dict; rename the grid figure so it stops claiming to be the whole route | ❌ |
-| J-4 | `planner.py` | Thread the new sensor fields; **subtract the transit seed before calling `geo`**; recompute exact transit and set total flight distance; duration from the total | ❌ |
-| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ❌ |
-| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path | ❌ |
-| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, home position; **Tier 2 duration expectations rebased** | ❌ |
-| J-8 | docs | Closeout | ❌ |
+| J-0 | — | Pin schema against the field list; confirm takeoff/land commands per vehicle class | ✅ |
+| J-1 | `constants.py` | Terrace Point coords (launch = land); along-track overlap; climb-out altitude (`TAKEOFF_REL_m`); per-command param constants in `[2,3,16,21,22,84,85,206]` order; schema literals | ✅ |
+| J-2 | `objects.py` | `Vehicle(Aircraft)` with MAVLink identity; `Sensor` split into cross/along-track overlap; `CandidatePlan` trigger-distance + total-flight-distance fields | ✅ |
+| J-3 | `geo.py` | Trigger distance into the metrics dict (along-track FOV/overlap passed as **parameters**, not read from `constants`); `total_route_distance_m` → `total_grid_distance_m` | ✅ |
+| J-4 | `planner.py` | Reserve the transit before `geo` sizes anything; measure the true transit; bounded retry; duration from the total; `grid_budget_m` vs `usable_endurance_distance_m` split | ✅ |
+| J-4.5 | `planner.py`, `objects.py` | Departure + approach bearings measured on the **final** route, reporting only | ✅ |
+| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ❌ **NEXT** |
+| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ❌ |
+| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ❌ |
+| J-8 | docs | Closeout; fix the stale `Seymour-*` waypoint names | ❌ |
 
-**No open decisions remain for J.** Both were settled 2026-09-08: the transit fix is in
-scope, and launch/recovery needs no approach geometry. J-0 (pinning the schema against the
-user's field list) is the only thing standing between here and J-1.
+**⚠️ J-5 HAS A PREREQUISITE — `Vehicle` is never instantiated.** `planner._Black_Swift` is
+a plain `Aircraft`, so `plan.aircraft` has **no** `is_VTOL`, `vehicle_type`, `firmware_type`
+or `hover_speed_ms` — and `_serialize_qgc` needs all four. J-2 built the class and nothing
+adopted it. Do this first:
+- Add `BLACKSWIFT_VEHICLE_TYPE = 1` (Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4)
+  to `constants.py`; there are no such constants today.
+- Change `_Black_Swift = Aircraft(...)` to `Vehicle(...)` with those two arguments.
+- `Vehicle.__init__` **raises** on an invalid vehicle type and **warns + defaults to PX4**
+  on an invalid firmware type, so a typo fails loudly rather than writing a bad file.
+- Add a Tier 1 or Tier 3 assertion that the default plan's aircraft *is* a `Vehicle` — the
+  gap survived three steps precisely because nothing checked.
+
+**The last open decision in J: which landing item.** `exp2.plan` expresses its fixed-wing
+landing as a **`ComplexItem` of `complexItemType: "fwLandingPattern"`** — with
+`landingApproachCoordinate`, `loiterRadius: 75`, `loiterClockwise`, `finalApproachSpeed`
+and `stopTakingPhotos` — not as a `NAV_LAND` SimpleItem.
+**Recommendation: plain `NAV_LAND` (21).** The S2 belly-lands with steep descent capability
+and needs no loiter pattern; `fwLandingPattern` would force the engine to invent an approach
+coordinate and loiter geometry, which is exactly the work the roadmap settled it would not
+do, and its `stopTakingPhotos` flag overlaps our explicit camera items. Note the "never a
+`ComplexItem`" rule was aimed at **survey** blocks, which regenerate and therefore destroy
+the sun-oriented grid — a landing pattern destroys nothing, so that rule does not by itself
+bar this if a partner later requires it.
 
 **Follows J, lower priority:** the **PDF pilot-notes document** from constraint 4 — the
 wind / crab / return-time reporting, deliberately kept out of the machine-readable outputs.
-Its first operational customer is already known: the **recommended landing approach**,
-comparing the plan's implicit 344.6° arrival against the into-wind heading. That is also the
-first time any of C-2's wind math will have done real work for anybody.
+Its first operational customer is already known and now computed: the **recommended landing
+approach**, comparing `plan.approach_bearing_deg` against the into-wind heading. That is
+also the first time any of C-2's wind math will have done real work for anybody.
+
+### What `exp2.plan` settles
+
+`exp2.plan` in the repo root is a **real QGroundControl export for this site** and the only
+ground truth available for the format. Read it before writing the serializer. What it
+resolves:
+
+**Frames are NOT uniform, and this is the easiest thing in J-5 to get wrong:**
+
+| item | `frame` | `AltitudeMode` | altitude |
+|---|---|---|---|
+| takeoff / land | 3 (relative) | 1 | `TAKEOFF_REL_m` 50 / `LANDING_REL_m` 0 |
+| cruise nav | 0 (AMSL) | 2 | 609.6 |
+| DO camera | 2 (mission) | — | 0 |
+
+An earlier revision of the planning notes said "every nav item carries frame 3". **That is
+wrong.** Cruise waypoints are `frame 0` / `AltitudeMode 2`. This *is* the mixed-datum
+decision expressed per item, and it is why `globalPlanAltitudeMode = 0` (Mixed).
+
+The rest:
+
+- **QGC writes keys alphabetically sorted with 4-space indent** —
+  `json.dump(obj, f, indent=4, sort_keys=True)` reproduces it closely, which makes a diff
+  against a QGC re-export readable.
+- **Both `cruiseSpeed` and `hoverSpeed` are always present**, even on a fixed wing (15 and
+  5). Write both; the vehicle class decides which the aircraft honours. Simpler than
+  branching, and it matches what QGC produces.
+- **`AMSLAltAboveTerrain` is `null` on every item**, and cruise `params[3]` (yaw) is `null`.
+  Both confirmed, both required.
+- **Two divergences from `constants.py`**, flagged not changed — these are QGC constants and
+  therefore user territory:
+  - QGC writes `0` for takeoff yaw where `TAKEOFF_YAW_deg = None` would emit `null`.
+  - QGC writes `0` for acceptance radius where `ACCEPTANCE_RADIUS_m = 28.5`. `0` means "use
+    the vehicle default"; 28.5 m is a deliberate override tied to the S2 turn radius. Valid
+    either way, but a round-trip diff will show it — expected, not a bug.
+- **No `DO_SET_CAM_TRIGG_DIST` items appear in it**, so the camera half of our output has no
+  reference. **Round-trip the first file J-5 produces**: load into QGC, re-export, diff.
+  Anything QGC rewrites is something we got wrong.
 
 ### F. Mission configurability (SIDELINED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,
@@ -442,9 +591,13 @@ overlap %, and camera off-nadir viewing angle.
   ("fill my endurance" vs. "cover this box").
 - The three unread constants (`V1_DEFAULT_GRID_WIDTH_km`, `V1_DEFAULT_LINE_LENGTH_km`,
   `V1_DEFAULT_LINE_SPACING_km`) become the defaults behind these inputs.
-- Along-track overlap is **new physics for this engine**: cross-track overlap sets line
-  spacing, along-track overlap sets image trigger spacing along a line
-  (`ground_footprint_along_m` is the input, and it is currently reporting-only).
+- ✅ **Along-track overlap already exists** — J-3 pulled it forward. `Sensor` carries both
+  overlaps, `geo` takes both as parameters, and the trigger distance rides the metrics dict.
+  F only has to make them *user-settable*; the physics is done.
+- **The launch point is the highest-value knob, not a convenience.** J-4 made the cost
+  visible: transit is **54% of the battery** from Terrace Point, and a launch 2 km from M1
+  takes the mission from N=9 to N=13. Whatever the delivery mechanism, launch/land coordinates
+  should be first-class.
 - Delivery mechanism (CLI flags vs. a mission config file) is undecided. The flag list is
   already at four and this adds ~9 more, which argues for a config file.
 
@@ -453,20 +606,25 @@ Per constraint 3. Fixed-wing, quadcopter, or hexacopter, with every fixed-wing p
 constant user-settable rather than hard-coded to the BlackSwift S2.
 - `objects.Aircraft` is already a general constructor — the hard-coding lives in
   `planner._Black_Swift`, a module-level singleton built from `BLACKSWIFT_*` constants.
-  That singleton is what has to go.
-- **Step J pulls the vehicle *class* forward** (pure fixed wing / multirotor / VTOL fixed
-  wing), because takeoff and land commands differ per class. G inherits the rest: the
-  performance numbers.
+  That singleton is what has to go. J-4 already removed the *reach-ins* to it from inside
+  `build_candidate_plan`, so the function now works from its parameters — deleting the
+  singleton is a smaller job than it was.
+- ✅ **Step J pulled the vehicle *class* forward** as `Vehicle(Aircraft)` (fixed wing /
+  multirotor / VTOL), because takeoff and land commands differ per class. G inherits the
+  rest: the performance numbers.
 - Multirotor is **not** just different numbers. `aircraft_math` assumes forward flight
   (cruise speed, turn penalty, turn radius); a multirotor hovers, turns in place, and has a
   materially different endurance-vs-speed curve. `geo`'s turn geometry and
   `route_duration_min`'s turn-penalty model both need a multirotor branch. Scope after the
   fixed-wing config lands, per the user.
-- **Climb and descent are unmodeled.** `Aircraft` carries climb 3.35 m/s and descent
-  1.80 m/s and `route_duration_min` uses neither — the whole route is flown at cruise with
-  zero vertical time. A full-altitude vertical profile at 609.6 m would be ~3 min up and
-  ~5.6 min down; the real fixed-wing profile climbs in forward flight so it is less, but it
-  is not zero, and today it is counted as zero.
+- **Climb and descent are unmodeled — and this is now the largest remaining optimism in the
+  duration.** `Aircraft` carries climb 3.35 m/s and descent 1.80 m/s and `route_duration_min`
+  uses neither; the whole route is flown at cruise with zero vertical time. A full-altitude
+  vertical profile at 609.6 m would be ~3 min up and ~5.6 min down. The real fixed-wing
+  profile climbs in forward flight so it is less than that, but it is not zero — and it is
+  now being compared against a **17.1 min margin** rather than an imaginary one. J-4 made
+  the horizontal distance honest and nothing more; do not read the new margin as slack until
+  this is modelled.
 - **Vehicle facts:** the S2 is a **pure fixed wing** (no VTOL, no transition altitude); the
   tri-motor VTOL **S3 is not an option**, its only airframe having been destroyed in company
   testing; custom partner vehicles are essentially always **rotorcraft** on PX4/QGC. Nothing
@@ -604,8 +762,13 @@ gate — read it as history. What remains for E:
 - **⚠️ OPEN DECISION — does battery/endurance feasibility stay a gate?** Constraint 4
   removes *weather-driven* gating, and the user's stated priority is that "legality and
   safety are still our priority." A route longer than the battery is not a weather problem
-  and no onboard sensor fixes it (see warning reason 1). Until this is decided, treat
-  endurance feasibility as **unresolved**, not as cancelled.
+  and no onboard sensor fixes it. Until this is decided, treat endurance feasibility as
+  **unresolved**, not as cancelled.
+- **J-4 narrowed this question without answering it.** The engine now *sizes* the grid so
+  the route fits the battery, which removes the everyday case E would have caught. What is
+  left for E is the case sizing cannot reach: a **user-requested** grid under Step F that
+  does not fit, where the engine must either refuse or report-and-proceed. That is a
+  genuinely different decision from the one that was open before, and a smaller one.
 - Wiring, if E stays a gate: `planner` builds a candidate → `validator` gates it → only
   valid plans reach `outputs`. Keep `validator` a leaf. `CandidatePlan` already carries
   `_is_legal`, `_is_aircraft_feasible`, `_validation_messages`, `_passes_over_m1`.
@@ -619,14 +782,26 @@ gate — read it as history. What remains for E:
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
   B (live NWS weather) and C-1 (along-track mount) are done**. Remaining, in execution
-  order: **J** (JSON output — active), **F** (mission configurability), **G** (aircraft
-  configurability), **C-2 re-scoped** (wind reporting), **D** (sun/cloud ranking), **E**
-  (legality).
+  order: **J** (JSON output — active, J-0…J-4.5 done, **J-5 next**), **F** (mission
+  configurability), **G** (aircraft configurability), **C-2 re-scoped** (wind reporting),
+  **D** (sun/cloud ranking), **E** (legality).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.
   `V1_DEFAULT_SENSOR_OFF_NADIR_deg` is 30, the V2C angle). The prefix records where the
   constant was introduced, not which version's value it holds — don't infer currency from it.
   **Roadmap letters work the same way** — they record scoping order, not build order.
 - **When a doc and a measurement disagree, measure.** Several numbers in these docs
-  (route distance, margin, N) were verified by instrumenting the engine on 2026-09-08, and
-  one long-standing claim — that `total_route_distance_m` is the route — turned out to be
-  false. Re-measure before trusting a figure that predates a geometry change.
+  (route distance, margin, N) were verified by instrumenting the engine on 2026-09-08 and
+  re-verified on 2026-09-17, and one long-standing claim — that `total_route_distance_m` is
+  the route — turned out to be false. Re-measure before trusting a figure that predates a
+  geometry change. Two 2026-09-17 examples of this rule paying off, both of which would have
+  been baked into tests otherwise:
+  - The approach bearing was briefly recorded as 354.8°. That was measured on the raw grid
+    endpoint **before** `_reorient_to_launch`; on the final route it is 344.6°, and the older
+    docs were right.
+  - The planning notes said "every nav item carries frame 3". `exp2.plan` shows cruise
+    waypoints at `frame 0` / `AltitudeMode 2`.
+- **A quiet success deserves the same note as a defect.** The prediction that J-4 would force
+  every Tier 2 duration expectation to be rebased was **wrong** — those tests assert
+  closed-form math rather than the default mission's N, so the change passed straight
+  through. That is the tiered harness doing exactly what it was designed for; preserve the
+  property when adding tests (**assert relationships in N, not literals**).

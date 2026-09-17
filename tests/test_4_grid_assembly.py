@@ -176,6 +176,15 @@ def test_closer_launch_buys_more_science():
     assert from_boat.total_flight_distance <= from_boat.usable_endurance_distance_m
     assert from_shore.total_flight_distance <= from_shore.usable_endurance_distance_m
 
+    # J-4.5: the approach bearing is DERIVED, not a property of the site. From shore it
+    # sits near the pad->M1 reciprocal because 22 km of transit dominates a few-km grid
+    # (pinned in Tier 4). Move the pad next to the grid and that reasoning evaporates --
+    # the arrival swings tens of degrees. A hardcoded 344.6 would be wrong here, which is
+    # exactly why the pilot-notes figure has to be recomputed per plan.
+    assert P._angular_distance(
+        from_boat.approach_bearing_deg, from_shore.approach_bearing_deg
+    ) > 20
+
 
 def test_viewing_geometry_reaches_the_plan():
     # V2C-1 wiring: geo measures the swath and the parallax during grid assembly and

@@ -15,7 +15,7 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 
 from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between
+from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
 from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
@@ -538,6 +538,14 @@ def build_candidate_plan(
         true_returning_non_grid_transit_m = distance_between(
             mission_route_list_classified[-2], mission_request.land_wp
         )
+        
+        departure_bearing_deg = bearing_between(
+            mission_request.launch_wp, mission_route_list_classified[1]
+        )
+        
+        approach_bearing_deg = bearing_between(
+            mission_route_list_classified[-2], mission_request.land_wp
+        )
 
         true_non_grid_transit_m = (
             true_outbound_non_grid_transit_m + true_returning_non_grid_transit_m
@@ -584,6 +592,8 @@ def build_candidate_plan(
     candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
 
     candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
+    
+    candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
 
     # Step 9, calculate the duration of the flight in minutes and then send it to the
     # candidate. This consumes the TOTAL flight distance, not the grid figure -- that

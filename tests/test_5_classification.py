@@ -9,6 +9,7 @@ pre-reversal index) so V2 can never silently regress it.
 
 from collections import Counter
 
+import pytest
 from shapely.geometry import Point
 import constants as CONST, planner as P, geo as G
 
@@ -92,3 +93,57 @@ def test_glint_gate_helpers():
     assert not P._passes_glint_gate(CONST.V1_GLINT_TOLERANCE_DEG + 1)
     # _score_candidate is a thin pass-through to the glint score for the science leg
     assert P._score_candidate(135, 0) == P._score_glint(135, 0)
+
+
+def test_transit_bearings_reach_the_plan():
+    # J-4.5 wiring. Same failure mode test_viewing_geometry_reaches_the_plan guards in
+    # Tier 3: a reported figure can be computed, stored and then silently unreachable.
+    # These two are the pilot-notes document's first real input, so pin the whole path.
+    plan = _plan()
+
+    assert plan.departure_bearing_deg is not None
+    assert plan.approach_bearing_deg is not None
+    assert 0 <= plan.departure_bearing_deg < CONST.FULL_CIRCLE_DEG
+    assert 0 <= plan.approach_bearing_deg < CONST.FULL_CIRCLE_DEG
+
+
+def test_transit_bearings_measure_the_final_route():
+    # THE invariant of J-4.5, and the one that catches the mistake actually made while
+    # scoping it: the bearings must be read off the route AFTER _reorient_to_launch has
+    # chosen which end of the serpentine the aircraft exits from. Measured on the raw
+    # grid the approach comes out ~10 deg off, because the other corner is the exit.
+    #
+    # Expressed as "whatever the plan reports must equal the bearing between the last two
+    # waypoints it is handing downstream", so it stays true when N, the orientation or
+    # the launch point change -- none of which this tier hardcodes.
+    plan = _plan()
+    wps = plan.waypoints
+
+    pad_out = Point(wps[0].longitude, wps[0].latitude)
+    first_grid = Point(wps[1].longitude, wps[1].latitude)
+    last_grid = Point(wps[-2].longitude, wps[-2].latitude)
+    pad_in = Point(wps[-1].longitude, wps[-1].latitude)
+
+    assert plan.departure_bearing_deg == pytest.approx(
+        G.bearing_between(pad_out, first_grid), abs=1e-6
+    )
+    assert plan.approach_bearing_deg == pytest.approx(
+        G.bearing_between(last_grid, pad_in), abs=1e-6
+    )
+
+
+def test_shore_approach_tracks_the_m1_reciprocal():
+    # Why the approach bearing is stable for a shore launch, pinned as a relationship:
+    # the pad is 22.4 km from M1 while the grid is a few km across, so from the pad the
+    # exit corner is only a handful of degrees off the mooring itself. This is what makes
+    # the pilot-notes approach warning predictable enough to brief in advance -- and it
+    # is a property of THIS geometry, not a law, which is why a boat launch gets its own
+    # assertion in Tier 3.
+    plan = _plan()
+    pad = Point(plan.waypoints[0].longitude, plan.waypoints[0].latitude)
+    m1 = Point(CONST.M1_MOORING_LONG, CONST.M1_MOORING_LAT)
+
+    outbound_to_m1 = G.bearing_between(pad, m1)
+    reciprocal = (outbound_to_m1 + 180) % CONST.FULL_CIRCLE_DEG
+
+    assert P._angular_distance(plan.approach_bearing_deg, reciprocal) < 15

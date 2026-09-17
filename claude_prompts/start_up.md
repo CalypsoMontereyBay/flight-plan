@@ -52,6 +52,116 @@ The "Logs" section will record Claude's work.  Please use the following format:
 
 ## Logs
 
+### 2026-09-17 (Step J built through J-4.5 — the transit fix lands, and the engine stops lying about its own duration)
+
+Six steps of Step J in one session: **J-0 through J-4.5 are done, 71 tests green.** The user
+implemented each step and I audited it against the plan, which is the established rhythm. The
+plan itself lives in a web artifact rather than in chat scrollback.
+
+**The headline: the largest defect in the engine's history is fixed.** Since V1 the budget
+handed to `geo` was the *entire* 82,620 m the battery affords, so the grid was allowed to
+consume all of it and nothing paid for the 44.8 km round trip to M1. The engine emitted
+**N=15 = 127,559 m = 120.4 min against a 90 min battery — and printed +11.4 min of margin.**
+`planner` now reserves the transit before `geo` chooses N. Default mission: **N=9 /
+77,296 m / 72.9 min / 17.1 min margin.**
+
+**The conceptual point that made this tractable** came from a question the user asked:
+*if we cancelled RTH gating, what is the point of the transit fix?* The answer is that the
+two are different kinds of fact. Wind and RTH reason about **conditions**, which the aircraft
+compensates for in flight — hence cancelled. Transit distance is **geometry**, known exactly
+at plan time, and no onboard sensor makes a route shorter. J-4 introduces **no gate**: it
+changes which number `geo` is handed before `geo` sizes the grid. Sizing has always been the
+engine's job; the subtraction was simply missing from the arithmetic. Worth keeping, because
+the two look alike and conflating them would either resurrect a cancelled gate or leave the
+defect in place.
+
+**What the audits caught, in order:**
+
+- **J-3 — a rename finished in three places out of four.** `total_route_distance_m` →
+  `total_grid_distance_m` was applied to the metrics key, the property and the setter, but
+  not to the `__init__` default. That left an orphan attribute *and* removed the `None`
+  default from the new one, so the plan would raise `AttributeError` instead of returning
+  `None` before `set_grid_metrics` ran — which matters precisely because J-4 builds a plan,
+  classifies the route, and only then computes the total. Same hole existed for
+  `_camera_trigger_distance_m`.
+- **J-3 — `geo` reaching into `constants` for a payload figure.** The along-track FOV and
+  overlap were read from `CONST` while the cross-track pair four lines above arrived as
+  parameters. The number came out right, so nothing failed. Under Step F a user-configured
+  `Sensor` would have had its cross-track overlap honoured and its along-track overlap
+  silently ignored. Both are parameters now.
+- **J-4 — `build_candidate_plan` ignoring its own parameters.** Five reach-ins to
+  module-level singletons (`_Black_Swift_usable_endurance_m`, `_Launch_Waypoint`,
+  `_M1_Waypoint`) inside a function that already *received* all of them. Silently correct
+  today, wrong the moment Step F makes the launch point settable or Step G deletes the
+  aircraft singleton — and it blocked the tests below, which need a different
+  `MissionRequest`.
+- **J-4 — `usable_endurance_distance_m` silently changing meaning.** Neither of us saw this
+  coming, and it is the same defect shape as `total_route_distance_m` one step later. `geo`
+  writes the budget it was handed under that key; since J-4 that value is endurance *minus*
+  transit. So a field named "usable endurance distance" was carrying 37,847 m instead of
+  82,620 m — and the new assertion `total_flight <= usable` would have **failed a mission
+  that fits by 5 km**. Split into `grid_budget_m` (what `geo` was handed) and
+  `usable_endurance_distance_m` (what the battery affords, set by the hub).
+- **J-4.5 — a write-only field.** Setter, `__init__` defaults and assignment all present;
+  no properties. The bearings went in and could not come out. Every other reporting pair on
+  `CandidatePlan` has both halves, so this was an omission rather than a convention.
+
+**Three times now, the same defect shape.** `line_length_m` vs `physical_line_length_m`;
+`total_grid_distance_m` vs `total_flight_distance_m`; `grid_budget_m` vs
+`usable_endurance_distance_m`. Each time one name quietly came to mean two things, every
+caller kept working, and the error surfaced much later as an impossible number. This is now
+written into CLAUDE.md as a convention: **when a name stops describing its contents, split
+it — do not redefine it.**
+
+**Resolving the `pass` at the shrink fallback.** The user left a note asking what to shrink
+and by how much. Answer: shrink the grid budget to `usable − the transit you just measured`,
+and loop. It cannot spin, and the proof is short — if a pass fails then `total > usable`, and
+since `grid ≤ grid_budget` the measured transit must be *strictly* greater than the estimate
+that produced that budget, so the next budget is strictly smaller. If it shrinks past a
+3-line grid, `geo` raises, which is the honest "no grid fits this launch point". Bounded by a
+new `TRANSIT_FIT_MAX_PASSES = 3`, deliberately **not** `RTH_MAX_ITERATIONS` — that one
+bounded a cancelled *weather* gate, and merging them would re-blur the distinction above.
+
+**Tests: 66 → 71.** Two predictions I made were wrong, both worth recording:
+
+- **Tier 2 duration expectations did NOT need rebasing.** I said they would. They assert
+  closed-form math on `route_duration_min` rather than the default mission's N, so the change
+  passed straight through. That is the tiered harness working as designed.
+- **The approach bearing was NOT 354.8°.** I flagged the documented 344.6° as needing a
+  re-check. 354.8° was measured on the raw grid endpoint *before* `_reorient_to_launch`
+  chooses which end of the serpentine the aircraft exits from; on the final route it is
+  344.6° and the older docs were right. The lesson survives the wrong number, and is now a
+  mutation-verified Tier 4 assertion.
+
+New coverage targets things the default mission cannot reach: a **retry-convergence probe**
+(launch *at* M1 → zero seed → forces the fallback, converges in 2 passes to N=13), and
+**`test_closer_launch_buys_more_science`** — a boat launch 2 km off M1 must yield more flight
+lines than Terrace Point, and both must still fit. That invariant was simply **not true**
+before J-4, because the engine returned N=15 from anywhere.
+
+**`exp2.plan` turned out to be the most valuable file in the repo for J-5.** A real QGC
+export for this site, sitting in the root. It corrected a claim I had written into the
+planning notes — *"every nav item carries frame 3"* — which was about to become a J-7
+assertion. Cruise waypoints are `frame 0` / `AltitudeMode 2`; only takeoff and land are
+frame 3. It also settled key ordering (alphabetical, 4-space indent), showed both
+`cruiseSpeed` and `hoverSpeed` present even on a fixed wing, and revealed that QGC expresses
+a fixed-wing landing as a `fwLandingPattern` **ComplexItem** rather than `NAV_LAND` — the one
+open decision left in J.
+
+**Found while writing the docs, and it blocks J-5: `Vehicle` is never instantiated.** J-2
+built the subclass with `vehicle_type`, `firmware_type`, `is_VTOL` and `hover_speed_ms`, and
+`planner._Black_Swift` is still a plain `Aircraft`. The writer branches on all four. The gap
+survived three steps because nothing constructed one and nothing asserted the type.
+
+**Operationally, the fix made the boat launch measurable.** Transit is **54% of the battery**
+from Terrace Point. A launch 2 km from M1 takes the same aircraft from 9 lines to 13. That
+reframes Step F's user-settable launch point from partner convenience into the largest
+efficiency lever the engine has — and it is now pinned by a test rather than asserted in a doc.
+
+**Deliberately not done.** Climb and descent are still counted as zero time; J-4 made the
+*horizontal* distance honest and nothing more. At 609.6 m that is ~3 min up and ~5.6 min down
+against a 17.1 min margin, so the new margin should not be read as slack. Scoped into Step G.
+
 ### 2026-09-08 (Operational-constraints pivot — JSON first, configurability, wind demoted to reporting)
 
 Returned to the project after the V2C-2 pause. Audited the whole codebase against the

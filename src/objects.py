@@ -785,6 +785,9 @@ class CandidatePlan:
         self._return_min = None
         self._reserve_min = None
         
+        self._departure_bearing_deg = None
+        self._approach_bearing_deg = None
+        
 
     # V1 properties for the candidate plan are listed below:
 
@@ -915,6 +918,19 @@ class CandidatePlan:
     def required_reserve_min(self):
         return self._reserve_min
 
+    # J-4.5 transit bearings. Unlike the C-2 figures above these ARE populated on every
+    # plan built today, and they are pure geometry rather than weather -- the directions
+    # the route already commits the aircraft to. Reporting only: they reach the terminal
+    # summary and the pilot-notes document, never the .plan (writing a heading there would
+    # command a yaw, which the null-yaw decision rules out).
+    @property
+    def departure_bearing_deg(self):
+        return self._departure_bearing_deg
+
+    @property
+    def approach_bearing_deg(self):
+        return self._approach_bearing_deg
+
     @property
     def chosen_orientation(self):
         return self._chosen_orientation_deg
@@ -1003,6 +1019,11 @@ class CandidatePlan:
 
     def set_usable_endurance_distance_m(self, usable_endurance_distance_m):
         self._usable_endurance_distance_m = usable_endurance_distance_m
+        return
+    
+    def set_transit_bearings(self, departure_bearing_deg, approach_bearing_deg):
+        self._departure_bearing_deg = departure_bearing_deg
+        self._approach_bearing_deg = approach_bearing_deg
         return
 
     """
