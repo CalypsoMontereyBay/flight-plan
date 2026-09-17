@@ -61,11 +61,31 @@ def test_assembled_grid_invariants():
     m1_pt = Point(m1_wps[0].longitude, m1_wps[0].latitude)
     assert G.distance_between(m1_pt, _m1_point()) == pytest.approx(0, abs=1.0)
 
-    # the grid route fits the endurance budget the planner sized it against
-    route_distance = plan.total_route_distance_m
-    budget = plan.usable_endurance_distance_m
-    assert route_distance is not None and budget is not None
-    assert route_distance <= budget
+    # TWO budget assertions, because they catch different failures and the J-4 transit
+    # fix is exactly the bug that looked fine under only the first one.
+    #
+    #   1. the grid fits the budget geo was HANDED  -> geo respected its instructions
+    #   2. the whole FLIGHT fits the battery        -> those instructions were correct
+    #
+    # Before J-4 the engine passed (1) while failing (2) by 45 km: geo was handed the
+    # entire battery, sized a grid that consumed all of it, and the transit to M1 was
+    # never paid for. Keep both -- dropping (1) loses the ability to tell which half
+    # broke when (2) goes red.
+    grid_distance = plan.total_grid_distance_m
+    grid_budget = plan.grid_budget_m
+    assert grid_distance is not None and grid_budget is not None
+    assert grid_distance <= grid_budget
+
+    total_flight = plan.total_flight_distance
+    usable = plan.usable_endurance_distance_m
+    assert total_flight is not None and usable is not None
+    assert total_flight <= usable
+
+    # the transit is real and is being paid for: the flown route must exceed the grid by
+    # the launch/land legs. A regression that silently reverts to the grid-only figure
+    # makes these equal, which is precisely the defect this tier now guards.
+    assert total_flight > grid_distance
+    assert plan.grid_budget_m < usable
 
     # metric relationships. V2C: the along-track mount put both leg directions the
     # same angular distance off the sun, so EVERY line collects -- the old
@@ -73,6 +93,88 @@ def test_assembled_grid_invariants():
     assert plan.science_lines == N
     assert plan.traverse_lines == 0
     assert plan.offset_lines == N - 1
+
+
+def _mission_request_launching_from(launch_point_lat, launch_point_long):
+    # A MissionRequest identical to the default except for where the aircraft starts and
+    # ends. Launch and land are the same pad, as at Terrace Point.
+    import objects
+
+    launch = objects.Waypoint(
+        "WP000", launch_point_lat, launch_point_long,
+        CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.WAYPOINT_ACTION_LAUNCH, "launch", "Test-Launch",
+    )
+    land = objects.Waypoint(
+        "WP_END", launch_point_lat, launch_point_long,
+        CONST.V1_DEFAULT_LAND_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.WAYPOINT_ACTION_LAND, "land", "Test-Land",
+    )
+    return objects.MissionRequest(
+        mission_name="transit fit probe",
+        launch_waypoint=launch,
+        land_waypoint=land,
+        m1_waypoint=P._M1_Waypoint,
+        altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+        valid_time=P.DEFAULT_MISSION_DATETIME,
+        require_m1_overflight=True,
+        grid_orientation_deg=None,
+        notes="transit fit probe",
+        included_target_waypoints=[P._M1_Waypoint],
+    )
+
+
+def test_transit_seed_retry_converges():
+    # J-4 fallback path. The seed transit is 2 * d(launch, M1), which at Terrace Point is
+    # accurate to 0.40% and fits on the first pass -- so the retry branch never executes
+    # on the default mission and would rot untested.
+    #
+    # Launching AT M1 is the degenerate case that forces it: the seed is 0, geo is handed
+    # the whole battery, sizes a grid that consumes it, and the real transit out to the
+    # nearest grid corner and back is then unpayable. The loop must re-seed with the
+    # MEASURED transit and come back with a grid that actually fits.
+    sun_state, _, weather_state, sun_az = P._build_dated_objects(P.DEFAULT_MISSION_DATETIME)
+    request = _mission_request_launching_from(CONST.M1_MOORING_LAT, CONST.M1_MOORING_LONG)
+    usable = P._Black_Swift_usable_endurance_m
+
+    plan = P.build_candidate_plan(
+        P._Black_Swift, usable, P._Calypso_payload, request,
+        weather_state, sun_az, sun_state, "transit_retry",
+    )
+
+    # the retry actually ran: a zero seed means pass 1 handed geo the FULL budget, so a
+    # grid budget below it can only have come from a re-seed with the measured transit
+    assert plan.grid_budget_m < usable
+
+    # and it converged on something flyable
+    assert plan.total_flight_distance <= usable
+    assert plan.total_grid_distance_m <= plan.grid_budget_m
+    assert plan.total_lines % 2 == 1
+
+
+def test_closer_launch_buys_more_science():
+    # The operational payoff of the transit fix, pinned as an invariant: transit is paid
+    # out of the same battery as the grid, so moving the launch point nearer M1 must buy
+    # flight lines. This is the "or a stationary boat" escape hatch from the roadmap, and
+    # it can only be true once the budget arithmetic accounts for the transit at all --
+    # before J-4 the engine returned N=15 from anywhere, because it never paid for one.
+    from_shore = P.plan_default_mission("shore")
+
+    sun_state, _, weather_state, sun_az = P._build_dated_objects(P.DEFAULT_MISSION_DATETIME)
+    boat_request = _mission_request_launching_from(
+        CONST.M1_MOORING_LAT + 0.018, CONST.M1_MOORING_LONG      # ~2 km north of M1
+    )
+    from_boat = P.build_candidate_plan(
+        P._Black_Swift, P._Black_Swift_usable_endurance_m, P._Calypso_payload,
+        boat_request, weather_state, sun_az, sun_state, "boat",
+    )
+
+    assert from_boat.total_lines > from_shore.total_lines
+    assert from_boat.total_grid_distance_m > from_shore.total_grid_distance_m
+
+    # both remain flyable -- more science, not an overrun
+    assert from_boat.total_flight_distance <= from_boat.usable_endurance_distance_m
+    assert from_shore.total_flight_distance <= from_shore.usable_endurance_distance_m
 
 
 def test_viewing_geometry_reaches_the_plan():

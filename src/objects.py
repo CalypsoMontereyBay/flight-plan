@@ -737,7 +737,6 @@ class CandidatePlan:
         currentSunState,
         weather,
         chosen_orientation_deg,
-        total_flight_distance_m,
         sensor=None,
         waypoints=None,
     ):
@@ -747,7 +746,7 @@ class CandidatePlan:
         self._currentSunState = currentSunState
         self._weather = weather
         self._chosen_orientation_deg = chosen_orientation_deg
-        self._total_flight_distance_m = total_flight_distance_m
+        self._total_flight_distance_m = None
         self._sensor = sensor
 
         if waypoints is None:
@@ -756,7 +755,9 @@ class CandidatePlan:
         else:
             self._waypoints = waypoints
 
-        self._total_route_distance_m = None
+        self._total_grid_distance_m = None
+        self._camera_trigger_distance_m = None
+        self._grid_budget_m = None
         self._usable_endurance_distance_m = None
         self._grid_area_m2 = None
         self._offset_distance_m = None
@@ -821,7 +822,13 @@ class CandidatePlan:
 
     @property
     def usable_endurance_distance_m(self):
+        """The aircraft's full usable distance -- what the BATTERY affords."""
         return self._usable_endurance_distance_m
+
+    @property
+    def grid_budget_m(self):
+        """What was left for the GRID after the transit was reserved (J-4)."""
+        return self._grid_budget_m
 
     @property
     def grid_area_m2(self):
@@ -929,7 +936,7 @@ class CandidatePlan:
         return self._score
     
     @property
-    def camera_trigger_dist(self):
+    def camera_trigger_distance_m(self):
         return self._camera_trigger_distance_m
 
     """
@@ -947,7 +954,10 @@ class CandidatePlan:
 
     def set_grid_metrics(self, metrics):
         self._total_grid_distance_m = metrics.get("total_grid_distance_m")
-        self._usable_endurance_distance_m = metrics.get("usable_endurance_distance_m")
+        # J-4: geo reports the budget it was GIVEN (endurance minus transit). The
+        # aircraft's full usable distance is a different number and arrives from the
+        # hub via set_usable_endurance_distance_m -- do not read it out of the metrics.
+        self._grid_budget_m = metrics.get("grid_budget_m")
         self._grid_area_m2 = metrics.get("grid_area_m2")
         self._offset_distance_m = metrics.get("offset_distance_m")
         self._line_length_m = metrics.get("line_length_m")
@@ -985,6 +995,14 @@ class CandidatePlan:
 
     def change_name(self, new_name):
         self._name = new_name
+        return
+    
+    def set_total_flight_distance_m(self, total_flight_distance_m):
+        self._total_flight_distance_m = total_flight_distance_m
+        return
+
+    def set_usable_endurance_distance_m(self, usable_endurance_distance_m):
+        self._usable_endurance_distance_m = usable_endurance_distance_m
         return
 
     """

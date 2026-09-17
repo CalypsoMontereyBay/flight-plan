@@ -344,6 +344,19 @@ RTH_MAX_ITERATIONS = 12 #Prevents the engine from creating a grid whose derived 
 ========================================================================================
 '''
 
+# ---------------------------------------------------------------------------------------
+# V2 J-4: transit-aware grid sizing.
+#
+# ⚠️ This is NOT an RTH constant and must not be folded into RTH_MAX_ITERATIONS. The RTH
+# loop was a WEATHER gate (cancelled 2026-09-08). This one bounds a purely GEOMETRIC
+# convergence: planner seeds the grid budget with 2 x d(launch, M1), then re-measures the
+# transit against the real entry/exit corners. The seed is accurate to ~0.40% at the
+# Terrace Point geometry, so pass 1 almost always fits. Each retry re-seeds with the
+# MEASURED transit, which is strictly larger than the estimate that just failed, so the
+# budget strictly shrinks and the loop is guaranteed to terminate. 3 is headroom for a
+# launch point close to the grid (a boat launch), where the seed is proportionally worse.
+TRANSIT_FIT_MAX_PASSES = 3
+
 
 '''
 ======================================================================================

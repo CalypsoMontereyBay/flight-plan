@@ -266,6 +266,8 @@ def _build_grid_for_orientation(
         payload.cross_track_fov,
         payload.cross_track_overlap,
         off_nadir_deg=payload.off_nadir,
+        along_track_fov_deg=payload.along_track_fov,
+        along_track_overlap_pct=payload.along_track_overlap,
     )
 
 
@@ -274,7 +276,7 @@ def _pick_best_orientation(
     sun_az_deg,
     mission_request: MissionRequest,
     payload: Sensor,
-    usable_distance_m,
+    predicted_grid_distance_m,
 ):
     """
     Score both candidate science headings (glint, science-leg only), keep the
@@ -310,7 +312,7 @@ def _pick_best_orientation(
 
     for orientation_deg, orientation_score in gate_passers:
         flight_lines, route_points, metrics = _build_grid_for_orientation(
-            orientation_deg, mission_request, payload, usable_distance_m
+            orientation_deg, mission_request, payload, predicted_grid_distance_m
         )
         nearest_corner_dist_m = min(
             distance_between(launch_point, route_points[0]),
@@ -468,45 +470,99 @@ def build_candidate_plan(
     mission_weather: Weather,
     mission_azimuth,
     mission_sun_state,
-    candidate_name,
-    total_flight_distance_m
+    candidate_name
 ):
 
     # Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
 
-    # Step 2, pick the winning orientation AND reuse the grid the picker built
-    (
-        mission_orientation,
-        mission_orientation_score,
-        flight_lines,
-        route_points,
-        metrics,
-    ) = _pick_best_orientation(
-        mission_potential_orientations,
-        mission_azimuth,
-        mission_request,
-        payload,
-        mission_aircraft_endurance_m,
+    # Step 2, RESERVE THE TRANSIT before geo is allowed to size anything.
+    #
+    # geo.make_lawnmower_grid_through_m1 takes a centre, an orientation and a distance --
+    # it does not know where launch is and must not learn, so this subtraction belongs to
+    # the hub. The seed is 2 * d(launch, M1); measured against the real entry/exit corners
+    # it comes out accurate to ~0.40% at the Terrace Point geometry, so one pass is
+    # normally enough and no fixed-point loop is warranted.
+    predicted_transit_budget_m = 2 * distance_between(
+        mission_request.launch_wp, mission_request.m1_wp
     )
 
-    # Step 3, reorient the grid so the route starts at the corner closest to launch
-    route_shapely_waypoints, m1_index = _reorient_to_launch(
-        route_points, metrics["m1_route_index"], mission_request.launch_point
-    )
+    grid_budget_m = mission_aircraft_endurance_m - predicted_transit_budget_m
 
-    # Step 4, walk the route and classify each waypoint and assign it an index:
+    # Steps 3-6 run inside the fit loop. A pass that does not fit re-seeds the budget with
+    # the transit it MEASURED rather than the one it estimated. That measured value is
+    # strictly larger than the estimate which just failed, so grid_budget_m strictly
+    # shrinks every pass and the loop cannot spin. If it shrinks below a 3-line grid, geo
+    # raises -- the honest answer that no grid fits this launch point, which is a sizing
+    # failure and not a weather veto.
+    for _fit_pass in range(CONST.TRANSIT_FIT_MAX_PASSES):
 
-    mission_route_list_classified = _classify_waypoints(
-        route_shapely_waypoints,
-        m1_index,
-        mission_request.launch_wp,
-        mission_request.land_wp,
-        mission_request.altitude,
-        mission_aircraft.vehicle_cruise_speed
-    )
+        # Step 3, pick the winning orientation AND reuse the grid the picker built
+        (
+            mission_orientation,
+            mission_orientation_score,
+            flight_lines,
+            route_points,
+            metrics,
+        ) = _pick_best_orientation(
+            mission_potential_orientations,
+            mission_azimuth,
+            mission_request,
+            payload,
+            grid_budget_m,
+        )
 
-    # Step 5, build the candidate plan
+        # Step 4, reorient the grid so the route starts at the corner closest to launch
+        route_shapely_waypoints, m1_index = _reorient_to_launch(
+            route_points, metrics["m1_route_index"], mission_request.launch_point
+        )
+
+        # Step 5, walk the route and classify each waypoint and assign it an index:
+
+        mission_route_list_classified = _classify_waypoints(
+            route_shapely_waypoints,
+            m1_index,
+            mission_request.launch_wp,
+            mission_request.land_wp,
+            mission_request.altitude,
+            mission_aircraft.vehicle_cruise_speed
+        )
+
+        # Step 6, measure the transit that was ACTUALLY planned, now that the route has
+        # been reoriented and the pad waypoints are in it.
+        # Launch Waypoint IDX = 0, Land Waypoint IDX = -1
+        # First Grid Waypoint IDX = 1, Last Grid Waypoint IDX = -2
+        true_outbound_non_grid_transit_m = distance_between(
+            mission_request.launch_wp, mission_route_list_classified[1]
+        )
+        true_returning_non_grid_transit_m = distance_between(
+            mission_route_list_classified[-2], mission_request.land_wp
+        )
+
+        true_non_grid_transit_m = (
+            true_outbound_non_grid_transit_m + true_returning_non_grid_transit_m
+        )
+
+        total_flight_distance_m = (
+            true_non_grid_transit_m + metrics["total_grid_distance_m"]
+        )
+
+        if total_flight_distance_m <= mission_aircraft_endurance_m:
+            break
+
+        grid_budget_m = mission_aircraft_endurance_m - true_non_grid_transit_m
+
+    else:
+        # Only reachable if the measured transit keeps growing faster than the budget
+        # shrinks, which the geometry does not permit. Fail loudly rather than return a
+        # plan the aircraft cannot fly.
+        raise ValueError(
+            f"Transit-aware grid sizing did not converge in "
+            f"{CONST.TRANSIT_FIT_MAX_PASSES} passes against "
+            f"{mission_aircraft_endurance_m:.0f} m of usable distance"
+        )
+
+    # Step 7, build the candidate plan
 
     candidate_plan = CandidatePlan(
         candidate_name,
@@ -515,19 +571,26 @@ def build_candidate_plan(
         mission_sun_state,
         mission_weather,
         mission_orientation,
-        total_flight_distance_m,
         payload,
         mission_route_list_classified
     )
 
-    # Step 6, set the plan metrics using the object's setter
+    # Step 8, set the plan metrics using the object's setter.
+    # set_grid_metrics carries geo's grid_budget_m (endurance MINUS transit). The full
+    # battery figure is a different number and only the hub knows it, so it is set here.
 
     candidate_plan.set_grid_metrics(metrics)
 
-    # Step 7, calculate the duration of the flight in minutes and then send it to the candidate
+    candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
+
+    candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
+
+    # Step 9, calculate the duration of the flight in minutes and then send it to the
+    # candidate. This consumes the TOTAL flight distance, not the grid figure -- that
+    # substitution is the reporting half of the J-4 transit fix.
 
     candidate_plan_estimated_duration_min = route_duration_min(
-        metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
+        total_flight_distance_m, metrics["total_lines"], mission_aircraft
     )
 
     candidate_plan_estimated_battery_margin_min = battery_margin_min(
@@ -538,7 +601,7 @@ def build_candidate_plan(
 
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
 
-    # Step 8, retrieve the orientation score and send it to the candidate
+    # Step 9, retrieve the orientation score and send it to the candidate
     candidate_plan.set_score(mission_orientation_score)
 
     return candidate_plan
@@ -567,7 +630,6 @@ def plan_default_mission(candidate_name, mission_datetime=None):
         mission_weather= _Weather_State,
         mission_azimuth= _Sun_az,
         mission_sun_state= _Sun_State,
-        candidate_name=candidate_name,
-        total_flight_distance_m= 0 #Zero is a stub currently.
+        candidate_name=candidate_name
     )
     

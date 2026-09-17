@@ -333,7 +333,8 @@ def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lin
 
 def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_distance_m,
                                    altitude_m, cross_track_fov_deg,
-                                   desired_overlap_pct, off_nadir_deg):
+                                   cross_track_overlap_pct, off_nadir_deg,
+                                   along_track_fov_deg, along_track_overlap_pct):
     '''
     Build the largest V1 M1-centered lawnmower grid that fits usable_distance_m.
 
@@ -349,7 +350,7 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
         cross_track_fov_deg,
         off_nadir_deg,
     )
-    offset_m = offset_distance_m(swath_width_m, desired_overlap_pct)
+    offset_m = offset_distance_m(swath_width_m, cross_track_overlap_pct)
 
 
     total_lines = _initial_total_lines_from_budget(usable_distance_m, offset_m)
@@ -360,7 +361,10 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     
     #Calculates the along-track spacing:
     #FORMULA: (Along_track footprint distance (meters)) * (1 - along-track overlap/100)
-    camera_trigger_distance_m = ((ground_footprint_along_m(altitude_m, CONST.V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG, off_nadir_deg)) * (1 - (CONST.V2_DEFAULT_ALONGTRACK_OVERLAP_PCT/100)))
+    # The sensor's OWN numbers arrive as parameters, exactly like cross_track_fov_deg and
+    # desired_overlap_pct do -- geo never reaches into CONST for a payload figure. Step F
+    # makes both of these user-settable, and a Sensor read here would be ignored.
+    camera_trigger_distance_m = ((ground_footprint_along_m(altitude_m, along_track_fov_deg, off_nadir_deg)) * (1 - (along_track_overlap_pct/100)))
     
     extension_m = ((parallax_m + CONST.V1_COLLECTION_INSET_m) * 2)
 
@@ -378,7 +382,11 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
             line_length_m = calculate_line_length_m(offset_m, total_lines)
             metrics = {
                 "total_grid_distance_m": total_grid_distance_m,
-                "usable_endurance_distance_m": usable_distance_m,
+                # J-4: the budget geo was HANDED, which since the transit fix is the
+                # aircraft's usable distance MINUS the transit -- not the usable distance
+                # itself. Named for what it is, so nothing downstream reads it as the
+                # battery. The full endurance figure is planner's to set on the plan.
+                "grid_budget_m": usable_distance_m,
                 "grid_area_m2": calculate_grid_area_m2(offset_m, total_lines),
                 "offset_distance_m": offset_m,
                 # TWO lengths, because they answer different questions and are no longer
