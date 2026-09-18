@@ -13,7 +13,7 @@ Planner.py stitches the engine's calculations together and presents a candidate.
 
 # File Imports:
 
-from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
+from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 import constants as CONST
 from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
 from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
@@ -27,7 +27,7 @@ import weather
 
 # Step 1.1: Assemble the aircraft and get its constraints from aircraft math.
 
-_Black_Swift = Aircraft(
+_Black_Swift = Vehicle(
     CONST.BLACKSWIFT_ENDURANCE_min,
     CONST.BLACKSWIFT_WIND_RATING_ms,
     CONST.BLACKSWIFT_CLIMB_RATE_ms,
@@ -35,7 +35,9 @@ _Black_Swift = Aircraft(
     CONST.BLACKSWIFT_TURN_RADIUS_m,
     CONST.BLACKSWIFT_TURN_PENALTY_s,
     CONST.BLACKSWIFT_MIN_GROUND_SPEED_ms,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms
+    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_VEHICLE_TYPE,
+    CONST.BLACKSWIFT_FIRMWARE_TYPE
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
@@ -463,7 +465,7 @@ order:
 
 
 def build_candidate_plan(
-    mission_aircraft: Aircraft,
+    mission_aircraft: Vehicle,
     mission_aircraft_endurance_m,
     payload: Sensor,
     mission_request: MissionRequest,

@@ -148,6 +148,10 @@ BLACKSWIFT_MIN_GROUND_SPEED_ms = 12  # Units = m/s
 
 BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
 
+BLACKSWIFT_VEHICLE_TYPE = 1
+
+BLACKSWIFT_FIRMWARE_TYPE = 12
+
 '''
 ========================================================================================
 '''

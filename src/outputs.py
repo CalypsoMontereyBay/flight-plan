@@ -492,3 +492,24 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
     plt.close(figures)
 
     return path
+
+
+"""
+============================================================================
+==                   SECTION 2: JSON HELPERS + WRITER                     ==
+============================================================================
+"""
+
+# Maps out the "items" of the flight to then
+# be translated using the QGC constants and turned into JSON.
+
+doJumpID = 1
+
+planned_items = []
+
+# ITEM SHAPE: {"Keyword": "String", "Alt_Ref": "String", "source_action": "String"}
+
+def _plan_items(plan: CandidatePlan):
+
+    for wp in plan.waypoints:
+        
