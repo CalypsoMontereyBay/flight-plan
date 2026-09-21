@@ -470,7 +470,7 @@ TAKEOFF_AMSL_m = 50 + TERRACE_POINT_AMSL_m
 # Homepoint position constant and its necessary values go with takeoff, since takeoffs will always happen at the home point
 # [LAT, LONG, SEA LEVEL ALTITUDE]
 
-_QGC_PLANNED_HOME_POSITION = [V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, TERRACE_POINT_AMSL_m]
+_QGC_PLANNED_HOME_POSITION = [V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, TAKEOFF_REL_m]
 
 '''
 ========================================================================================
@@ -494,7 +494,7 @@ LANDING_BEHAVIOR = 0
 
 APPROACH_AMSL_m = None
 
-LANDING_YAW_deg = None
+VTOL_LANDING_YAW_deg = None
 
 GROUND_REL_m = 0
 
