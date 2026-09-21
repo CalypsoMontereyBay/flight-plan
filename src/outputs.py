@@ -503,13 +503,67 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 # Maps out the "items" of the flight to then
 # be translated using the QGC constants and turned into JSON.
 
-doJumpID = 1
+# Since many waypoints in a QGC plan are just navigational waypoints,
+# this helper makes the loop quicker and easier to read.
 
-planned_items = []
+"""
+ITEM SHAPE:
 
-# ITEM SHAPE: {"Keyword": "String", "Alt_Ref": "String", "source_action": "String"}
+1. ALL ITEMS CONTAIN AT LEAST THE FOLLOWING: {Keyword, Alt_Ref_Frame, Source_Action}
+
+2. POSITIONAL ITEMS ALSO CONTAIN {..., Latitude, Longitude, Altitude (meters)}
+
+3. CAMERA ITEMS CONTAIN {..., Trigger Distance (meters)} INSTEAD
+
+**NOTE** MAVLINK protocol does not require position info for camera commands.
+"""
+
+
+
+def _nav(wp: Waypoint):
+    
+    return {
+        "Keyword": "nav",
+        "Alt_Frame_Ref": "AMSL",
+        "Latitude": wp.latitude,
+        "Longitude": wp.longitude,
+        "Altitude_m": wp.altitude        
+    }
 
 def _plan_items(plan: CandidatePlan):
+    
+    planned_items = []
 
     for wp in plan.waypoints:
         
+        if wp.action == CONST.WAYPOINT_ACTION_LAUNCH:
+            items = [{"Keyword": "takeoff", "Alt_Frame_Ref": "RELATIVE",
+                     "Latitude": wp.latitude, "Longitude": wp.longitude,
+                     "Altitude_m": CONST.TAKEOFF_REL_m}]
+            
+        elif wp.action == CONST.WAYPOINT_ACTION_LAND:
+            items = [{"Keyword": "land", "Alt_Frame_Ref": "RELATIVE",
+                    "Latitude": wp.latitude, "Longitude": wp.longitude,
+                    "Altitude_m": CONST.LANDING_REL_m}]
+            
+        elif wp.action == CONST.WAYPOINT_ACTION_COLLECT_START:
+            items = [_nav(wp), 
+                     {"Keyword": "cam_on", "Alt_Frame_Ref": "MISSION",
+                      "Trigger_Distance_m": plan.camera_trigger_distance_m}]
+        
+        elif wp.action == CONST.WAYPOINT_ACTION_COLLECT_STOP:
+            items = [_nav(wp), 
+                    {"Keyword": "cam_off", "Alt_Frame_Ref": "MISSION",
+                    "Trigger_Distance_m": 0}]
+        
+        else:
+            items = [_nav(wp)]
+            
+        for item in items:
+            item["Source_Action"] = wp.action
+            
+        planned_items.extend(items)
+        
+    return planned_items
+
+
