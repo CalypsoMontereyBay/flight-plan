@@ -33,6 +33,7 @@ import constants as CONST
 # Package imports
 import simplekml
 import matplotlib
+import json
 
 # Setting png backend
 matplotlib.use("Agg")
@@ -567,54 +568,40 @@ def _plan_items(plan: CandidatePlan):
     return planned_items
 
 
-# Function for assigning the doJumpID:
 
-def doJumpID (items):
+# Builds the parameter array for a QGC command when called:
+
+def _qgc_params(item, is_vtol):
     
-    for n, item in enumerate(items, start=1):
-        item["doJumpId"] = n
+    keyword = item["Keyword"]
     
+    if keyword == "takeoff":
+        if is_vtol:
+            return [0, CONST.TRANSITION_HEADING_SETTING, 0, CONST.TRANSITION_YAW_deg, 
+                    item["Latitude"], item["Longitude"], item["Altitude_m"]]
 
-
-"""
-Serialize QGC takes our vehicle neutral, but still QGC translated set of waypoints
-and actually assigns commands and parameter arrays to them according to the MAVLINK
-standard and the expected JSON standard for .plan files. 
-"""
-
-def _serialize_qgc(plan: CandidatePlan, items, allow_nan=False):
-    
-    if plan.aircraft.is_VTOL:
-
-        for item in items:
-            
-            if item["Keyword"] == "takeoff":
-                item["Params"] = [0, CONST.TRANSITION_HEADING_SETTING, 0, CONST.TRANSITION_YAW_deg,
-                                item.latitude, item.longitude, CONST.TRANSITION_REL_m]
-                
-            elif item["Keyword"] == "land":
-                item["Params"] = [CONST.LANDING_BEHAVIOR, 0, CONST.APPROACH_AMSL_m, CONST.VTOL_LANDING_YAW_deg, 
-                                  item.latitude, item.longitude, CONST.GROUND_REL_m]
-                
-    else:
-        
-        for item in items:
-                    
-            if item["Keyword"] == "takeoff":
-                item["Params"] = [CONST.TAKEOFF_PITCH_deg, 0, 0, CONST.TAKEOFF_YAW_deg,
-                                item.latitude, item.longitude, CONST.TAKEOFF_REL_m]
-                        
-            elif item["Keyword"] == "land":
-                item["Params"] = [CONST.ABORT_REL_m, 0, 0, CONST.LAND_YAW_deg, 
-                                item.latitude, item.longitude, CONST.LANDING_REL_m]
-    for item in items:
-        if item["Keyword"] == "nav":
-            item["Params"] = [CONST.HOLD_TIME_s, CONST.ACCEPTANCE_RADIUS_m, CONST.PASS_RADIUS_m,
-                            CONST.WP_YAW_deg, item.latitude, item.longitude, item.altitude]
-            
-        elif item[2]["Keyword"] == "cam_on":
-            item["Params"] = [plan.camera_trigger_distance_m, CONST.CAM_SHUTTER_INTEGRATION_millis, CONST.CAM_TRIGGER_START,
-                              CONST.TARGET_CAM_ID, 0, 0, 0]
-        
         else:
-            item["Params"] = [0, 0, CONST.CAM_TRIGGER_END, CONST.TARGET_CAM_ID, 0, 0, 0]
+            return [CONST.TAKEOFF_PITCH_deg, 0, 0, CONST.TAKEOFF_YAW_deg,
+                    item["Latitude"], item["Longitude"], item["Altitude_m"]]
+            
+    if keyword == "land":
+        if is_vtol:
+            return [CONST.LANDING_BEHAVIOR, 0, CONST.APPROACH_AMSL_m, CONST.VTOL_LANDING_YAW_deg,
+                    item["Latitude"], item["Longitude"], item["Altitude_m"]]
+            
+        else:
+            return [CONST.ABORT_REL_m, 0, 0, CONST.LAND_YAW_deg,
+                    item["Latitude"], item["Longitude"], item["Altitude_m"]]
+            
+    if keyword in ("cam_on", "cam_off"):
+        
+        on_off_toggle = (CONST.CAM_TRIGGER_START if keyword == "cam_on" else CONST.CAM_TRIGGER_END)
+        
+        return [item["Trigger_Distance_m"], CONST.CAM_SHUTTER_INTEGRATION_millis, on_off_toggle, CONST.TARGET_CAM_ID,
+                0, 0, 0]
+        
+    if keyword == "nav":
+        return [CONST.HOLD_TIME_s, CONST.ACCEPTANCE_RADIUS_m, CONST.PASS_RADIUS_m, CONST.WP_YAW_deg,
+                item["Latitude"], item["Longitude"], item["Altitude_m"]]
+        
+        
