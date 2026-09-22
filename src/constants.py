@@ -467,11 +467,6 @@ TAKEOFF_REL_m = 50
 
 TAKEOFF_AMSL_m = 50 + TERRACE_POINT_AMSL_m
 
-# Homepoint position constant and its necessary values go with takeoff, since takeoffs will always happen at the home point
-# [LAT, LONG, SEA LEVEL ALTITUDE]
-
-_QGC_PLANNED_HOME_POSITION = [V1_LAUNCH_POINT_LAT, V1_LAUNCH_POINT_LONG, TAKEOFF_REL_m]
-
 '''
 ========================================================================================
 '''
@@ -519,3 +514,29 @@ CAM_TRIGGER_END = 0
 CAM_TRIGGER_DISTANCE_m = 280.74
 
 TARGET_CAM_ID = 0
+
+'''
+========================================================================================
+'''
+
+# Mapping MAVLINK command values to actual commands they represent for building the JSON
+
+_QGC_CMD_NAV_WAYPOINT = 16
+
+_QGC_CMD_NAV_LAND = 21
+
+_QGC_CMD_NAV_TAKEOFF = 22
+
+_QGC_CMD_VTOL_LAND = 85
+
+_QGC_CMD_VTOL_TAKEOFF = 84
+
+_QGC_CMD_DO_SET_CAM_TRIGGER_DIST = 206
+
+_QGC_SIMPLE_ITEM = "SimpleItem"
+
+_QGC_AUTOCONTINUE = True
+
+'''
+========================================================================================
+'''

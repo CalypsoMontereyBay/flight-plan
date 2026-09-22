@@ -362,7 +362,12 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     Section #5: Save and return
     """
 
-    kml.save(path=path)
+    # J-6 WARNING GATE: kml.save() opens its file with codecs.open(), which Python 3.14
+    # deprecates, so every write_kml run printed a DeprecationWarning. kml.kml() returns the
+    # exact string save() writes, so we write it ourselves instead: UTF-8, and newline="" so
+    # line endings stay "\n" on Windows too, exactly as save()'s binary-mode write left them.
+    with open(path, "w", encoding="utf-8", newline="") as kml_file:
+        kml_file.write(kml.kml())
 
     return path
 
@@ -510,7 +515,7 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 """
 ITEM SHAPE:
 
-1. ALL ITEMS CONTAIN AT LEAST THE FOLLOWING: {Keyword, Alt_Ref_Frame, Source_Action}
+1. ALL ITEMS CONTAIN AT LEAST THE FOLLOWING: {Keyword, Alt_Frame_Ref, Source_Action}
 
 2. POSITIONAL ITEMS ALSO CONTAIN {..., Latitude, Longitude, Altitude (meters)}
 
@@ -520,7 +525,8 @@ ITEM SHAPE:
 """
 
 
-
+# Helper function to define the most standard waypoint a CFE plan
+# can have in a vehicle neutral fassion 
 def _nav(wp: Waypoint):
     
     return {
@@ -531,6 +537,9 @@ def _nav(wp: Waypoint):
         "Altitude_m": wp.altitude        
     }
 
+# Walks the waypoints and builds a vehicle neutral "translation layer"
+# dict that is used to build the parameter arrays for each MAVLINK command
+# in the function below, once a vehicle is identified.
 def _plan_items(plan: CandidatePlan):
     
     planned_items = []
@@ -569,7 +578,7 @@ def _plan_items(plan: CandidatePlan):
 
 
 
-# Builds the parameter array for a QGC command when called:
+# Builds the parameter array for a QGC command when called, depending on the vehicle type:
 
 def _qgc_params(item, is_vtol):
     
@@ -604,4 +613,131 @@ def _qgc_params(item, is_vtol):
         return [CONST.HOLD_TIME_s, CONST.ACCEPTANCE_RADIUS_m, CONST.PASS_RADIUS_m, CONST.WP_YAW_deg,
                 item["Latitude"], item["Longitude"], item["Altitude_m"]]
         
+    
+    raise ValueError(f"Invalid Keyword detected: {keyword}.")
         
+        
+'''
+========================================================================================
+'''
+
+# Below are QGC Lookup Tables to link CFE Waypoint Keywords 
+
+# TABLE #1: Keyword -> Command:
+
+# Order: "Keyword" : (Non_VTOL, VTOL)
+
+_QGC_COMMAND = {
+    
+    "nav": (CONST._QGC_CMD_NAV_WAYPOINT, CONST._QGC_CMD_NAV_WAYPOINT),
+    
+    "takeoff": (CONST._QGC_CMD_NAV_TAKEOFF, CONST._QGC_CMD_VTOL_TAKEOFF),
+    
+    "land": (CONST._QGC_CMD_NAV_LAND, CONST._QGC_CMD_VTOL_LAND),
+    
+    "cam_on": (CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST, CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST),
+    
+    "cam_off": (CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST, CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST)
+    
+}
+
+# TABLE #2: Alt_Frame_Ref -> (MAV_FRAME, QGC AltitudeMode):
+
+# Two different enums that both use small integers -- this table is the one place they meet.
+# None = omit the AltitudeMode key entirely (camera items have no altitude to describe).
+
+# **NOTE** "AMSL" is the CRUISE row. _CRUISING_MISSION_ALT_FRAME is named for the cruise leg of
+# the mission, and is NOT MAV_FRAME_MISSION -- that one is _QGC_MAV_FRAME_MISSION, used only by
+# the camera items.
+
+_QGC_ALT_FRAME = {
+
+    "RELATIVE": (CONST._TAKEOFF_LANDING_ALT_FRAME, CONST._TAKEOFF_LAND_ALT_MODE),
+
+    "AMSL": (CONST._CRUISING_MISSION_ALT_FRAME, CONST._CRUISING_MISSION_ALT_MODE),
+
+    "MISSION": (CONST._QGC_MAV_FRAME_MISSION, None)
+}
+
+'''
+========================================================================================
+'''
+
+# Builds a QGC SimpleItem for plugging into the JSON.
+# Built field by field into a NEW dict, so nothing of ours (Source_Action) can reach the file.
+
+def _qgc_item(item, jump_id, is_vtol):
+
+    alt_frame, alt_mode = _QGC_ALT_FRAME[item["Alt_Frame_Ref"]]
+
+    qgc_item = {
+        "AMSLAltAboveTerrain": CONST._QGC_AMSL_ALT_ABOVE_TERRAIN,
+        "Altitude": item.get("Altitude_m", 0),  # camera items carry no altitude -> 0
+        "autoContinue": CONST._QGC_AUTOCONTINUE,
+        "command": _QGC_COMMAND[item["Keyword"]][1 if is_vtol else 0],
+        "doJumpId": jump_id,
+        "frame": alt_frame,
+        "params": _qgc_params(item, is_vtol),
+        "type": CONST._QGC_SIMPLE_ITEM
+    }
+
+    # Omit the key rather than writing null: camera items have no altitude to give a mode to.
+    if alt_mode is not None:
+        qgc_item["AltitudeMode"] = alt_mode
+
+    return qgc_item
+
+# Home is wherever THIS plan takes off -- never a fixed site, so a boat launch gets its own home.
+# The altitude is the pad's AMSL; Step F makes launch elevation part of the launch point.
+
+def _qgc_home(items):
+
+    takeoff = next((i for i in items if i["Keyword"] == "takeoff"), None)
+
+    if takeoff is None:
+        raise ValueError("No takeoff item, therefore no home position")
+
+    return [takeoff["Latitude"], takeoff["Longitude"], CONST.TERRACE_POINT_AMSL_m]
+
+# Returns the entire plan to be written to a .plan file.
+# Reads the neutral item list and calls the _qgc_item helper to build
+# waypoints.
+
+def _serialize_qgc(plan: CandidatePlan, items):
+    
+    is_vtol = plan.aircraft.is_VTOL
+
+    return {
+        "fileType": CONST._QGC_FILETYPE,
+        "geoFence": CONST._QGC_GEOFENCE,
+        "groundStation": CONST._QGC_GROUNDSTATION,
+        "mission": {
+            "cruiseSpeed": plan.aircraft.vehicle_cruise_speed,
+            "firmwareType": plan.aircraft.firmware_type,
+            "globalPlanAltitudeMode": CONST._QGC_GLOBAL_PLAN_ALTITUDE_MODE,
+            "hoverSpeed": plan.aircraft.hover_speed_ms,
+            # doJumpId is position in THIS file: 1-based, contiguous
+            "items": [_qgc_item(item, n, is_vtol) for n, item in enumerate(items, start=1)],
+            "plannedHomePosition": _qgc_home(items),
+            "vehicleType": plan.aircraft.vehicle_type,
+            "version": CONST._QGC_MISSION_VERSION
+        },
+        "rallyPoints": CONST._QGC_RALLYPOINTS,
+        "version": CONST._QGC_VERSION
+    }
+    
+# Writes a QGC plan to disk:
+
+def write_qgc_plan(plan: CandidatePlan, out_dir: str = "EMPTY"):
+
+    path = _output_path(plan.name, CONST.EXTENSION_PLAN, out_dir)
+
+    flight_plan = _serialize_qgc(plan, _plan_items(plan))
+
+    # QGC's own formatting (sorted keys, 4-space indent) keeps a diff against a QGC
+    # re-export readable. allow_nan=False: a stray NaN is not valid JSON.
+    with open(path, "w", encoding="utf-8") as plan_file:
+        json.dump(flight_plan, plan_file, indent=4, sort_keys=True, allow_nan=False)
+        
+        
+    return path

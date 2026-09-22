@@ -331,6 +331,12 @@ def _pick_best_orientation(
                 metrics,
             )
 
+    # Cannot trigger today: gate_passers is non-empty (checked above), so the loop always sets
+    # best_entry. Stated in code so a future edit that breaks the invariant fails here, by
+    # name, rather than as "cannot unpack None" on the next line.
+    if best_entry is None:
+        raise ValueError("No grid was built for any gate-passing orientation!")
+
     _, winning_orientation, winning_score, flight_lines, route_points, metrics = (
         best_entry
     )

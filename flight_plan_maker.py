@@ -35,7 +35,7 @@ def _parse_args():
 #force-opening files.
 #Extended in V2 to echo the selected mission datetime (local + UTC).
 
-def _print_summary(plan, kml_path, png_path, mission_datetime):
+def _print_summary(plan, kml_path, png_path, json_path, mission_datetime):
 
     # mission_datetime is a UTC-aware datetime; show both the Monterey-local wall
     # clock the user thinks in and the UTC instant the engine actually computed with.
@@ -47,6 +47,7 @@ def _print_summary(plan, kml_path, png_path, mission_datetime):
     print(f"Duration: {round(plan.duration, 1)} min | Margin: {round(plan.margin,1)} min")
     print(f"KML -> {kml_path}")
     print(f"PNG -> {png_path}")
+    print(f"PLAN -> {json_path}")
     
     
     
@@ -62,7 +63,9 @@ def main():
 
     png_path = outputs.write_png(plan, args.out_dir)
     
-    _print_summary(plan, kml_path, png_path, mission_datetime)
+    json_path = outputs.write_qgc_plan(plan, args.out_dir)
+    
+    _print_summary(plan, kml_path, png_path, json_path,  mission_datetime)
     
     
 if __name__ == "__main__": main()

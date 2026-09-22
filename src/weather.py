@@ -72,6 +72,13 @@ def _http_get_json(url: str):
         response.raise_for_status()
         return response.json()
 
+    # Reached only if the loop never ran (NWS_MAX_RETRIES < 0). Without this the function
+    # returned None, the caller's subscript raised a TypeError that get_weather does not
+    # catch, and a bad retry count crashed the planner instead of falling back to the stub.
+    raise requests.exceptions.RequestException(
+        f"No NWS request was attempted for {url} (NWS_MAX_RETRIES = {C.NWS_MAX_RETRIES})"
+    )
+
 """
 _grid_data_url(lat, lon) uses /points endpoint from the NWS website. 
 returns forecasting data as grid data

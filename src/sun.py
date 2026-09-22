@@ -11,6 +11,8 @@ return heading is not determined by sun azimuth.
 # module imports:
 from pysolar.solar import get_azimuth, get_altitude
 import datetime
+import warnings
+from contextlib import contextmanager
 from objects import CurrentSunState
 from zoneinfo import ZoneInfo
 
@@ -35,6 +37,40 @@ in order to hopefully increase readability and decrease confusion.
 """
 
 """
+J-6 WARNING GATE -- pysolar's leap-second warning is filtered HERE, and only here.
+
+pysolar 0.13's leap-second table ends at 2025, so it raises
+"UserWarning: Leap seconds for year 2025 are not available" for every date after
+2026-06-30 -- which is every real mission from now on, not just the tests.
+
+It cannot be fixed in engine code, and it is safe to silence:
+  - no leap second has been inserted since 2016-12-31, so pysolar's "no further
+    adjustments" assumption is the correct one;
+  - even a missed leap second is a 1 s timing error. Measured with pysolar at Terrace
+    Point, 1 s moves the sun <= 0.008 deg in azimuth and <= 0.003 deg in elevation,
+    against a 15 deg glint tolerance.
+
+The filter is scoped to the two pysolar calls below (catch_warnings restores the filters
+on exit) and matches this one message, so every other warning -- ours included -- still
+reaches the console. Revisit when pysolar ships a newer table.
+"""
+
+_PYSOLAR_LEAP_SECOND_WARNING = r"Leap seconds for year \d+ are not available"
+
+
+@contextmanager
+def _pysolar_without_leap_second_warning():
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message=_PYSOLAR_LEAP_SECOND_WARNING, category=UserWarning, module="pysolar"
+        )
+        yield
+
+
+# ===================================================================
+
+"""
 The calc_azimuth(latitude, longitude, and date) function
 calculates the azimuth angle of the sun given some coordinates
 and a date. Latitude and longitude will be the launch position,
@@ -47,7 +83,8 @@ pysolar 0.13 returns azimuth clockwise from North (0-360).
 
 def calc_azimuth(latitude, longitude, date):
 
-    launch_point_sun_az_deg = get_azimuth(latitude, longitude, date)
+    with _pysolar_without_leap_second_warning():
+        launch_point_sun_az_deg = get_azimuth(latitude, longitude, date)
 
     return launch_point_sun_az_deg
 
@@ -65,7 +102,8 @@ the elevation angle in degrees in decimal form.
 
 def calc_elevation(latitude, longitude, date):
 
-    launch_point_sun_elev_deg = get_altitude(latitude, longitude, date)
+    with _pysolar_without_leap_second_warning():
+        launch_point_sun_elev_deg = get_altitude(latitude, longitude, date)
 
     return launch_point_sun_elev_deg
 

@@ -28,8 +28,10 @@ is SIDELINED behind Step J (JSON output).** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
-**Step J progress as of 2026-09-17: J-0 through J-4.5 are DONE and tested (71 tests
-green). J-5 (the writer) is the next step and the only substantial one left.** The two
+**Step J progress as of 2026-09-22: J-0 through J-5 are BUILT (71 tests green, also under
+`-W error`). `outputs.write_qgc_plan` writes a QGC `.plan`, verified 27/27 against checks
+derived from `exp2.plan`. One J-5 item remains: the first QGC round trip (load, re-export,
+diff). The J-6 warning gate is CLEARED, so J-6 (the entry point) is next.** The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -99,8 +101,10 @@ takeoff/land commands Step J must emit):
 > J-4 makes the *sizing* honest; it does not add a *gate*, and the two are different jobs.
 >
 > **2. No output has been flown, or even round-tripped through QGC.** The `.plan` writer
-> does not exist yet (J-5). Until a generated file has been loaded into QGC, re-exported
-> and diffed, treat the format as unverified.
+> exists as of 2026-09-22 (J-5) and matches `exp2.plan`'s key sets and per-class frames,
+> but no generated file has been loaded into QGC, re-exported and diffed yet. The camera
+> items have no reference at all, since `exp2.plan` contains none. Until the round trip is
+> done, treat the format as unverified.
 >
 > ### ✅ FIXED — kept as history, do not re-diagnose
 >
@@ -128,16 +132,18 @@ takeoff/land commands Step J must emit):
   - `objects.py` — core classes (Aircraft, **Vehicle**, Sensor, Weather, CurrentSunState,
     Waypoint, MissionRequest, CandidatePlan). `Vehicle(Aircraft)` adds the MAVLink protocol
     identity Step J needs — `vehicle_type`, `firmware_type`, `is_VTOL`, `hover_speed_ms`.
-    ⚠️ **Nothing constructs a `Vehicle` yet** — see the J-5 prerequisite in the roadmap.
+    ✅ `planner._Black_Swift` constructs one.
   - `sun.py` — local→UTC datetime resolver (`resolve_mission_datetime`, `mission_datetime`) + pysolar sun azimuth/elevation (`create_sun_state`).
+    The two pysolar calls run inside `_pysolar_without_leap_second_warning()`; see the J-6
+    warning gate below.
   - `aircraft_math.py` — endurance → distance budget, duration, battery margin, plus the
     V2C wind triangle (**reporting only** as of 2026-09-08 — see constraint 4).
   - `geo.py` — geodesic math + M1-centered lawnmower grid geometry (the M1-centering
     becomes a *default* rather than an invariant under Step F).
   - `weather.py` — **leaf**: live NWS weather for a lat/lon/datetime → populated `Weather`, or `None` (planner falls back to the stub).
   - `planner.py` — the hub: assembles objects, scores glint, builds the plan.
-  - `outputs.py` — KML + PNG writers. **Step J adds the QGC `.plan` (JSON) writer here**,
-    and a separate pilot-notes document is where wind/crab reporting goes (constraint 4).
+  - `outputs.py` — KML, PNG and QGC `.plan` writers (`write_kml`, `write_png`,
+    `write_qgc_plan`). The pilot-notes document (constraint 4) is still to come.
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
@@ -318,6 +324,64 @@ Read this before touching the grid, classification, or output code.
     the case worth warning about on a belly-landing airframe. Crab on approach at 18 m/s
     cruise: 6.4° at 2 m/s crosswind, 12.8° at 4, 19.5° at 6, 26.4° at 8, 33.8° at 10.
 
+- **QGC `.plan` writer (V2 Step J-5, built 2026-09-22).** ⚠️ **Read this before touching
+  Section 2 of `outputs.py`.** The call chain is
+  `write_qgc_plan(plan, out_dir)` → `_plan_items(plan)` → `_serialize_qgc(plan, items)`,
+  and `_serialize_qgc` calls `_qgc_item(item, jump_id, is_vtol)` once per item. Each
+  `_qgc_item` call reads `_QGC_COMMAND`, `_QGC_ALT_FRAME`, `_qgc_params(item, is_vtol)` and
+  `_qgc_home(items)`. The rules, all enforced and measured:
+  1. **The neutral list is read-only** once `_plan_items` returns it. Every QGC dict is
+     new, built field by field, so `Source_Action` never reaches the file and a future
+     `_serialize_blackswift` can consume the same list.
+  2. **Structural dialect differences go in `_plan_items`; numeric ones go in the two
+     tables.** No MAV_CMD or MAV_FRAME integer appears anywhere else in `outputs.py`.
+  3. **`doJumpId` is assigned by `enumerate(items, start=1)` inside `_serialize_qgc`**, and
+     never stored on an item.
+  4. **Every number has one source.** Coordinates and altitude come from the item, and the
+     serializer never re-reads a constant the item already resolved.
+  5. **Unknown keywords raise** `ValueError` in `_qgc_params`. A missing takeoff raises in
+     `_qgc_home`.
+  - **Home position is derived**, not fixed. `_qgc_home` returns the takeoff item's lat/lon
+    plus `TERRACE_POINT_AMSL_m`, so a boat launch gets its own home (verified on the Tier 3
+    boat plan). `_QGC_PLANNED_HOME_POSITION` was **retired**; it had put the 50 m climb-out
+    height where QGC expects the home's AMSL altitude. Residual: a boat deck sits near sea
+    level, not 16 m. Step F makes launch elevation part of the launch point.
+  - **Camera items omit `AltitudeMode`** (the `MISSION` row's `None`), rather than writing
+    `null`. The QGC round trip decides whether that stays.
+  - ⚠️ **`_CRUISING_MISSION_ALT_FRAME` is the CRUISE frame (0), not `MAV_FRAME_MISSION`
+    (2).** The J-5 audit caught the `AMSL` and `MISSION` rows of `_QGC_ALT_FRAME` swapped.
+    That would have put every cruise waypoint in the mission frame, and it fails
+    silently: the file still writes. The word "MISSION" in the constant's name is the
+    trap; a note beside the table says so. The constant is a QGC constant, so renaming it is
+    the user's call.
+  - Measured on the default plan: 65 items = 7N + 2; commands 16×45, 206×18, 22×1, 21×1;
+    frames 0×45, 2×18, 3×2; key sets identical to `exp2.plan`; 35,615 bytes. The boat plan
+    gives 93 = 7·13 + 2. VTOL gives 84/85, and a multirotor gives 22/21 with `hoverSpeed`.
+
+- **J-6 warning gate (cleared 2026-09-22).** The console must stay quiet enough for J-6's
+  new output to be read. That is a **state to keep**, not a task that was done once.
+  - `simplekml`'s `codecs.open()` DeprecationWarning is **fixed at source**. `write_kml`
+    writes `kml.kml()` itself with `open(..., encoding="utf-8", newline="")` instead of
+    calling `kml.save()`. Verified byte-identical to `save()`.
+  - pysolar 0.13's leap-second UserWarning fires for **every date after 2026-06-30**,
+    because its table ends at 2025. It is filtered only in `sun.py`, by a `catch_warnings`
+    scope around the two pysolar calls that matches that one message. Measured: 1 s of
+    error moves the sun ≤ 0.008° in azimuth, against a 15° glint tolerance. No leap second
+    has been added since 2016-12-31. Revisit when pysolar ships a newer table.
+  - Pyright found two real gaps in `src/`, both fixed:
+    - `planner._pick_best_orientation` now guards `best_entry is None` explicitly.
+    - `weather._http_get_json` could fall off its retry loop and return `None` when
+      `NWS_MAX_RETRIES < 0`. The resulting `TypeError` escaped `get_weather`'s stub
+      fallback and crashed the planner. It now raises `RequestException`, which
+      `get_weather` catches.
+  - **Re-run before J-6 lands and after any dependency bump:**
+    - the entry point under `-W error`;
+    - `pytest -o addopts="" -W error`;
+    - pyright over `src flight_plan_maker.py`.
+
+    Pyright isn't installed on this machine, so use a throwaway venv. Any new warning gets
+    fixed, or filtered at its call site, never blanket-suppressed.
+
 - **Tests.** Tier 0 (primitives) and Tier 2 (derived math) are pure closed-form math
   (must never fail); Tier 1 pins the date/time resolver, sun-state, and weather-leaf wiring; Tiers 3–5 drive
   the real mission and assert structural invariants as *indicators* that the math is sound.
@@ -336,9 +400,11 @@ Read this before touching the grid, classification, or output code.
     `cross_track_overlap` and `along_track_overlap` separately;
     `metrics["camera_trigger_distance_m"]` is **280.74 m** (561.48 m footprint × 50%) and
     reaches the plan. `ground_footprint_along_m` finally has a caller.
-  - 🔴 **`Vehicle` is never instantiated.** `planner._Black_Swift` is a plain `Aircraft`, so
-    `plan.aircraft` has no `is_VTOL`, `vehicle_type`, `firmware_type` or `hover_speed_ms`.
-    **This blocks J-5** — the writer branches on all four. See the J-5 prerequisite.
+  - ✅ ~~`Vehicle` is never instantiated.~~ **Fixed.** `planner._Black_Swift` is a `Vehicle`.
+    Measured on the default plan: `vehicle_type 1`, `firmware_type 12`, `is_VTOL False`,
+    `hover_speed_ms 0` — all four fields the writer branches on are reachable. ⚠️ **Nothing
+    asserts it**; add the `isinstance(plan.aircraft, Vehicle)` check in J-7, since the gap
+    survived three steps precisely because no test looked.
   - **Grid sizing is budget-derived, not requested.** `geo._initial_total_lines_from_budget`
     picks N from the endurance budget. `V1_DEFAULT_GRID_WIDTH_km`,
     `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km` are declared but never
@@ -371,10 +437,12 @@ the intended helper (`write_qgc_plan`). Today's KML is **visualization only** in
 does not import as a flyable mission — which is the entire reason this jumped the queue.
 **No other roadmap step may start until this ships.**
 
-> **STATUS 2026-09-17 — J-0 through J-4.5 are DONE, 71 tests green.** The engine produces
-> a correct, honest, fully-populated `CandidatePlan`; what is missing is the serializer.
-> **J-5 is the next step and the only substantial one left.** Everything below marked
-> "settled" or "done" is history — read it for the reasoning, not as work to do.
+> **STATUS 2026-09-22 — J-0 through J-5 are BUILT, 71 tests green (also under `-W error`),
+> and the J-6 warning gate is cleared.** `write_qgc_plan` produces a `.plan` that passes
+> 27/27 checks. Those checks cover the key sets against `exp2.plan`, per-class frames,
+> contiguous `doJumpId`, no `Source_Action` leak, a home that follows the takeoff, and the
+> VTOL and multirotor branches. **Left in J-5: the QGC round trip. Next: J-6.** Everything
+> below marked "settled" or "done" is history — read it for the reasoning, not as work to do.
 
 **Scoping settled 2026-09-08:**
 - **Two consumers.** QGroundControl driving **PX4** (custom rotorcraft), and BlackSwift's
@@ -390,7 +458,9 @@ does not import as a flyable mission — which is the entire reason this jumped 
   speed, so the along-track overlap survives conditions the engine deliberately no longer
   models (constraint 4). Time-based triggering would silently stretch and compress the
   overlap leg by leg.
-- **Home position** = the Terrace Point launch/land coordinate.
+- **Home position** = the plan's own takeoff coordinate, which is Terrace Point by default.
+  It is derived by `outputs._qgc_home` rather than read from a constant (decided
+  2026-09-22), and its altitude is `TERRACE_POINT_AMSL_m`.
 
 **The structural fact of J — waypoints expand 1→N.** Camera control is a *separate mission
 item*, not an attribute of a waypoint, so one `Waypoint` can emit two items. Consequences:
@@ -408,7 +478,8 @@ item*, not an attribute of a waypoint, so one `Waypoint` can emit two items. Con
 | `land` | land item for the vehicle class |
 
 **Build once, serialize per dialect.** `_plan_items(plan)` produces a vehicle-neutral item
-list — the engine's truth — and `_serialize_qgc(items, plan)` renders it. A future
+list — the engine's truth — and `_serialize_qgc(plan, items)` renders it. The plan comes
+first, as in every other `outputs` function. A future
 `_serialize_blackswift(...)` is then a sibling, not a rewrite. This split is what keeps the
 two-consumer requirement from becoming a fork.
 
@@ -420,7 +491,7 @@ without them. Both are BUILT as of J-2/J-3:**
   instead of burying it in a formula. **Neither class in use today needs a transition
   altitude** (the S2 is a pure fixed wing; custom vehicles are pure rotorcraft);
   `TRANSITION_REL_m = 50` is provisional, applies to the VTOL class only, and that class has
-  no instance. ⚠️ **The class exists but nothing constructs one** — see the J-5 prerequisite.
+  no instance. ✅ `planner._Black_Swift` constructs a `Vehicle`.
 - ✅ *From F:* the **along-track overlap** on `Sensor`, because distance triggering needs a
   spacing. `Sensor` now carries `cross_track_overlap` and `along_track_overlap` separately,
   and `geo.ground_footprint_along_m` finally has a caller. Measured: footprint **561.48 m**,
@@ -501,29 +572,30 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 | J-3 | `geo.py` | Trigger distance into the metrics dict (along-track FOV/overlap passed as **parameters**, not read from `constants`); `total_route_distance_m` → `total_grid_distance_m` | ✅ |
 | J-4 | `planner.py` | Reserve the transit before `geo` sizes anything; measure the true transit; bounded retry; duration from the total; `grid_budget_m` vs `usable_endurance_distance_m` split | ✅ |
 | J-4.5 | `planner.py`, `objects.py` | Departure + approach bearings measured on the **final** route, reporting only | ✅ |
-| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ❌ **NEXT** |
-| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ❌ |
+| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22 — **QGC round trip pending** |
+| J-6 gate | `outputs.py`, `sun.py`, `planner.py`, `weather.py` | Clear every handleable warning before the entry point changes | ✅ 2026-09-22 |
+| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ❌ **NEXT** |
 | J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ❌ |
 | J-8 | docs | Closeout; fix the stale `Seymour-*` waypoint names | ❌ |
 
-**⚠️ J-5 HAS A PREREQUISITE — `Vehicle` is never instantiated.** `planner._Black_Swift` is
-a plain `Aircraft`, so `plan.aircraft` has **no** `is_VTOL`, `vehicle_type`, `firmware_type`
-or `hover_speed_ms` — and `_serialize_qgc` needs all four. J-2 built the class and nothing
-adopted it. Do this first:
-- Add `BLACKSWIFT_VEHICLE_TYPE = 1` (Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4)
-  to `constants.py`; there are no such constants today.
-- Change `_Black_Swift = Aircraft(...)` to `Vehicle(...)` with those two arguments.
-- `Vehicle.__init__` **raises** on an invalid vehicle type and **warns + defaults to PX4**
-  on an invalid firmware type, so a typo fails loudly rather than writing a bad file.
-- Add a Tier 1 or Tier 3 assertion that the default plan's aircraft *is* a `Vehicle` — the
-  gap survived three steps precisely because nothing checked.
+**✅ J-5's PREREQUISITE IS CLEARED — `Vehicle` is adopted.** `BLACKSWIFT_VEHICLE_TYPE = 1`
+(Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4) are in `constants.py`, and
+`planner._Black_Swift = Vehicle(...)` reads them. Measured on the default plan:
+`vehicle_type 1`, `firmware_type 12`, `is_VTOL False`, `hover_speed_ms 0` — all four fields
+`_serialize_qgc` branches on are reachable. `Vehicle.__init__` **raises** on an invalid
+vehicle type and **warns + defaults to PX4** on an invalid firmware type, so a typo fails
+loudly rather than writing a bad file.
 
-**The last open decision in J: which landing item.** `exp2.plan` expresses its fixed-wing
-landing as a **`ComplexItem` of `complexItemType: "fwLandingPattern"`** — with
-`landingApproachCoordinate`, `loiterRadius: 75`, `loiterClockwise`, `finalApproachSpeed`
-and `stopTakingPhotos` — not as a `NAV_LAND` SimpleItem.
-**Recommendation: plain `NAV_LAND` (21).** The S2 belly-lands with steep descent capability
-and needs no loiter pattern; `fwLandingPattern` would force the engine to invent an approach
+- ⚠️ **Still add the Tier 1 or Tier 3 assertion that the default plan's aircraft *is* a
+  `Vehicle`.** Nothing checks it today, and the gap survived three steps precisely because
+  nothing checked.
+
+**✅ Landing item — SETTLED as plain `NAV_LAND` (21)**, which is what `_qgc_params` builds.
+`exp2.plan` expresses its fixed-wing landing as a **`ComplexItem` of
+`complexItemType: "fwLandingPattern"`** — with `landingApproachCoordinate`,
+`loiterRadius: 75`, `loiterClockwise`, `finalApproachSpeed` and `stopTakingPhotos` — not
+as a `NAV_LAND` SimpleItem. Why not the pattern: the S2 belly-lands with steep descent
+capability and needs no loiter pattern; `fwLandingPattern` would force the engine to invent an approach
 coordinate and loiter geometry, which is exactly the work the roadmap settled it would not
 do, and its `stopTakingPhotos` flag overlaps our explicit camera items. Note the "never a
 `ComplexItem`" rule was aimed at **survey** blocks, which regenerate and therefore destroy
@@ -548,7 +620,7 @@ resolves:
 |---|---|---|---|
 | takeoff / land | 3 (relative) | 1 | `TAKEOFF_REL_m` 50 / `LANDING_REL_m` 0 |
 | cruise nav | 0 (AMSL) | 2 | 609.6 |
-| DO camera | 2 (mission) | — | 0 |
+| DO camera | 2 (mission) | key omitted (round trip to confirm) | 0 |
 
 An earlier revision of the planning notes said "every nav item carries frame 3". **That is
 wrong.** Cruise waypoints are `frame 0` / `AltitudeMode 2`. This *is* the mixed-datum
@@ -782,7 +854,7 @@ gate — read it as history. What remains for E:
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
   B (live NWS weather) and C-1 (along-track mount) are done**. Remaining, in execution
-  order: **J** (JSON output — active, J-0…J-4.5 done, **J-5 next**), **F** (mission
+  order: **J** (JSON output — active, J-0…J-5 built, J-6 gate cleared, **J-6 next**), **F** (mission
   configurability), **G** (aircraft configurability), **C-2 re-scoped** (wind reporting),
   **D** (sun/cloud ranking), **E** (legality).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.
