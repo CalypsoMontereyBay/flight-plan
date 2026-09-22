@@ -10,7 +10,10 @@ a mutable list object).
 import math
 
 import pytest
-import planner as P, outputs as OUT, constants as CONST
+
+import constants as CONST
+import outputs as OUT
+import planner as P
 
 
 def _plan_route_segs():

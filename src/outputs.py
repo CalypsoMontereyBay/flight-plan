@@ -1,18 +1,14 @@
 """
-The outputs.py file takes the data from our candidate plan and produces
-human readable output. V1 produces two artifacts: a KML file and a PNG file.
+The outputs.py file takes the data from our candidate plan and produces output. It writes
+three artifacts:
 
-⚠️ 2026-09-08 -- THE QGC ".plan" (JSON) WRITER IS THE ENGINE'S TOP PRIORITY (Step J), and
-it belongs in this file alongside write_kml / write_png. EXTENSION_JSON already exists.
-Everything else on the V2 roadmap is sidelined until it ships, because a KML is
-visualization-only in QGC: today this engine cannot emit anything that can be uploaded and
-flown. A fourth artifact -- a PILOT-NOTES document carrying the wind / crab / return-time
-reporting -- is planned alongside it, deliberately kept OUT of the machine-readable outputs.
+    KML    for review in QGroundControl, BlackSwift's FMS, or Google Earth. In QGC a KML is
+           VISUALIZATION ONLY -- it does not import as a flyable mission.
+    PNG    a visual reference for the RPIC; it serves no other purpose.
+    .plan  the QGC mission file (JSON, Step J-5): the one that can be uploaded and flown.
 
-KML's can be uploaded to QGroundControl, BlackSwift's FMS, or Google Earth.
-
-PNG's simply exist as a visual reference for the RPIC and do not serve any other
-purpose.
+A fourth artifact -- a PILOT-NOTES document carrying the wind / crab / return-time
+reporting -- is planned, deliberately kept OUT of the machine-readable outputs.
 
 This file does not check if output is "correct", it is simply a black box
 that takes the data the engine produces and produces output.
@@ -21,29 +17,24 @@ This follows my design of "dumb unidirectionality", meaning that files
 are only as knowledgeable of the rest of the program as they have to be
 and the engine's pipeline follows a linear, unidirectional computational flow.
 
-**NOTE**: Outputs.py may not always be the last link in the chain, once legal
+**NOTE**: outputs.py may not always be the last link in the chain, once legal
 and other sources of validation are needed, its position may change to only produce
 output from validated data.
 """
 
-# Calypso engine file imports:
-from objects import CandidatePlan, Waypoint
-import constants as CONST
-
-# Package imports
-import simplekml
-import matplotlib
 import json
-
-# Setting png backend
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from pathlib import Path
 import math
 from datetime import datetime
-from typing import Optional, Iterable
+from pathlib import Path
 
-# Outputs.py helpers are defined below:
+import matplotlib
+matplotlib.use("Agg")  # the PNG backend must be selected BEFORE pyplot is imported
+import matplotlib.pyplot as plt
+import simplekml
+
+import constants as CONST
+from objects import CandidatePlan, Waypoint
+
 
 """
 ============================================================================
@@ -52,11 +43,12 @@ from typing import Optional, Iterable
 """
 
 
-# Walks the candidate plan's route into (lon, lat, alt, action) tuples.
-# Shared spine consumed by BOTH write_kml and write_png.
 def _route_coords(plan: CandidatePlan):
+    """
+    Walk the candidate plan's route into (lon, lat, alt, action) tuples, one per waypoint,
+    in flight order. The shared spine consumed by BOTH write_kml and write_png.
+    """
 
-    # One (lon, lat, alt, action) tuple per waypoint, in flight order.
     kml_wp_list = []
     for point in plan.waypoints:
 
@@ -69,6 +61,11 @@ def _route_coords(plan: CandidatePlan):
 
 
 def _segment_builder(route: list):
+    """
+    Split the route into (category, points) runs: collect_start opens a science run,
+    collect_stop closes it, and everything else is transit. Consecutive runs share their
+    boundary point so the drawn polylines connect.
+    """
 
     collecting = False
     current_category = CONST.WAYPOINT_ACTION_TRANSIT
@@ -81,35 +78,39 @@ def _segment_builder(route: list):
 
         if action == CONST.WAYPOINT_ACTION_COLLECT_START and not collecting:
 
-            current_pts.append(point)   #append the last gray point
+            current_pts.append(point)   # append the last gray point
             segments.append((current_category, current_pts))
 
-            collecting = True   #starting collection
+            collecting = True   # starting collection
             current_category = CONST.WAYPOINT_ACTION_SCIENCE
 
-            current_pts = [point]   #The first green point
+            current_pts = [point]   # The first green point
 
         elif action == CONST.WAYPOINT_ACTION_COLLECT_STOP and collecting:
 
-            current_pts.append(point)   #append the last green point
+            current_pts.append(point)   # append the last green point
             segments.append((current_category, current_pts))
 
-            collecting = False  #stopping collection
+            collecting = False  # stopping collection
             current_category = CONST.WAYPOINT_ACTION_TRANSIT
 
-            current_pts = [point]   #The first gray point
-            
+            current_pts = [point]   # The first gray point
+
         else:
-            current_pts.append(point) #add everything else
-            
-    #flush final run:
-    #Do not put inside the loop: will append the list to itself, balooning the number of line segments incorrectly
+            current_pts.append(point)  # add everything else
+
+    # flush final run:
+    # Do not put inside the loop: will append the list to itself, ballooning the number of line segments incorrectly
     if current_pts:
-        segments.append((current_category,current_pts))
+        segments.append((current_category, current_pts))
 
     return segments
 
+
 def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
+    """
+    Build a timestamped output path, creating the output directory if it does not exist.
+    """
 
     # "EMPTY" is the sentinel for "caller gave no directory" -> fall back to the
     # configured default output directory from constants.
@@ -130,6 +131,10 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
 
 
 def _metrics_caption(plan: CandidatePlan):
+    """
+    The plan's headline metrics as one comma-separated line, for the KML description and
+    the PNG title.
+    """
 
     return f"{plan.chosen_orientation:.2f}, {plan.score:.2f}, {plan.grid_area_m2:.4f}, {plan.total_lines}, {plan.duration:.2f}, {plan.margin:.2f}"
 
@@ -141,8 +146,11 @@ def _metrics_caption(plan: CandidatePlan):
 """
 
 
-# Defines the geographic bounds for png elements such as the sun arrow, etc.
 def _route_extent(route: list):
+    """
+    Geographic bounds of the route, (min lon, max lon, min lat, max lat), for placing PNG
+    elements such as the sun arrow.
+    """
 
     lons = []
 
@@ -165,6 +173,9 @@ def _route_extent(route: list):
 
 
 def _poi_markers(plan: CandidatePlan):
+    """
+    The launch, land and M1 points of interest as (action, lon, lat, alt) tuples.
+    """
 
     mission_req = plan.mission_request
 
@@ -200,11 +211,14 @@ def _poi_markers(plan: CandidatePlan):
     return poi_list
 
 
-# Maps a segment category to a matplotlib color for the PNG route.
-# NOTE: write_kml does NOT call this -- it applies simplekml.Color directly.
-# Keeping the science=green / transit=gray choice here documents the shared
-# color convention in one place so the two outputs stay visually consistent.
 def _png_color(category: str):
+    """
+    Map a segment category to a matplotlib color for the PNG route.
+
+    NOTE: write_kml does NOT call this -- it applies simplekml.Color directly. Keeping the
+    science=green / transit=gray choice here documents the shared color convention in one
+    place so the two outputs stay visually consistent.
+    """
 
     if category == CONST.WAYPOINT_ACTION_SCIENCE:
 
@@ -215,8 +229,10 @@ def _png_color(category: str):
         return "gray"
 
 
-# converts azimuth to a (dx, dy) for PNG arrow denoting sun position/angle
 def _sun_vector(sun_az_deg, length, latitude_deg):
+    """
+    Convert a sun azimuth into the (dx, dy) of the PNG's sun-position arrow.
+    """
 
     # math.sin/cos expect RADIANS; azimuth comes in as degrees (0 = north,
     # clockwise), so convert first. dx uses sin, dy uses cos so the arrow
@@ -238,17 +254,16 @@ def _sun_vector(sun_az_deg, length, latitude_deg):
 
 def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
     """
-    QGC REMINDER:
-    A KML uploaded to QGroundControl is VISUALIZATION ONLY. QGC draws the
-    LineStrings/Placemarks for review, but it does NOT turn them into a
-    flyable mission with auto-generated per-waypoint headings. To actually
-    upload-and-fly we will emit a QGC ".plan" file (JSON) -- which is why
-    constants.py carries EXTENSION_JSON. That JSON writer is a future helper
-    (write_qgc_plan); this KML is for human/Google Earth review.
+    Write the plan's route and points of interest as a KML, and return its path.
 
-    Section #1: Prep, establish the kml, get the line segments,
-    get the output path, get the route list
+    QGC REMINDER: a KML uploaded to QGroundControl is VISUALIZATION ONLY. QGC draws the
+    LineStrings/Placemarks for review, but it does NOT turn them into a flyable mission.
+    The flyable file is the QGC ".plan" that write_qgc_plan writes; this KML is for
+    human/Google Earth review.
     """
+
+    # Section #1: Prep -- establish the kml, get the route list, the line segments, and
+    # the output path.
 
     kml = simplekml.Kml()
 
@@ -260,29 +275,21 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     path = _output_path(plan.name, CONST.EXTENSION_KML, out_dir)
 
-    """
-    Section #2: Set the document name and metadata 
-    """
+    # Section #2: Set the document name and metadata
 
     kml.document.name = plan.name
 
     kml.document.description = _metrics_caption(plan)
 
-    """
-    Section #3: Draw the route
-    """
+    # Section #3: Draw the route
 
     for category, pts in segments:
 
         ls = kml.newlinestring(name=category)
 
-        """
-        IF YOU OPEN THIS FILE IN A CODE EDITOR WITH PYLANCE:
-        
-        **There is not error in the lines that contain: .coords, .extrude, .altitudemode
-        simplekml uses its own special syntax rules and logic that makes this syntax valid.
-        Just disable the warning in pyright.**
-        """
+        # IF YOU OPEN THIS FILE IN A CODE EDITOR WITH PYLANCE: there is no error in the lines
+        # that set .coords, .extrude and .altitudemode. simplekml uses its own special syntax
+        # rules and logic that make this valid, so the pyright warning is disabled per line.
 
         ls.coords = pts  # type: ignore
 
@@ -294,7 +301,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
         ls.style.linestyle.width = 3
 
-        if category == "science":
+        if category == CONST.WAYPOINT_ACTION_SCIENCE:
 
             ls.style.linestyle.color = simplekml.Color.green
 
@@ -302,9 +309,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
             ls.style.linestyle.color = simplekml.Color.gray
 
-    """
-    Section #4: Markers at POI's
-    """
+    # Section #4: Markers at POIs
 
     # Establish each POI
     launch_marker = kml.newpoint(name=plan.mission_request.launch_wp.action)
@@ -358,9 +363,7 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
     m1_marker.style.iconstyle.color = simplekml.Color.coral
 
-    """
-    Section #5: Save and return
-    """
+    # Section #5: Save and return
 
     # J-6 WARNING GATE: kml.save() opens its file with codecs.open(), which Python 3.14
     # deprecates, so every write_kml run printed a DeprecationWarning. kml.kml() returns the
@@ -373,9 +376,10 @@ def write_kml(plan: CandidatePlan, out_dir: str = "EMPTY"):
 
 
 def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
-
-    # The png writer has the same spine as the kml writer, only differences
-    # are output type dependent.
+    """
+    Draw the plan as a PNG for the RPIC, and return its path. Same spine as write_kml;
+    the only differences are output-type dependent.
+    """
 
     # Step 0, establish the png infrastructure by calling the helpers
 
@@ -506,145 +510,142 @@ def write_png(plan: CandidatePlan, out_dir: str = "EMPTY"):
 ============================================================================
 """
 
-# Maps out the "items" of the flight to then
-# be translated using the QGC constants and turned into JSON.
 
-# Since many waypoints in a QGC plan are just navigational waypoints,
-# this helper makes the loop quicker and easier to read.
-
-"""
-ITEM SHAPE:
-
-1. ALL ITEMS CONTAIN AT LEAST THE FOLLOWING: {Keyword, Alt_Frame_Ref, Source_Action}
-
-2. POSITIONAL ITEMS ALSO CONTAIN {..., Latitude, Longitude, Altitude (meters)}
-
-3. CAMERA ITEMS CONTAIN {..., Trigger Distance (meters)} INSTEAD
-
-**NOTE** MAVLINK protocol does not require position info for camera commands.
-"""
-
-
-# Helper function to define the most standard waypoint a CFE plan
-# can have in a vehicle neutral fassion 
 def _nav(wp: Waypoint):
-    
+    """
+    The most standard item a CFE plan can have -- a plain cruise waypoint -- in
+    vehicle-neutral form. Most of a plan's items are these, so the helper keeps
+    _plan_items' loop short.
+    """
+
     return {
         "Keyword": "nav",
         "Alt_Frame_Ref": "AMSL",
         "Latitude": wp.latitude,
         "Longitude": wp.longitude,
-        "Altitude_m": wp.altitude        
+        "Altitude_m": wp.altitude
     }
 
-# Walks the waypoints and builds a vehicle neutral "translation layer"
-# dict that is used to build the parameter arrays for each MAVLINK command
-# in the function below, once a vehicle is identified.
+
 def _plan_items(plan: CandidatePlan):
-    
+    """
+    Walk the waypoints and build the vehicle-neutral item list: the "translation layer"
+    that the QGC serializer (and any future dialect) turns into MAVLink commands once the
+    vehicle is known. One waypoint can become two items: collect_start and collect_stop
+    each add a camera item after their nav item.
+
+    ITEM SHAPE:
+      1. ALL ITEMS CONTAIN AT LEAST: {Keyword, Alt_Frame_Ref, Source_Action}
+      2. POSITIONAL ITEMS ALSO CONTAIN: {Latitude, Longitude, Altitude_m}
+      3. CAMERA ITEMS CONTAIN {Trigger_Distance_m} INSTEAD
+
+    **NOTE** MAVLink does not require position info for camera commands.
+    """
+
     planned_items = []
 
     for wp in plan.waypoints:
-        
+
         if wp.action == CONST.WAYPOINT_ACTION_LAUNCH:
             items = [{"Keyword": "takeoff", "Alt_Frame_Ref": "RELATIVE",
                      "Latitude": wp.latitude, "Longitude": wp.longitude,
                      "Altitude_m": CONST.TAKEOFF_REL_m}]
-            
+
         elif wp.action == CONST.WAYPOINT_ACTION_LAND:
             items = [{"Keyword": "land", "Alt_Frame_Ref": "RELATIVE",
-                    "Latitude": wp.latitude, "Longitude": wp.longitude,
-                    "Altitude_m": CONST.LANDING_REL_m}]
-            
+                      "Latitude": wp.latitude, "Longitude": wp.longitude,
+                      "Altitude_m": CONST.LANDING_REL_m}]
+
         elif wp.action == CONST.WAYPOINT_ACTION_COLLECT_START:
-            items = [_nav(wp), 
+            items = [_nav(wp),
                      {"Keyword": "cam_on", "Alt_Frame_Ref": "MISSION",
                       "Trigger_Distance_m": plan.camera_trigger_distance_m}]
-        
+
         elif wp.action == CONST.WAYPOINT_ACTION_COLLECT_STOP:
-            items = [_nav(wp), 
-                    {"Keyword": "cam_off", "Alt_Frame_Ref": "MISSION",
-                    "Trigger_Distance_m": 0}]
-        
+            items = [_nav(wp),
+                     {"Keyword": "cam_off", "Alt_Frame_Ref": "MISSION",
+                      "Trigger_Distance_m": 0}]
+
         else:
             items = [_nav(wp)]
-            
+
         for item in items:
             item["Source_Action"] = wp.action
-            
+
         planned_items.extend(items)
-        
+
     return planned_items
 
 
-
-# Builds the parameter array for a QGC command when called, depending on the vehicle type:
-
 def _qgc_params(item, is_vtol):
-    
+    """
+    Build the seven-element QGC params array for one neutral item, depending on its keyword
+    and the vehicle class. An unknown keyword raises.
+    """
+
     keyword = item["Keyword"]
-    
+
     if keyword == "takeoff":
         if is_vtol:
-            return [0, CONST.TRANSITION_HEADING_SETTING, 0, CONST.TRANSITION_YAW_deg, 
+            return [0, CONST.TRANSITION_HEADING_SETTING, 0, CONST.TRANSITION_YAW_deg,
                     item["Latitude"], item["Longitude"], item["Altitude_m"]]
 
         else:
             return [CONST.TAKEOFF_PITCH_deg, 0, 0, CONST.TAKEOFF_YAW_deg,
                     item["Latitude"], item["Longitude"], item["Altitude_m"]]
-            
+
     if keyword == "land":
         if is_vtol:
             return [CONST.LANDING_BEHAVIOR, 0, CONST.APPROACH_AMSL_m, CONST.VTOL_LANDING_YAW_deg,
                     item["Latitude"], item["Longitude"], item["Altitude_m"]]
-            
+
         else:
             return [CONST.ABORT_REL_m, 0, 0, CONST.LAND_YAW_deg,
                     item["Latitude"], item["Longitude"], item["Altitude_m"]]
-            
+
     if keyword in ("cam_on", "cam_off"):
-        
+
         on_off_toggle = (CONST.CAM_TRIGGER_START if keyword == "cam_on" else CONST.CAM_TRIGGER_END)
-        
+
         return [item["Trigger_Distance_m"], CONST.CAM_SHUTTER_INTEGRATION_millis, on_off_toggle, CONST.TARGET_CAM_ID,
                 0, 0, 0]
-        
+
     if keyword == "nav":
         return [CONST.HOLD_TIME_s, CONST.ACCEPTANCE_RADIUS_m, CONST.PASS_RADIUS_m, CONST.WP_YAW_deg,
                 item["Latitude"], item["Longitude"], item["Altitude_m"]]
-        
-    
-    raise ValueError(f"Invalid Keyword detected: {keyword}.")
-        
-        
-'''
-========================================================================================
-'''
 
-# Below are QGC Lookup Tables to link CFE Waypoint Keywords 
+    raise ValueError(f"Invalid Keyword detected: {keyword}.")
+
+
+"""
+========================================================================================
+"""
+
+# The QGC lookup tables below link CFE item keywords and altitude references to the
+# integers QGC expects.
 
 # TABLE #1: Keyword -> Command:
 
 # Order: "Keyword" : (Non_VTOL, VTOL)
 
 _QGC_COMMAND = {
-    
+
     "nav": (CONST._QGC_CMD_NAV_WAYPOINT, CONST._QGC_CMD_NAV_WAYPOINT),
-    
+
     "takeoff": (CONST._QGC_CMD_NAV_TAKEOFF, CONST._QGC_CMD_VTOL_TAKEOFF),
-    
+
     "land": (CONST._QGC_CMD_NAV_LAND, CONST._QGC_CMD_VTOL_LAND),
-    
+
     "cam_on": (CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST, CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST),
-    
+
     "cam_off": (CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST, CONST._QGC_CMD_DO_SET_CAM_TRIGGER_DIST)
-    
+
 }
 
 # TABLE #2: Alt_Frame_Ref -> (MAV_FRAME, QGC AltitudeMode):
 
 # Two different enums that both use small integers -- this table is the one place they meet.
-# None = omit the AltitudeMode key entirely (camera items have no altitude to describe).
+# None = the item has no altitude, so _qgc_item omits all three altitude keys.
 
 # **NOTE** "AMSL" is the CRUISE row. _CRUISING_MISSION_ALT_FRAME is named for the cruise leg of
 # the mission, and is NOT MAV_FRAME_MISSION -- that one is _QGC_MAV_FRAME_MISSION, used only by
@@ -659,20 +660,20 @@ _QGC_ALT_FRAME = {
     "MISSION": (CONST._QGC_MAV_FRAME_MISSION, None)
 }
 
-'''
+"""
 ========================================================================================
-'''
+"""
 
-# Builds a QGC SimpleItem for plugging into the JSON.
-# Built field by field into a NEW dict, so nothing of ours (Source_Action) can reach the file.
 
 def _qgc_item(item, jump_id, is_vtol):
+    """
+    Build one QGC SimpleItem from one neutral item. Built field by field into a NEW dict,
+    so nothing of ours (Source_Action) can reach the file.
+    """
 
     alt_frame, alt_mode = _QGC_ALT_FRAME[item["Alt_Frame_Ref"]]
 
     qgc_item = {
-        "AMSLAltAboveTerrain": CONST._QGC_AMSL_ALT_ABOVE_TERRAIN,
-        "Altitude": item.get("Altitude_m", 0),  # camera items carry no altitude -> 0
         "autoContinue": CONST._QGC_AUTOCONTINUE,
         "command": _QGC_COMMAND[item["Keyword"]][1 if is_vtol else 0],
         "doJumpId": jump_id,
@@ -681,16 +682,22 @@ def _qgc_item(item, jump_id, is_vtol):
         "type": CONST._QGC_SIMPLE_ITEM
     }
 
-    # Omit the key rather than writing null: camera items have no altitude to give a mode to.
+    # QGC writes the three altitude keys only on items that have an altitude: exp..plan's
+    # DO_CHANGE_SPEED item carries none of them. Camera items are DO items too.
     if alt_mode is not None:
+        qgc_item["AMSLAltAboveTerrain"] = CONST._QGC_AMSL_ALT_ABOVE_TERRAIN
+        qgc_item["Altitude"] = item["Altitude_m"]
         qgc_item["AltitudeMode"] = alt_mode
 
     return qgc_item
 
-# Home is wherever THIS plan takes off -- never a fixed site, so a boat launch gets its own home.
-# The altitude is the pad's AMSL; Step F makes launch elevation part of the launch point.
 
 def _qgc_home(items):
+    """
+    The plan's home position. Home is wherever THIS plan takes off -- never a fixed site,
+    so a boat launch gets its own home. The altitude is the pad's AMSL; Step F makes launch
+    elevation part of the launch point.
+    """
 
     takeoff = next((i for i in items if i["Keyword"] == "takeoff"), None)
 
@@ -699,12 +706,13 @@ def _qgc_home(items):
 
     return [takeoff["Latitude"], takeoff["Longitude"], CONST.TERRACE_POINT_AMSL_m]
 
-# Returns the entire plan to be written to a .plan file.
-# Reads the neutral item list and calls the _qgc_item helper to build
-# waypoints.
 
 def _serialize_qgc(plan: CandidatePlan, items):
-    
+    """
+    Build the entire .plan document from the neutral item list. Reads the items, never
+    writes them; each QGC item is built by _qgc_item.
+    """
+
     is_vtol = plan.aircraft.is_VTOL
 
     return {
@@ -725,10 +733,12 @@ def _serialize_qgc(plan: CandidatePlan, items):
         "rallyPoints": CONST._QGC_RALLYPOINTS,
         "version": CONST._QGC_VERSION
     }
-    
-# Writes a QGC plan to disk:
+
 
 def write_qgc_plan(plan: CandidatePlan, out_dir: str = "EMPTY"):
+    """
+    Write the plan as a QGC .plan file, and return its path.
+    """
 
     path = _output_path(plan.name, CONST.EXTENSION_PLAN, out_dir)
 
@@ -738,6 +748,6 @@ def write_qgc_plan(plan: CandidatePlan, out_dir: str = "EMPTY"):
     # re-export readable. allow_nan=False: a stray NaN is not valid JSON.
     with open(path, "w", encoding="utf-8") as plan_file:
         json.dump(flight_plan, plan_file, indent=4, sort_keys=True, allow_nan=False)
-        
-        
+        plan_file.write("\n")
+
     return path

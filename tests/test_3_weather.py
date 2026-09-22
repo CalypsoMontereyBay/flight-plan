@@ -12,7 +12,7 @@ from datetime import timezone, timedelta
 
 import pytest
 
-import constants as C
+import constants as CONST
 import weather as W
 
 
@@ -21,6 +21,7 @@ def _utc(*args):
 
 
 # ---- pure helpers --------------------------------------------------------------
+
 
 def test_to_ms_conversions():
     assert W._to_ms(18, "wmoUnit:km_h-1") == pytest.approx(5.0)    # 18 / 3.6
@@ -32,7 +33,7 @@ def test_to_ms_conversions():
 def test_condition_from_skycover_bands():
     assert W._condition_from_skycover(90) == "overcast"                     # >= 85
     assert W._condition_from_skycover(85) == "overcast"                     # boundary
-    assert W._condition_from_skycover(3) == C.DEFAULT_WEATHER_CONDITION     # <= 5% cloud -> clear
+    assert W._condition_from_skycover(3) == CONST.DEFAULT_WEATHER_CONDITION     # <= 5% cloud -> clear
     assert W._condition_from_skycover(50) == "partly cloudy"                # between
 
 
@@ -109,6 +110,7 @@ def test_within_forecast_horizon():
 
 # ---- get_weather wrapper (NWS fetch monkeypatched) -----------------------------
 
+
 def _canned_grid(when):
     # start one hour before `when` so the single interval covers it
     start = (when - timedelta(hours=1)).isoformat()
@@ -132,16 +134,16 @@ def test_get_weather_happy_path(monkeypatch):
 
     monkeypatch.setattr(W, "_http_get_json", fake_http_get_json)
 
-    wx = W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, when)
+    wx = W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, when)
 
     assert wx is not None
     assert wx.wind_speed == pytest.approx(5.0)          # 18 km/h -> m/s
     assert wx.wind_gusts == pytest.approx(10.0)         # 36 km/h -> m/s
     assert wx.cloud_cover == 90
     assert wx.condition == "overcast"                   # 90% >= overcast threshold
-    assert wx._data_source == C.WEATHER_SOURCE_NWS
-    assert wx._visibility_m == C.DEFAULT_VISIBILITY_m   # absent in grid -> default
-    assert wx._wind_direction_deg == 270
+    assert wx.source == CONST.WEATHER_SOURCE_NWS
+    assert wx.visibility == CONST.DEFAULT_VISIBILITY_m   # absent in grid -> default
+    assert wx.wind_direction == 270
 
 
 def _patch_grid(monkeypatch, grid):
@@ -158,14 +160,14 @@ def test_get_weather_records_provenance(monkeypatch):
     when = datetime.datetime.now(timezone.utc)
     _patch_grid(monkeypatch, _canned_grid(when))
 
-    wx = W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, when)
+    wx = W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, when)
     assert wx is not None
 
     assert wx.wind_is_measured is True              # both halves of the vector are real
     assert wx.is_stale("visibility") is True        # absent from the grid entirely
     assert wx.is_stale("windSpeed") is False
     assert wx.is_stale("windDirection") is False
-    assert wx.visibility == C.DEFAULT_VISIBILITY_m  # defaulted, and flagged as such
+    assert wx.visibility == CONST.DEFAULT_VISIBILITY_m  # defaulted, and flagged as such
 
 
 def test_get_weather_out_of_coverage_is_not_measured_wind(monkeypatch):
@@ -182,14 +184,14 @@ def test_get_weather_out_of_coverage_is_not_measured_wind(monkeypatch):
     }}
     _patch_grid(monkeypatch, grid)
 
-    wx = W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, when)
+    wx = W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, when)
     assert wx is not None
 
     assert wx.wind_is_measured is False             # <-- the whole point
     assert wx.is_stale("windSpeed") is True
     assert wx.is_stale("windDirection") is True
-    assert wx.wind_speed == C.DEFAULT_ZERO_WIND     # defaulted to calm...
-    assert wx.wind_direction == C.DEFAULT_WIND_DIRECTION_deg
+    assert wx.wind_speed == CONST.DEFAULT_ZERO_WIND     # defaulted to calm...
+    assert wx.wind_direction == CONST.DEFAULT_WIND_DIRECTION_deg
     # ...but the plan can tell that calm was ASSUMED, not observed
     assert wx.wind_is_measured is not True
 
@@ -203,7 +205,7 @@ def test_get_weather_bad_unit_is_stale(monkeypatch):
     }}
     _patch_grid(monkeypatch, grid)
 
-    wx = W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, when)
+    wx = W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, when)
     assert wx is not None
     # a value that arrives in an unrecognised unit is as unusable as a missing one
     assert wx.is_stale("windSpeed") is True
@@ -217,7 +219,7 @@ def test_get_weather_out_of_horizon_makes_no_call(monkeypatch):
     monkeypatch.setattr(W, "_http_get_json", boom)
 
     past = datetime.datetime.now(timezone.utc) - timedelta(days=10)
-    assert W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, past) is None
+    assert W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, past) is None
 
 
 def test_get_weather_network_failure_returns_none(monkeypatch):
@@ -228,4 +230,4 @@ def test_get_weather_network_failure_returns_none(monkeypatch):
     monkeypatch.setattr(W, "_http_get_json", raise_req)
 
     when = datetime.datetime.now(timezone.utc)
-    assert W.get_weather(C.V1_LAUNCH_POINT_LAT, C.V1_LAUNCH_POINT_LONG, when) is None
+    assert W.get_weather(CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, when) is None

@@ -101,10 +101,11 @@ takeoff/land commands Step J must emit):
 > J-4 makes the *sizing* honest; it does not add a *gate*, and the two are different jobs.
 >
 > **2. No output has been flown, or even round-tripped through QGC.** The `.plan` writer
-> exists as of 2026-09-22 (J-5) and matches `exp2.plan`'s key sets and per-class frames,
-> but no generated file has been loaded into QGC, re-exported and diffed yet. The camera
-> items have no reference at all, since `exp2.plan` contains none. Until the round trip is
-> done, treat the format as unverified.
+> exists as of 2026-09-22 (J-5). Its key sets and per-class frames match `exp2.plan`, and
+> its camera items match `exp..plan`'s DO item. A generated file has also been **loaded
+> into QGC and checked by eye**: no stray waypoints, a home icon, and direction lines through
+> every waypoint. It has not yet been re-exported from QGC and diffed. Until it has, and
+> until the S2 takeoff question below is answered, treat the file as unverified for flight.
 >
 > ### ✅ FIXED — kept as history, do not re-diagnose
 >
@@ -189,6 +190,33 @@ takeoff/land commands Step J must emit):
   Each time, one name quietly came to mean two things, every caller kept working, and the
   error only surfaced as an impossible number much later. Before reusing an existing field
   for a changed quantity, add a second field instead.
+- **House style** (set by the 2026-09-22 cleanup across `src/` and `tests/`; keep new code
+  consistent with it):
+  - **Imports:** three groups separated by a blank line: standard library, third-party,
+    engine modules. No header comments. One module per `import` line. `constants` is always
+    `import constants as CONST`. The only code allowed between imports is an ordering
+    constraint with a comment saying why (`matplotlib.use("Agg")`, the `sys.path` insert in
+    `flight_plan_maker.py`).
+  - **Documentation:** every function and class carries a `"""` docstring *inside* it. Do
+    not use a bare string or comment block above the `def`. Module docstrings sit at the top,
+    and section banners stay as module-level `"""` strings. Comments inside functions
+    explain *why*.
+  - **Comments** start with `#` and one space; inline comments sit at least two spaces after
+    the code.
+  - **Formatting:** PEP 8 blank lines (two around top-level defs, one between methods), no
+    trailing whitespace, one newline at EOF. No space before `(`, and `name=value` for
+    keyword args.
+  - **Names:** snake_case for locals, parameters and private attributes. Public attribute
+    and function names are an API; tests and CLAUDE.md reference them. Rename one only
+    as its own change, never as style. The known holdouts are `is_VTOL`, `waypoint_ID`,
+    `to_CSV_row`, `total_flight_distance` (no `_m`), `V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG`
+    (`_DEG`), and the capitalized `planner` singletons (`_Black_Swift`, ...).
+  - **Tests** reach objects through public getters, never `obj._private` attributes.
+  - **Writing:** comments state what is true *now*. History stays, but dated and labeled
+    as history (the `⚠️ 2026-09-08` notes). A claim about a module that does not exist yet
+    (validator) is written as future tense, never present.
+  - **Not covered:** the QGC-constants block of `constants.py`, which is user territory, and
+    line length.
 
 ## Setup & run
 
@@ -346,8 +374,9 @@ Read this before touching the grid, classification, or output code.
     boat plan). `_QGC_PLANNED_HOME_POSITION` was **retired**; it had put the 50 m climb-out
     height where QGC expects the home's AMSL altitude. Residual: a boat deck sits near sea
     level, not 16 m. Step F makes launch elevation part of the launch point.
-  - **Camera items omit `AltitudeMode`** (the `MISSION` row's `None`), rather than writing
-    `null`. The QGC round trip decides whether that stays.
+  - **Camera items omit all three altitude keys** (`Altitude`, `AltitudeMode`,
+    `AMSLAltAboveTerrain`), keyed on the `MISSION` row's `None`. `exp..plan`'s own DO item
+    confirms this is what QGC writes; see "What `exp..plan` adds".
   - ⚠️ **`_CRUISING_MISSION_ALT_FRAME` is the CRUISE frame (0), not `MAV_FRAME_MISSION`
     (2).** The J-5 audit caught the `AMSL` and `MISSION` rows of `_QGC_ALT_FRAME` swapped.
     That would have put every cruise waypoint in the mission frame, and it fails
@@ -381,6 +410,10 @@ Read this before touching the grid, classification, or output code.
 
     Pyright isn't installed on this machine, so use a throwaway venv. Any new warning gets
     fixed, or filtered at its call site, never blanket-suppressed.
+  - **The suite half is now permanent:** `pytest.ini` sets `filterwarnings = error`, so a new
+    warning fails the suite. As of the 2026-09-22 cleanup, pyright also reports 0 errors
+    over `tests/` (it had 6, all Optional operands in `test_4`, now narrowed with
+    `assert ... is not None`).
 
 - **Tests.** Tier 0 (primitives) and Tier 2 (derived math) are pure closed-form math
   (must never fail); Tier 1 pins the date/time resolver, sun-state, and weather-leaf wiring; Tiers 3–5 drive
@@ -561,6 +594,30 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 - The **launch item's altitude** is a climb-out altitude, not the 609.6 m mission altitude
   the launch waypoint carries. Set in J-1 as `TAKEOFF_REL_m = 50` (relative frame), with
   `LANDING_REL_m = 0` for the land item.
+- **⚠️ OPEN — how the S2 behaves with its takeoff waypoint on the launch point** (recorded
+  2026-09-22; the user cannot answer it yet). Our `NAV_TAKEOFF` sits exactly on the pad
+  (0.0 m from home). QGC's own fixed-wing export (`exp2.plan`) puts it **71.7 m out at
+  64.1°**, as a climb-out target. The file cannot tell which of two things the S2 does
+  during the climb to 50 m:
+  - **(a)** it holds the launch heading from the stand to clearance altitude, then turns for
+    the first grid waypoint. This is the intended behaviour, and it keeps the launch
+    direction with the stand and the RPIC's read of the wind, per constraint 4.
+  - **(b)** it treats the takeoff point as a position to reach, and loops back over the pad at
+    low altitude before heading out.
+
+  QGC's display cannot distinguish them. **Resolve by asking BlackSwift, or with one PX4
+  SITL run.** If the answer is (a), no change is needed. Do **not** move the waypoint along
+  `departure_bearing_deg` without that answer, because that would be the engine choosing a
+  launch direction. The landing has no equivalent question: `NAV_LAND` approaches along the
+  line from the last grid waypoint (344.6°).
+- **✅ Speed is not commanded, by design (confirmed 2026-09-22).** The header `cruiseSpeed` is
+  a QGC planning estimate only; a MAVLink mission upload carries items, not the header. The
+  aircraft flies its autopilot's configured cruise speed, and the user confirmed the S2's is
+  **18 m/s = `BLACKSWIFT_CRUISE_SPEED_ms`**, the speed every budget, duration and margin
+  assumes. So no `DO_CHANGE_SPEED` (178) is emitted. **Step G must revisit this:** once the
+  aircraft is user-settable, the engine's cruise speed and the autopilot's can differ.
+  Emitting a `DO_CHANGE_SPEED` after takeoff is then the fix (QGC's own "Flight speed"
+  setting does exactly that).
 
 **Step table:**
 
@@ -572,9 +629,9 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 | J-3 | `geo.py` | Trigger distance into the metrics dict (along-track FOV/overlap passed as **parameters**, not read from `constants`); `total_route_distance_m` → `total_grid_distance_m` | ✅ |
 | J-4 | `planner.py` | Reserve the transit before `geo` sizes anything; measure the true transit; bounded retry; duration from the total; `grid_budget_m` vs `usable_endurance_distance_m` split | ✅ |
 | J-4.5 | `planner.py`, `objects.py` | Departure + approach bearings measured on the **final** route, reporting only | ✅ |
-| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22 — **QGC round trip pending** |
+| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22; loads cleanly in QGC — **re-export diff pending** |
 | J-6 gate | `outputs.py`, `sun.py`, `planner.py`, `weather.py` | Clear every handleable warning before the entry point changes | ✅ 2026-09-22 |
-| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ❌ **NEXT** |
+| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | 🔶 **IN PROGRESS** — `.plan` emitted and its path printed; split + bearings not yet |
 | J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ❌ |
 | J-8 | docs | Closeout; fix the stale `Seymour-*` waypoint names | ❌ |
 
@@ -620,7 +677,7 @@ resolves:
 |---|---|---|---|
 | takeoff / land | 3 (relative) | 1 | `TAKEOFF_REL_m` 50 / `LANDING_REL_m` 0 |
 | cruise nav | 0 (AMSL) | 2 | 609.6 |
-| DO camera | 2 (mission) | key omitted (round trip to confirm) | 0 |
+| DO camera | 2 (mission) | **omitted** | **omitted** (and so is `AMSLAltAboveTerrain`) |
 
 An earlier revision of the planning notes said "every nav item carries frame 3". **That is
 wrong.** Cruise waypoints are `frame 0` / `AltitudeMode 2`. This *is* the mixed-datum
@@ -645,6 +702,23 @@ The rest:
 - **No `DO_SET_CAM_TRIGG_DIST` items appear in it**, so the camera half of our output has no
   reference. **Round-trip the first file J-5 produces**: load into QGC, re-export, diff.
   Anything QGC rewrites is something we got wrong.
+
+**What `exp..plan` adds** (the repo's second QGC export, diffed against our output on
+2026-09-22):
+
+- **It is the first ground truth for a DO item.** Its opening `DO_CHANGE_SPEED` (178,
+  frame 2) carries only `autoContinue`, `command`, `doJumpId`, `frame`, `params` and
+  `type`. So QGC writes `Altitude`, `AltitudeMode` and `AMSLAltAboveTerrain` **only on items
+  that have an altitude**. `_qgc_item` now omits all three on camera items, keyed on the
+  `MISSION` row's `None`.
+- **That `DO_CHANGE_SPEED` is QGC's optional Mission Start "Flight speed" setting**, not
+  something the vehicle type requires: it has the same vehicle and firmware as `exp2.plan`,
+  which has none. See "Speed is not commanded" above.
+- It is an **all-relative** plan (`globalPlanAltitudeMode` 1, nav in frame 3), an older style.
+  `exp2.plan`'s mixed datum (0) is the one we match.
+- **Formatting-only differences** that do not affect loading: QGC writes empty arrays as a
+  bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
+  does.
 
 ### F. Mission configurability (SIDELINED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,

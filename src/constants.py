@@ -22,25 +22,21 @@ For the second build of the engine, this file will hold all of the constants use
 M1_MOORING_LONG = -122.020
 M1_MOORING_LAT = 36.750
 
-# Launch point coordinate constants (Closest point to M1 station.)
-# 🔴 STALE AS OF 2026-09-08. The standing default launch/land site is the UCSC Coastal
-# Science Campus -- TERRACE POINT, Santa Cruz (north shore):
+# Launch point coordinate constants: the UCSC Coastal Science Campus -- TERRACE POINT,
+# Santa Cruz (north shore) -- the standing default launch/land site since 2026-09-08 and
+# set here in Step J-1. It replaced a south-shore position 14,615 m from M1.
 #
-#       36.94840 N,  -122.06538   <- replace BOTH pairs below with this (Step J-1)
+# LAUNCH AND LAND ARE THE SAME POINT; the V1 split into a beach launch and a separate
+# road landing collapsed to one pad. (planner's waypoint NAMES still say "Seymour-*" --
+# cosmetic, fixed in J-8.)
 #
-# LAUNCH AND LAND ARE THE SAME POINT now; the V1 split into a beach launch and a separate
-# road landing collapses to one pad. The values below are a SOUTH-shore position 14,615 m
-# from M1, while planner's waypoint NAMES already say "Seymour-*" -- names and coordinates
-# have disagreed since V1.
-#
-# Terrace Point measures 22,386 m from M1 (bearing 169.6 deg), 53% further than these
-# values encode. Round-trip transit alone is ~44.8 km = ~41.5 min of a 90 min endurance,
-# which is what makes the transit-budget defect binding -- see CLAUDE.md, Step J.
+# Terrace Point measures 22,386 m from M1 (bearing 169.6 deg). Round-trip transit alone
+# is ~44.8 km = ~41.5 min of a 90 min endurance, which is why the grid budget reserves the
+# transit first -- see CLAUDE.md, Step J-4.
 V1_LAUNCH_POINT_LONG = -122.06538
 V1_LAUNCH_POINT_LAT = 36.94840
 
-# Land point coordinate constants (Beach near launch point.)
-# 🔴 Same staleness applies, and these become IDENTICAL to the launch point above.
+# Land point coordinate constants: IDENTICAL to the launch point above (one pad).
 
 V1_LAND_POINT_LONG = -122.06538
 V1_LAND_POINT_LAT = 36.94840
@@ -49,13 +45,13 @@ TERRACE_POINT_AMSL_m = 16
 
 '''
 CFE VERSION 2 CONSTANTS ARE DEFINED BELOW:
-ASSUMPTIONS REMANING FROM V1 ARE ALSO DEFINED BELOW
+ASSUMPTIONS REMAINING FROM V1 ARE ALSO DEFINED BELOW
 ========================================================================================
 '''
 
-#Local date/time defaults if user does not specify:
+# Local date/time defaults if user does not specify:
 
-V2_DEFAULT_MISSION_LOCAL_HOUR = 10 #10 AM PT
+V2_DEFAULT_MISSION_LOCAL_HOUR = 10  # 10 AM PT
 
 V2_DEFAULT_MISSION_LOCAL_MINUTE = 0
 
@@ -65,7 +61,7 @@ V1_DEFAULT_MISSION_YEAR = 2026
 
 V1_DEFAULT_MISSION_MONTH = 1
 
-V2_MISSION_INPUT_TIMEZONE = "America/Los_Angeles" #String used in ZoneInfo
+V2_MISSION_INPUT_TIMEZONE = "America/Los_Angeles"  # String used in ZoneInfo
 
 #--------------------------------------------
 
@@ -76,11 +72,11 @@ V1_DEFAULT_MISSION_CLOUD_COVER = 0  # Units = %
 V1_DEFAULT_LEGAL_STATUS = True
 
 V1_DEFAULT_AIRCRAFT_ALTITUDE_m = 609.6  # Units = m. 609.6m = 2000 FT exactly when accounting for takeoff
-#elevation.
+# elevation.
 # NOTE: 2000 FT AGL is ABOVE the Part 107 ceiling of 400 FT. validator.py (V2 step E)
 # must gate on the ceiling this mission is actually authorized for, not on 400 by default.
 
-V1_DEFAULT_LAND_ALTITUDE_m = 0 #Units = m. 
+V1_DEFAULT_LAND_ALTITUDE_m = 0  # Units = m.
 
 V1_DEFAULT_LINE_LENGTH_km = 2  # Units = km. 2 km = ~6562 FT.
 
@@ -111,16 +107,16 @@ V1_EMERGENCY_RESERVE_FRACTION = (
 
 V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. Across the ground track.
 
-V1_COLLECTION_INSET_m = 52 #Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
+V1_COLLECTION_INSET_m = 52  # Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
 
 V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. Along the ground track (the TILTED axis).
 
 V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees. Camera pitched forward under the nose.
 
-V1_DEFAULT_CROSSTRACK_OVERLAP_PCT = 50
-V2_DEFAULT_ALONGTRACK_OVERLAP_PCT = 50# Units = %. Side-lap between adjacent science swaths.
+V1_DEFAULT_CROSSTRACK_OVERLAP_PCT = 50  # Units = %. Side-lap between adjacent science swaths.
 # 50% also buys margin against crab-induced strip shear: at the 15 deg tolerance the
 # imaged strip shifts ~182 m between opposite-direction legs, leaving ~131 m of true overlap.
+V2_DEFAULT_ALONGTRACK_OVERLAP_PCT = 50  # Units = %. Forward-lap between consecutive frames; sets the trigger distance.
 
 '''
 ========================================================================================
@@ -164,11 +160,11 @@ NWS SERVICE CONSTANTS:
 
 NWS_BASE_URL = "https://api.weather.gov"
 NWS_USER_AGENT = "Calypso Flight Engine (rwandel@ucsc.edu)"
-NWS_REQUEST_TIMEOUT_s = 10 #CFE will wait for 10 seconds before bailing
-NWS_MAX_RETRIES = 1 #CFE will retry the api request once before bailing
-NWS_ACCEPT_HEADER = "application/geo+json" #NWS api output formatting
-NWS_FORECAST_HORIZON_days = 7 #NWS forecasting horizon
-WEATHER_SOURCE_NWS = "NWS" #tags a Weather object as live NWS data (vs the "STUB" fallback)
+NWS_REQUEST_TIMEOUT_s = 10  # CFE will wait for 10 seconds before bailing
+NWS_MAX_RETRIES = 1  # CFE will retry the api request once before bailing
+NWS_ACCEPT_HEADER = "application/geo+json"  # NWS api output formatting
+NWS_FORECAST_HORIZON_days = 7  # NWS forecasting horizon
+WEATHER_SOURCE_NWS = "NWS"  # tags a Weather object as live NWS data (vs the "STUB" fallback)
 WEATHER_SOURCE = "NWS"
 
 '''
@@ -199,11 +195,11 @@ DEFAULT_VISIBILITY_m = 16100  # ~10 miles (METAR reports max out at +10 SM)
 # Never gate VLOS on visibility without first checking Weather.is_stale("visibility") --
 # a defaulted 10 miles reads as perfect conditions and is the most permissive possible
 # input to a legality check. The horizon stays at 7 days because it fits the WIND fields,
-# which are what the RTH safety gate actually consumes.
+# which are what the wind math consumes (the RTH gate it was sized for is cancelled).
 
 DEFAULT_WEATHER_CONDITION = "clear"
 
-KMH_TO_MS = 1/3.6 # conversion factor for wind speed
+KMH_TO_MS = 1 / 3.6  # conversion factor for wind speed
 
 '''
 ========================================================================================
@@ -217,7 +213,7 @@ WAYPOINT ACTION CONSTANTS FOR TRANSLATING BETWEEN CFE LANGUAGE AND QGC JSON VALU
 '''
 
 # WAYPOINT DEFAULTS AND ACTION CONSTANTS HERE:
-#NOTE: NOT QGC ACTIONS, SIMPLE STRINGS FOR DENOTATION
+# NOTE: NOT QGC ACTIONS, SIMPLE STRINGS FOR DENOTATION
 
 WAYPOINT_ACTION_LAUNCH = "launch"
 WAYPOINT_ACTION_TRANSIT = "transit"
@@ -258,20 +254,20 @@ SUN AZIMUTH AND OTHER ANGULAR CONSTANTS:
 
 # Azimuth Constant for planner.py:
 
-SCIENCE_RELATIVE_AZIMUTH_deg = 90 # Units = degrees.
+SCIENCE_RELATIVE_AZIMUTH_deg = 90  # Units = degrees.
 
 AZIMUTH_THREE_SIXTY = 360  # Units = degrees.
 
-DEGREE_ONE_EIGHTY = 180 # Units = degrees
+DEGREE_ONE_EIGHTY = 180  # Units = degrees
 
-DEGREE_NINETY = 90 #Units = degrees
+DEGREE_NINETY = 90  # Units = degrees
 
-FULL_CIRCLE_DEG = 360 #Units = degrees, second 360 for readability when not dealing with azimuth
+FULL_CIRCLE_DEG = 360  # Units = degrees, second 360 for readability when not dealing with azimuth
 
 
-#Glint "Gate threshold" for proper ranking purposes
+# Glint "Gate threshold" for proper ranking purposes
 
-V1_GLINT_TOLERANCE_DEG = 15 # Units = degrees. Max allowed deviation of the science line from the ideal 90 before a plan is rejected
+V1_GLINT_TOLERANCE_DEG = 15  # Units = degrees. Max allowed deviation of the science line from the ideal 90 before a plan is rejected
 # Held at 15 rather than tightened to 10 for V2C: the camera boresight follows the FUSELAGE,
 # so crosswind crab spends this budget before the grid geometry gets any of it. 15 deg allows
 # ~4.66 m/s of crosswind across the science axis at cruise; 10 deg would allow only 3.13 m/s.
@@ -296,9 +292,9 @@ EXTENSION_KML = "kml"
 
 EXTENSION_PNG = "png"
 
-PNG_PLOTTING_MARGIN = 0.05 # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
+PNG_PLOTTING_MARGIN = 0.05  # Units = degrees. Allows for axis plotting with a 5 percent margin on each side
 
-#FOR V2 ONLY:
+# FOR V2 ONLY:
 
 EXTENSION_JSON = "json"
 
@@ -314,7 +310,6 @@ CFE V2C DEPRECATED EMERGENCY AND RTH CONSTANTS:
 '''
 
 
-
 # V2C-2 EMERGENCY CONSTANTS AND RTH CONSTANTS:
 #
 # ⚠️ 2026-09-08: the RTH safety GATE these were sized for is CANCELLED. Aircraft are now
@@ -325,7 +320,7 @@ CFE V2C DEPRECATED EMERGENCY AND RTH CONSTANTS:
 # each number is recorded here and in the 2026-08-19 log entry, and re-deriving it is
 # expensive. See CLAUDE.md, "Operating constraints -- 2026-09-08".
 
-RTH_SAFETY_FACTOR = 1.25 # See explanation below
+RTH_SAFETY_FACTOR = 1.25  # See explanation below
 """
 Manual operation of a UAS vs. Autopilot is far less efficient. However,
 it is paramount that a human operator has the ability to assume manual control
@@ -334,15 +329,15 @@ is multipled with the derived minimum amount of battery needed to make it safely
 from anywhere on the route, fully manually.
 """
 
-RTH_TERMINAL_ALLOWANCE_min = 3.0 # flight time set aside for go-arounds/pattern once above landing location.
+RTH_TERMINAL_ALLOWANCE_min = 3.0  # flight time set aside for go-arounds/pattern once above landing location.
 
-MANUAL_RTH_MAX_CROSSWIND_ms = 7.5 # Units: m/s. Half the aircraft's autopilot wind rating, but ultimately pilot dependent
+MANUAL_RTH_MAX_CROSSWIND_ms = 7.5  # Units: m/s. Half the aircraft's autopilot wind rating, but ultimately pilot dependent
 
-RTH_INCLUDES_GLIDE = False # RTH procedures never lack thrust from the motors.
+RTH_INCLUDES_GLIDE = False  # RTH procedures never lack thrust from the motors.
 
-RTH_SEED_RESERVE_FRACTION = 0.15 #Fixed point iteration seed for calculating emergency flight distances and RTH feasability.
+RTH_SEED_RESERVE_FRACTION = 0.15  # Fixed point iteration seed for calculating emergency flight distances and RTH feasability.
 
-RTH_MAX_ITERATIONS = 12 #Prevents the engine from creating a grid whose derived RTH battery time blows up so high that no grid fits.
+RTH_MAX_ITERATIONS = 12  # Prevents the engine from creating a grid whose derived RTH battery time blows up so high that no grid fits.
 
 '''
 ========================================================================================

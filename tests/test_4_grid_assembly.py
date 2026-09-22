@@ -15,7 +15,10 @@ import datetime
 
 import pytest
 from shapely.geometry import Point
-import constants as CONST, geo as G, planner as P
+
+import constants as CONST
+import geo as G
+import planner as P
 
 
 def _m1_point():
@@ -147,6 +150,8 @@ def test_transit_seed_retry_converges():
     assert plan.grid_budget_m < usable
 
     # and it converged on something flyable
+    assert plan.total_lines is not None                  # a built plan always has its metrics populated
+    assert plan.total_grid_distance_m is not None and plan.grid_budget_m is not None
     assert plan.total_flight_distance <= usable
     assert plan.total_grid_distance_m <= plan.grid_budget_m
     assert plan.total_lines % 2 == 1
@@ -168,6 +173,13 @@ def test_closer_launch_buys_more_science():
         P._Black_Swift, P._Black_Swift_usable_endurance_m, P._Calypso_payload,
         boat_request, weather_state, sun_az, sun_state, "boat",
     )
+
+    # both plans are built, so the metrics compared below are populated
+    assert from_boat.total_lines is not None and from_shore.total_lines is not None
+    assert from_boat.total_grid_distance_m is not None and from_shore.total_grid_distance_m is not None
+    assert from_boat.total_flight_distance is not None and from_shore.total_flight_distance is not None
+    assert from_boat.usable_endurance_distance_m is not None
+    assert from_shore.usable_endurance_distance_m is not None
 
     assert from_boat.total_lines > from_shore.total_lines
     assert from_boat.total_grid_distance_m > from_shore.total_grid_distance_m
@@ -241,4 +253,4 @@ def test_planner_uses_weather_leaf(monkeypatch):
 
     plan = P.plan_default_mission("t3_wx")
     assert plan.weather is sentinel                          # planner used the leaf's result
-    assert plan.weather._data_source == CONST.WEATHER_SOURCE_NWS
+    assert plan.weather.source == CONST.WEATHER_SOURCE_NWS

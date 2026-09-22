@@ -1,36 +1,29 @@
 """
--This file contains classes and objects that will be used in the project. They are defined below
+The engine's core classes. Each is meant to be used elsewhere in the project; this file
+imports nothing from the engine.
 
-- Each object in this file is meant to be used elsewhere in the project.
-
-- This file contains the following list of objects:
-    - Mission Request (A mission candidate with times, launch and landing points, polygon boundary, etc)
-    - Aircraft (Copter and wing supported, aircraft stats kept here to use in math)
-    - Sensor (What kind of sensor is being used, also contains viewing geometry constants)
-    - Weather (An object whose attributes describe the current weather according to an API)
-    - SunState (This object describes important factors about the sun, most importantly, zenith and azimuth angles are stored/calculated here)
-    - Candidate Plan (Bringing it all together, attributes include the list of waypoints, flight lines, aircraft battery stats, and a score used to rank candidates) **
-    - GeoPoint (DESCRIPTION TO BE ADDED SOON) **
-    - WayPoint (The smallest unit of a mission request, while a candidate plan holds all other params, waypoints build the route stored in a mission request object)
-
-
+    - Aircraft (performance numbers the math consumes: endurance, speeds, turn penalty, etc.)
+    - Vehicle (an Aircraft plus its MAVLink identity: vehicle type, firmware, VTOL, hover speed)
+    - CurrentSunState (the sun at the mission time -- azimuth, elevation, zenith)
+    - Weather (conditions at the mission time, from NWS or the clear-sky stub)
+    - Sensor (camera viewing geometry and overlaps)
+    - Waypoint (the smallest unit of a route)
+    - MissionRequest (launch, land and M1 waypoints, altitude and datetime for one mission)
+    - CandidatePlan (bringing it all together: the route, its metrics, and its score)
 """
 
-# imports:
-from shapely.geometry import Point
-from datetime import datetime
 import warnings
+from datetime import datetime
+
+from shapely.geometry import Point
 
 
 class Aircraft:
+    """
+    An aircraft's performance numbers, as the engine's math consumes them. These differ
+    between a fixed wing and a hex/quad/octocopter.
+    """
 
-    # Global vars used for both a fixed wing and copter to standardize:
-
-    # Units = minutes of flight time at cruise speed (SUBJECT TO CHANGE)
-    # required_battery_reserve_mins = 10
-
-    # Default constructor for an aircraft, global parameters remain above,
-    # but the following parameters will differ between wing and hex/quad/oct
     def __init__(
         self,
         endurance_min,
@@ -53,11 +46,8 @@ class Aircraft:
         self._max_ground_speed = 1.5 * cruise_speed_ms
         self._cruising_speed = cruise_speed_ms
 
-    """
-    Below is a section that defines getters for each aircraft constructor parameter.
-    Required for passing values into mathematical functions or as parameters to other
-    functions.
-    """
+    # Getters for each constructor parameter, for passing values into the math and to
+    # other functions.
 
     @property
     def vehicle_endurance(self):
@@ -95,10 +85,7 @@ class Aircraft:
     def vehicle_cruise_speed(self):
         return self._cruising_speed
 
-    """
-    Below is a section that defines setters for each aircraft constructor parameter.
-    Meant only to be used in the event of a user input error.
-    """
+    # Setters for each constructor parameter, meant only for correcting a user input error.
 
     def set_vehicle_endurance(self, new_endurance):
         self._vehicle_endurance = new_endurance
@@ -137,21 +124,21 @@ class Aircraft:
         self.set_vehicle_cruise_speed(new_cruise_speed_ms)
         return
 
-'''
-QGC JSON uses special integers to denote firmware and vehicle types.
-See the following link for a table of the vehicle types and firmware types recognized
-by the MAVLINK protocol. The sets below denote the current firmwares and vehicle types
-the CFE is designed for.:
-https://mavlink.io/en/messages/common.html
-'''
 
-VALID_FIRMWARE_TYPES = frozenset({0, 3, 5, 6, 7, 12})    
+"""
+QGC JSON uses special integers to denote firmware and vehicle types. See the following
+link for the tables of vehicle and firmware types recognized by the MAVLink protocol. The
+sets below are the firmwares and vehicle types the CFE is designed for:
+https://mavlink.io/en/messages/common.html
+"""
+
+VALID_FIRMWARE_TYPES = frozenset({0, 3, 5, 6, 7, 12})
 VALID_VEHICLE_TYPES = frozenset({1, 2, 13, 14, 21, 22, 43})
 MULTIROTOR_TYPES = {2, 13, 14, 43}
 VTOL_TYPES = {21, 22}
 
 
-VALID_FIRMWARE_TYPES_DICT = {"Generic Autopilot (Full Support)": 0, 
+VALID_FIRMWARE_TYPES_DICT = {"Generic Autopilot (Full Support)": 0,
                              "Ardupilot": 3,
                              "Autopilot w/only Waypoint Support": 5,
                              "Autopilot w/only Waypoint & Nav Support": 6,
@@ -167,37 +154,42 @@ VALID_VEHICLE_TYPES_DICT = {"Fixed Wing": 1,
                             "Generic Multirotor": 43
                             }
 
-class Vehicle (Aircraft):
-    
-    def __init__(self, 
-                 endurance_min, 
-                 wind_rating_ms, 
-                 climb_rate_ms, 
-                 descent_rate_ms, 
-                 turn_radius_m, 
-                 turn_penalty_s, 
-                 min_ground_speed_ms, 
+
+class Vehicle(Aircraft):
+    """
+    An Aircraft plus the MAVLink identity the .plan writer branches on. An invalid vehicle
+    type raises; an invalid firmware type warns and defaults to PX4 (12).
+    """
+
+    def __init__(self,
+                 endurance_min,
+                 wind_rating_ms,
+                 climb_rate_ms,
+                 descent_rate_ms,
+                 turn_radius_m,
+                 turn_penalty_s,
+                 min_ground_speed_ms,
                  cruise_speed_ms,
                  vehicle_type,
                  firmware_type,
-                 hover_speed_ms = 0
+                 hover_speed_ms=0
                  ):
-        
-        super().__init__(endurance_min, 
-                         wind_rating_ms, 
-                         climb_rate_ms, 
-                         descent_rate_ms, 
-                         turn_radius_m, 
-                         turn_penalty_s, 
-                         min_ground_speed_ms, 
+
+        super().__init__(endurance_min,
+                         wind_rating_ms,
+                         climb_rate_ms,
+                         descent_rate_ms,
+                         turn_radius_m,
+                         turn_penalty_s,
+                         min_ground_speed_ms,
                          cruise_speed_ms)
-        
+
         # Setting Vehicle or aborting
         if vehicle_type in VALID_VEHICLE_TYPES:
             self._vehicle_type = vehicle_type
         else:
-            raise ValueError ("Invalid vehicle type detected, please retry with a valid vehicle type.")
-            
+            raise ValueError("Invalid vehicle type detected, please retry with a valid vehicle type.")
+
         # Setting Firmware type or defaulting
         if firmware_type in VALID_FIRMWARE_TYPES:
             self._firmware_type = firmware_type
@@ -205,94 +197,80 @@ class Vehicle (Aircraft):
             self._firmware_type = 12
             warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.")
 
-        #====================================================================================================
-        
         self._hover_speed_ms = hover_speed_ms
-        
-        #====================================================================================================
-        
+
         if vehicle_type in MULTIROTOR_TYPES:
-            #exposing a boolean instead of an integer to refine J-5 refinement #1
+            # A multirotor takes off vertically but is not a VTOL: it never transitions.
             self._vertical_takeoff = True
-            self._isVTOL = False
-            
+            self._is_vtol = False
+
         elif vehicle_type in VTOL_TYPES:
-            #VTOL's have both a hover speed and a cruising speed
+            # VTOLs have both a hover speed and a cruising speed
             self._vertical_takeoff = True
-            self._isVTOL = True
-            
+            self._is_vtol = True
+
         else:
             self._vertical_takeoff = False
-            self._isVTOL = False
-            # Manually setting hover speed to zero for fixed wing aircraft in-case user made mistake
+            self._is_vtol = False
+            # Manually setting hover speed to zero for fixed wing aircraft in case of a user mistake.
             # Fixed wings cannot have a non-zero hover speed.
             self._hover_speed_ms = 0
-            
-        #=====================================================================================================
-    
-    '''
-    ======================================================================================================
-    Getters and setters for the hover speed, hover capability, as well as the vehicle and firmware types
-    are below:
-    *NOTE*: setters are not written for hover speed and hover capability because correctness of these params
-    should be handled by the engine and should catch mistakes. More specifically, an incorrect aircraft type
-    and hover capability directly influence the kind of plan sent to QGC, and could create massive errors.
-    ======================================================================================================
-    '''
-    
-    
+
+    # Getters and setters for the hover speed, hover capability, and the vehicle and firmware
+    # types are below.
+    # NOTE: there are no setters for hover speed or hover capability, on purpose. The vehicle
+    # type and hover capability directly decide the kind of plan sent to QGC, so they are set
+    # once, by the constructor that validates them, and never patched afterwards.
+
     @property
     def hover_speed_ms(self):
         return self._hover_speed_ms
-    
+
     @property
     def can_hover(self):
         return self._vertical_takeoff
-    
+
     @property
     def vehicle_type(self):
         for value in VALID_VEHICLE_TYPES_DICT.values():
             if value == self._vehicle_type:
                 return value
-            
+
     @property
     def vehicle_type_name(self):
         for key, value in VALID_VEHICLE_TYPES_DICT.items():
             if value == self._vehicle_type:
                 return key
-            
+
     @property
     def firmware_type(self):
         for value in VALID_FIRMWARE_TYPES_DICT.values():
             if value == self._firmware_type:
                 return value
-            
+
     @property
     def firmware_type_name(self):
         for key, value in VALID_FIRMWARE_TYPES_DICT.items():
             if value == self._firmware_type:
                 return key
-    
+
     @property
     def is_VTOL(self):
-        return self._isVTOL
-    
-    def set_firmware_type (self, firmware_type: int):
+        return self._is_vtol
+
+    def set_firmware_type(self, firmware_type: int):
         if firmware_type in VALID_FIRMWARE_TYPES:
-                    self._firmware_type = firmware_type
+            self._firmware_type = firmware_type
         else:
             self._firmware_type = 12
             warnings.warn("Warning: Unknown firmware type detected, defaulting to PX4.")
-    
-    
-    
 
 
 class CurrentSunState:
-
-    # Constructor for the Sun object
-    # Parameters important for V1 in order to establish the very limited
-    # ranking capabilities are below
+    """
+    The sun at the mission time: azimuth, elevation and zenith, plus the day and time they
+    were computed for. Built by sun.create_sun_state.
+    """
 
     def __init__(
         self,
@@ -368,17 +346,10 @@ class CurrentSunState:
 
 class Weather:
     """
-    This class will later make calls to the NWS API for forecasting
-    and live weather updates as the mission candidate is being made.
-    This API call, due to forecasting, also allows mission candidates
-    that are in the future to still be created and ranked just like any
-    other candidate.
-    """
-
-    """
-    API calls to the NWS forecasting service are made in weather.py.
-    This class simply serves as a definition to a weather object to efficiently
-    pass around data as described in the documentation for this file up above.
+    Weather conditions at the mission time, passed around as one object. The NWS API calls
+    are made in weather.py, which returns one of these; planner falls back to a clear-sky
+    stub when it cannot. Because NWS forecasts about a week ahead, plans for future dates
+    are built and ranked just like any other.
     """
 
     def __init__(
@@ -397,9 +368,9 @@ class Weather:
         source="STUB",
     ):
         # Both default FAIL-SAFE. Omitting wind_is_measured means "provenance unknown",
-        # which makes validator refuse to certify RTH rather than quietly certifying it.
-        # A caller must positively CLAIM measured wind; it can never be acquired by
-        # forgetting an argument.
+        # which any consumer must treat as unverified, never as measured calm. A caller
+        # must positively CLAIM measured wind; it can never be acquired by forgetting an
+        # argument.
 
         if not isinstance(valid_time, datetime):
             raise TypeError("valid_time must be a datetime.datetime instance")
@@ -418,7 +389,7 @@ class Weather:
         self._stale_fields = frozenset(stale_fields) if stale_fields else frozenset()
         self._data_source = source
 
-    # The necessary getters for this object (since most is based on api), are listed below:
+    # Getters (the values mostly come from the NWS API):
 
     @property
     def cloud_cover(self):
@@ -431,15 +402,16 @@ class Weather:
     @property
     def wind_gusts(self):
         return self._wind_gust_speed_ms
-    
+
     @property
     def wind_direction(self):
         return self._wind_direction_deg
 
     # PROVENANCE. Safety math must be able to tell "measured calm" from "no idea".
     # DEFAULT_ZERO_WIND makes an absent wind field look like a dead-calm day, which is
-    # the most PERMISSIVE possible input to an RTH gate -- exactly backwards. validator
-    # reads these to refuse certification rather than certify on assumed conditions.
+    # the most PERMISSIVE possible input to any safety check -- exactly backwards. Nothing
+    # reads these yet; their consumers (the pilot-notes report, any Step E gate) must use
+    # them to refuse to present assumed conditions as measured.
 
     @property
     def wind_is_measured(self):
@@ -455,7 +427,6 @@ class Weather:
     @property
     def source(self):
         return self._data_source
-
 
     @property
     def visibility(self):
@@ -533,7 +504,7 @@ class Sensor:
     @property
     def cross_track_overlap(self):
         return self._desired_cross_track_overlap_pct
-    
+
     @property
     def along_track_overlap(self):
         return self._desired_along_track_overlap_pct
@@ -541,7 +512,7 @@ class Sensor:
     @property
     def off_nadir(self):
         return self._off_nadir_deg
-    
+
     @property
     def mounting(self):
         return self._mounting
@@ -553,18 +524,20 @@ class Sensor:
 
 class Waypoint:
     """
-    Mission candidates consist of useful data regarding the aircraft,
-    weather, legality, glint, etc, all culminating to a final score.
-    However, at its score, a mission candidate requires a list of way-
-    points in order to command the UAV to the proper places along
-    the route.
-    The waypoint class as needed for V1 is defined here
-    """
+    A mission candidate carries data about the aircraft, weather, legality, glint, etc.,
+    all culminating in a final score. At its core, though, it needs a list of waypoints to
+    command the UAV to the proper places along the route.
 
-    """
-    The constructor contains important but basic parameters for V1,
-    basically what you would find as settings for a waypoint in QGC,
-    you'll find in this constructor.
+    The constructor takes roughly what you would find as settings for a waypoint in QGC:
+      1. waypoint_id: formatted as WPXXX, gives a numerical id to each WP
+      2. latitude: the waypoint's latitude in decimal form
+      3. longitude: the waypoint's longitude in decimal form
+      4. altitude: aircraft altitude at that waypoint
+      5. speed: aircraft speed at that waypoint
+      6. action: the most important param -- a string the engine passes to other functions
+         so it can make decisions on a per-point basis
+      7. notes: human-readable notes about a waypoint, OPTIONAL
+      8. target_name: an optional, more human-readable name for a waypoint than its ID
     """
 
     def __init__(
@@ -588,20 +561,7 @@ class Waypoint:
         self.notes = notes
         self.target_name = target_name
 
-        """
-        Parameters for the waypoint explained:
-        1. Waypoint ID: Formatted as WPXXX, gives a numerical id to each WP
-        2. latitude: Waypoint's latitude coordinates in decimal form
-        3. longitude: Waypoint's longitude coordinate in decimal form
-        4. altitude: aircraft altitude at that waypoint
-        5. speed: aircraft speed at that waypoint
-        6. action: Most important param, a string used to pass to other functions so the engine can make decisions on a per-point basis
-        7. notes: human readable notes about a waypoint, OPTIONAL
-        8. target_name, an optional but more human readable name for a waypoint besides its ID
-        """
-
-        # Allowance to referral to each point as a Shapely point
-
+    # The waypoint as a Shapely Point.
     @property
     def point(self):
         return Point(self._longitude_decimal, self._latitude_decimal)
@@ -651,8 +611,11 @@ class Waypoint:
 
 
 class MissionRequest:
+    """
+    One mission's request: launch, land and M1 waypoints, altitude and datetime. It no
+    longer holds line length, grid width, etc.; the grid is sized from the budget.
+    """
 
-    # Mission Request object no longer holds line length/grid_width etc... params
     def __init__(
         self,
         mission_name,
@@ -727,23 +690,26 @@ class MissionRequest:
 
 
 class CandidatePlan:
+    """
+    Bringing it all together: one scored plan -- the route, the objects it was built from,
+    and every metric the engine computed for it. planner builds it; outputs renders it.
+    """
 
-    # For V1, these are the only objects we will need passed as parameters:
     def __init__(
         self,
         name: str,
-        missionRequest,
+        mission_request,
         aircraft,
-        currentSunState,
+        current_sun_state,
         weather,
         chosen_orientation_deg,
         sensor=None,
         waypoints=None,
     ):
         self._name = name
-        self._mission_request = missionRequest
+        self._mission_request = mission_request
         self._aircraft = aircraft
-        self._currentSunState = currentSunState
+        self._current_sun_state = current_sun_state
         self._weather = weather
         self._chosen_orientation_deg = chosen_orientation_deg
         self._total_flight_distance_m = None
@@ -766,6 +732,8 @@ class CandidatePlan:
         self._science_lines = None
         self._traverse_lines = None
         self._offset_lines = None
+        self._parallax_m = None
+        self._cross_track_width_m = None
 
         self._estimated_duration_min = None
         self._battery_margin_min = None
@@ -776,20 +744,19 @@ class CandidatePlan:
 
         self._score = None
         self._validation_messages = []
-        
+
         self._crab_deg = None
         self._boresight_error_deg = None
-        
+
         self._worst_distance_m = None
         self._worst_bearing_deg = None
         self._return_min = None
         self._reserve_min = None
-        
+
         self._departure_bearing_deg = None
         self._approach_bearing_deg = None
-        
 
-    # V1 properties for the candidate plan are listed below:
+    # Properties:
 
     @property
     def mission_request(self):
@@ -801,12 +768,12 @@ class CandidatePlan:
 
     @property
     def sun_state(self):
-        return self._currentSunState
+        return self._current_sun_state
 
     @property
     def weather(self):
         return self._weather
-    
+
     @property
     def total_flight_distance(self):
         return self._total_flight_distance_m
@@ -860,15 +827,15 @@ class CandidatePlan:
     @property
     def offset_lines(self):
         return self._offset_lines
-    
+
     @property
     def aircraft_feasibility(self):
         return self._is_aircraft_feasible
-    
+
     @property
     def legality(self):
         return self._is_legal
-    
+
     @property
     def validation_messages(self):
         return self._validation_messages
@@ -886,8 +853,9 @@ class CandidatePlan:
         return self._cross_track_width_m
 
     # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
-    # the terminal summary read these. validator does NOT: it re-derives every one of
-    # them from the plan's own waypoints, so a bug in the builder cannot certify itself.
+    # the terminal summary read these. validator, when it is written, must NOT: it has to
+    # re-derive every one of them from the plan's own waypoints, so a bug in the builder
+    # cannot certify itself.
     #
     # ⚠️ 2026-09-08: "reporting only" is now the WHOLE story. The RTH gate that would have
     # consumed these is cancelled -- aircraft compensate for wind in flight, so the engine
@@ -950,15 +918,12 @@ class CandidatePlan:
     @property
     def score(self):
         return self._score
-    
+
     @property
     def camera_trigger_distance_m(self):
         return self._camera_trigger_distance_m
 
-    """
-    Below are the methods needed or that will be convenient during the 
-    construction of V1
-    """
+    # Methods and setters:
 
     def add_waypoint(self, new_waypoint):
         self._waypoints.append(new_waypoint)
@@ -1012,7 +977,7 @@ class CandidatePlan:
     def change_name(self, new_name):
         self._name = new_name
         return
-    
+
     def set_total_flight_distance_m(self, total_flight_distance_m):
         self._total_flight_distance_m = total_flight_distance_m
         return
@@ -1020,25 +985,23 @@ class CandidatePlan:
     def set_usable_endurance_distance_m(self, usable_endurance_distance_m):
         self._usable_endurance_distance_m = usable_endurance_distance_m
         return
-    
+
     def set_transit_bearings(self, departure_bearing_deg, approach_bearing_deg):
         self._departure_bearing_deg = departure_bearing_deg
         self._approach_bearing_deg = approach_bearing_deg
         return
 
-    """
-    V2C-2 requires a few new setters for the new viewing geometry numbers/functions and RTH considerations
-    """
-    
+    # V2C-2 setters for the viewing geometry and RTH figures (reporting only):
+
     def set_aircraft_feasible(self, feasibility):
         self._is_aircraft_feasible = feasibility
         return
-    
+
     def set_viewing_geometry(self, crab_deg, boresight_error_deg):
         self._crab_deg = crab_deg
         self._boresight_error_deg = boresight_error_deg
         return
-    
+
     def set_rth_assessment(self, worst_distance, worst_bearing, return_min, reserve_min):
         self._worst_distance_m = worst_distance
         self._worst_bearing_deg = worst_bearing

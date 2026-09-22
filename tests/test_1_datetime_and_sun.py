@@ -26,6 +26,7 @@ def _utc(year, month, day, hour, minute=0):
 
 # ---- resolve_mission_datetime: local -> UTC ------------------------------------
 
+
 def test_resolver_winter_is_pst():
     # Jan 1 is PST (UTC-8): 10:00 local -> 18:00 UTC (the exact V1 fixed instant).
     assert S.resolve_mission_datetime("2026-01-01", "10:00") == _utc(2026, 1, 1, 18)
@@ -69,6 +70,7 @@ def test_resolver_partial_input_fills_the_other_half():
 
 
 # ---- create_sun_state: date metadata + azimuth follow the passed instant -------
+
 
 def test_sun_state_metadata_matches_passed_date():
     # REGRESSION for the Step A latent bug: day/hour/minute must be derived from the

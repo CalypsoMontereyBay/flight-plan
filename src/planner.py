@@ -1,27 +1,25 @@
 """
-Planner.py is the "Hub" for the engine. This program puts all of the pieces together.
+planner.py is the "Hub" for the engine. This program puts all of the pieces together.
 
-It is knowledgable of the other files while each module is not.
+It is knowledgeable of the other files while each module is not.
 
-Planner.py pulls the sun state (sun.py) and grid geometry (geo.py), then converts waypoints from
+planner.py pulls the sun state (sun.py) and grid geometry (geo.py), then converts waypoints from
 their geometric form into Waypoint objects so they can be placed into a Mission
 Request object. The best corner is picked for the start of the mission route within the grid.
 Then, this file returns a candidate plan that is scored.
 
-Planner.py stitches the engine's calculations together and presents a candidate.
+planner.py stitches the engine's calculations together and presents a candidate.
 """
 
-# File Imports:
-
-from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
-import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
-from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
-from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
-import weather
 
-# Main Functions and logic:
+import constants as CONST
+import weather
+from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
+from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
+from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
+from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
+
 # Step 1: Build the components of a candidate plan by assembling the
 # objects I need.
 
@@ -41,10 +39,9 @@ _Black_Swift = Vehicle(
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
-# V2C-2 INTERIM: the reserve is no longer a policy constant -- it is DERIVED per mission
-# from the worst-case return-to-home time. This module-level budget uses the iteration
-# SEED only, and is replaced by _rth_safe_budget() once that lands (step 5). Until then a
-# plan is sized against an unverified reserve; do not treat it as RTH-cleared.
+# The reserve is the fixed RTH_SEED_RESERVE_FRACTION (15%). The wind-derived reserve that was
+# meant to replace it (_rth_safe_budget, C-2 step 5) was CANCELLED on 2026-09-08, so this
+# budget is not RTH-cleared and is not meant to be -- see CLAUDE.md, constraint 4.
 _Black_Swift_usable_endurance_m = max_planned_distance_m(
     _Black_Swift, CONST.RTH_SEED_RESERVE_FRACTION
 )
@@ -96,17 +93,22 @@ _M1_Waypoint = Waypoint(
     "M1-Mooring-Station",
 )
 
-#Step 1.4, consolidating the date/time dependent objects to a builder function:
+# Step 1.4: the date/time dependent objects are built per run by a builder function.
 
-def _build_dated_objects (mission_datetime):
-    
-    _Sun_State = create_sun_state(
+
+def _build_dated_objects(mission_datetime):
+    """
+    Build the objects that depend on the mission datetime -- sun state, mission request
+    and weather -- and return them with the sun azimuth.
+    """
+
+    sun_state = create_sun_state(
         CONST.V1_LAUNCH_POINT_LAT,
         CONST.V1_LAUNCH_POINT_LONG,
         mission_datetime
-        )
-    
-    _Mission_Request = MissionRequest(
+    )
+
+    mission_request = MissionRequest(
         mission_name="V2 Generated Mission",
         launch_waypoint=_Launch_Waypoint,
         land_waypoint=_Land_Waypoint,
@@ -117,17 +119,17 @@ def _build_dated_objects (mission_datetime):
         grid_orientation_deg=None,
         notes="V2 Grid",
         included_target_waypoints=[_M1_Waypoint]
-        )
-    
+    )
+
     # Ask the weather leaf for live NWS data; it returns None when weather cannot be
     # produced (out of forecast horizon, or any fetch/parse failure).
-    _Mission_Weather = weather.get_weather(
+    mission_weather = weather.get_weather(
         CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_datetime
     )
 
     # Fallback: the V1-style clear-sky / zero-wind stub, so a plan is always produced.
-    if _Mission_Weather is None:
-        _Mission_Weather = Weather(
+    if mission_weather is None:
+        mission_weather = Weather(
             CONST.V1_LAUNCH_POINT_LAT,
             CONST.V1_LAUNCH_POINT_LONG,
             mission_datetime,
@@ -138,55 +140,18 @@ def _build_dated_objects (mission_datetime):
             CONST.DEFAULT_VISIBILITY_m,
             CONST.DEFAULT_WEATHER_CONDITION,
         )
-    
-    mission_az = _Sun_State.azimuth
-    
-    return (_Sun_State, _Mission_Request, _Mission_Weather, mission_az)
 
-"""
-HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
-In Order:
+    mission_az = sun_state.azimuth
 
-
-1. _candidate_orientation(): takes an azimuth angle and returns two heading "orientations"
-Both orientations are valid for "science" lines, but depending on all the other factors, one will score
-better than the other. returns both in a tuple for passing around and proper security.
-These values are then passed as potential_orientation_deg params in other helpers.
-
-2. _score_glint(): Returns how far off one leg of a candidate orientation is
-off from the SCIENCE_RELATIVE_AZIMUTH_deg standard (90 deg for the V2C along-track mount).
-Scores follow a golf paradigm (lower = better). A score of 0 means the target relative azimuth
-exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
-two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
-is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
-
-3. _score_candidate(): scores a candidate based on the
-deviation from the target relative azimuth based on their science leg.
-
-4. _passes_glint_gate(): checks if the score of a candidate is within a certain margin, plans are rejected if this
-function returns False, used in function #6.
-
-5. _build_grid_for_orientation(): takes an orientation and uses the lawnmower route
-building function to construct a grid
-
-6. _pick_best_orientation(): takes the two candidates and picks the best grid for the mission, also handles
-tie breaking
-
-7. _reorient_to_launch(): checks if the normal orientation of the grid or the reverse orientation (H + 180)
-is more efficient by checking the distance of the launch point to both the first and last waypoints of the grid.
-The grid is then either left alone or reversed accordingly
-
-8. _angular_distance(heading1_deg, heading2_deg): returns the angular distance between two angles
-
-9. _classify_waypoints(): Walks the route and tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
-final positions. Returns a list of waypoint objects that is "the route."
-"""
+    return (sun_state, mission_request, mission_weather, mission_az)
 
 
 def _candidate_orientation(sun_az):
-
-    # Two possible heading orientations for minimizing glint, they will
-    # be used as "paths" and then the score is based off of glint minimization.
+    """
+    Return the two candidate grid orientations for a sun azimuth, as a tuple: the headings
+    SCIENCE_RELATIVE_AZIMUTH_deg either side of the sun. Both are valid for science lines;
+    _pick_best_orientation scores them and breaks the tie.
+    """
 
     # NOTE (V2C): with the along-track mount the target is 90 deg of relative
     # azimuth, so these two candidates come out 180 deg apart -- the SAME grid
@@ -205,13 +170,11 @@ def _candidate_orientation(sun_az):
     return (potential_orientation_one, potential_orientation_two)
 
 
-# Glint scoring function used to rank plans for V1.
-# THE ONLY RANKING FUNCTION FOR V1, OTHERS WILL FOLLOW
-# track heading is an az candidate from the function above
 def _score_glint(potential_orientation_deg, sun_az_deg):
     """
-    Golf-style glint penalty: 0 = perfect (the leg sits exactly
-    SCIENCE_RELATIVE_AZIMUTH_deg off the sun azimuth), higher = worse.
+    The engine's ONLY ranking function so far (Step D adds cloud cover). Golf-style glint
+    penalty: 0 = perfect (the leg sits exactly SCIENCE_RELATIVE_AZIMUTH_deg off the sun
+    azimuth), higher = worse. No orientation can score below zero.
 
     Scored against the target AND its mirror (360 - target) because glint
     geometry is symmetric about the solar principal plane -- sun off the left
@@ -235,14 +198,21 @@ def _score_glint(potential_orientation_deg, sun_az_deg):
 
 
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
+    """
+    Score a candidate orientation by its science leg's deviation from the target relative
+    azimuth.
+    """
 
-    # Calculates the science leg score of an orientation
     science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
 
     return science_leg_score
 
 
 def _passes_glint_gate(score):
+    """
+    Whether a candidate's score is within V1_GLINT_TOLERANCE_DEG. Candidates that fail are
+    dropped by _pick_best_orientation.
+    """
 
     return score <= CONST.V1_GLINT_TOLERANCE_DEG
 
@@ -256,10 +226,10 @@ def _build_grid_for_orientation(
 
     Returns geo's (flight_lines, route_points, metrics) tuple unchanged.
     """
-    
+
     if payload.mounting != CONST.SENSOR_MOUNT_ALONG_TRACK:
-        raise ValueError (f"V2 only allows for along track payload mounting in accordance with geo.py math; Sensor declares: {payload.mounting}")
-    
+        raise ValueError(f"V2 only allows for along track payload mounting in accordance with geo.py math; Sensor declares: {payload.mounting}")
+
     return make_lawnmower_grid_through_m1(
         mission_request.m1_wp,
         orientation_deg,
@@ -345,6 +315,10 @@ def _pick_best_orientation(
 
 
 def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
+    """
+    Fly the grid forwards or reversed (H + 180), whichever starts at the corner closer to
+    the launch point. Returns the route and the M1 index, both adjusted if reversed.
+    """
 
     last_wp_dist_to_launch = distance_between(launch_point, route_points[-1])
 
@@ -361,6 +335,9 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
 
 
 def _angular_distance(heading1_deg, heading2_deg):
+    """
+    Smallest angle between two headings, in degrees (0..180).
+    """
 
     return abs(
         (
@@ -379,6 +356,11 @@ def _classify_waypoints(
     altitude_m,
     cruise_speed_ms
 ):
+    """
+    Walk the route and tag each point with its waypoint action from constants.py, then put
+    the launch and land waypoints at either end. Returns the list of Waypoint objects that
+    is "the route".
+    """
 
     # Establish a new route list that has each waypoint tagged, as well as a global index
     tagged_route_list = []
@@ -391,46 +373,47 @@ def _classify_waypoints(
 
     if land_wp.action != CONST.WAYPOINT_ACTION_LAND:
         land_wp.set_action(CONST.WAYPOINT_ACTION_LAND)
-        
+
     leg_number = 0
 
     for leg in itertools.batched(route_points, CONST.V1_POINTS_PER_LINE):
 
         leg_start = leg_number * CONST.V1_POINTS_PER_LINE
-            
+
         for local_idx, point in enumerate(leg):
-            
+
             global_index = leg_start + local_idx
-            
+
             if global_index == m1_route_idx:
-                
+
                 action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
                 target_name = "M1"
-                
-            elif local_idx in (0, (CONST.V1_POINTS_PER_LINE -1)):
-                
+
+            elif local_idx in (0, (CONST.V1_POINTS_PER_LINE - 1)):
+
                 action = CONST.WAYPOINT_ACTION_TURN
                 target_name = None
-                
+
             elif local_idx == (CONST.V1_POINTS_PER_LINE // 2):
-                
+
                 action = CONST.WAYPOINT_ACTION_LINE_LABEL
                 target_name = None
-                
+
             elif local_idx == 1:
-                    action = CONST.WAYPOINT_ACTION_COLLECT_START
-                    target_name = "Camera On"
-                    
+
+                action = CONST.WAYPOINT_ACTION_COLLECT_START
+                target_name = "Camera On"
+
             elif local_idx == (CONST.V1_POINTS_PER_LINE - 2):
-                    action = CONST.WAYPOINT_ACTION_COLLECT_STOP
-                    target_name = "Camera Off"
-                    
+
+                action = CONST.WAYPOINT_ACTION_COLLECT_STOP
+                target_name = "Camera Off"
+
             else:
-                
+
                 action = CONST.WAYPOINT_ACTION_TRANSIT
                 target_name = None
-                
-        
+
             tagged_route_list.append(
                 Waypoint(
                     f"WP{global_index + 1:03d}",
@@ -442,32 +425,12 @@ def _classify_waypoints(
                     target_name=target_name,
                 )
             )
-            
-        leg_number += 1    
+
+        leg_number += 1
 
     tagged_route_list.append(land_wp)
 
     return tagged_route_list
-
-
-"""
-Putting it all together, build_candidate_plan() uses all of the pre-established
-objects and sends their data through the helpers as needed. Below is what happens in
-order:
-
-1. Identify candidates then pick the best orientation
-
-2. make a lawnmower grid through m1.
-
-3. reorient to the launch to get the shortest traversal to the grid possible.
-
-4. classify each waypoint now that proper orientation has been established.
-
-5. construct the candidate plan object with helpers and getters/setters.
-
-6. return a fully finished candidate plan.
-
-"""
 
 
 def build_candidate_plan(
@@ -480,6 +443,18 @@ def build_candidate_plan(
     mission_sun_state,
     candidate_name
 ):
+    """
+    Put it all together: send the pre-established objects through the helpers and return
+    a finished, scored CandidatePlan. In order:
+
+      1. identify the two candidate orientations
+      2. reserve the transit, so geo sizes the grid against what is left
+      3. pick the best orientation (which builds the lawnmower grid through M1)
+      4. reorient the grid so the route starts at the corner closest to launch
+      5. classify each waypoint now that the orientation is final
+      6. measure the real transit; if the flight does not fit, re-seed and repeat
+      7-10. build the CandidatePlan and set its metrics, duration, margin and score
+    """
 
     # Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
@@ -546,11 +521,11 @@ def build_candidate_plan(
         true_returning_non_grid_transit_m = distance_between(
             mission_route_list_classified[-2], mission_request.land_wp
         )
-        
+
         departure_bearing_deg = bearing_between(
             mission_request.launch_wp, mission_route_list_classified[1]
         )
-        
+
         approach_bearing_deg = bearing_between(
             mission_route_list_classified[-2], mission_request.land_wp
         )
@@ -600,7 +575,7 @@ def build_candidate_plan(
     candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
 
     candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
-    
+
     candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
 
     # Step 9, calculate the duration of the flight in minutes and then send it to the
@@ -619,16 +594,17 @@ def build_candidate_plan(
 
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
 
-    # Step 9, retrieve the orientation score and send it to the candidate
+    # Step 10, retrieve the orientation score and send it to the candidate
     candidate_plan.set_score(mission_orientation_score)
 
     return candidate_plan
 
 
-# Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
-
-
 def plan_default_mission(candidate_name, mission_datetime=None):
+    """
+    Public wrapper for flight_plan_maker.py, so the entry point never reaches into internals.
+    Builds the default mission for mission_datetime (or the module default).
+    """
 
     # With no datetime, fall back to the module-level V2 default so a plan can be
     # built from just a name (keeps the V1-era one-arg call sites working). The
@@ -637,17 +613,16 @@ def plan_default_mission(candidate_name, mission_datetime=None):
     if mission_datetime is None:
         mission_datetime = DEFAULT_MISSION_DATETIME
 
-    #unpacking dated objects:
-    _Sun_State, _Mission_Request, _Weather_State, _Sun_az = _build_dated_objects(mission_datetime)
-        
+    # unpacking dated objects:
+    sun_state, mission_request, weather_state, sun_az = _build_dated_objects(mission_datetime)
+
     return build_candidate_plan(
-        mission_aircraft= _Black_Swift,
-        mission_aircraft_endurance_m= _Black_Swift_usable_endurance_m,
-        payload= _Calypso_payload,
-        mission_request= _Mission_Request,
-        mission_weather= _Weather_State,
-        mission_azimuth= _Sun_az,
-        mission_sun_state= _Sun_State,
+        mission_aircraft=_Black_Swift,
+        mission_aircraft_endurance_m=_Black_Swift_usable_endurance_m,
+        payload=_Calypso_payload,
+        mission_request=mission_request,
+        mission_weather=weather_state,
+        mission_azimuth=sun_az,
+        mission_sun_state=sun_state,
         candidate_name=candidate_name
     )
-    

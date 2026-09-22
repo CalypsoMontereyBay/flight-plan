@@ -11,7 +11,10 @@ from collections import Counter
 
 import pytest
 from shapely.geometry import Point
-import constants as CONST, planner as P, geo as G
+
+import constants as CONST
+import geo as G
+import planner as P
 
 
 def _plan():

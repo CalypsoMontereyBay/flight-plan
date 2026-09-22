@@ -3,22 +3,26 @@ Tier 2 -- derived sizing + aircraft math.
 
 Builds directly on the Tier 0 primitives. These are still pure, closed-form math
 (endurance/distance/duration conversions, grid sizing, orientation candidates), so
-like Tier 0 they must NEVER fail. If a Tier 1 assert breaks, the -x gate stops the
-run here before any grid/classification/rendering tier is even attempted.
+like Tier 0 they must NEVER fail. If an assert here breaks, the -x gate stops the
+run before any grid/classification/rendering tier is even attempted.
 
 Test vectors are hard literals (independent of production constants) so they pin the
 math itself, not whatever CONST happens to hold today.
 """
 
-# Imports:
 import pytest
-import constants as CONST, objects as O, aircraft_math as A, geo as G, planner as P
+
+import aircraft_math as A
+import constants as CONST
+import geo as G
+import objects as OBJ
+import planner as P
 
 
 # One deterministic vehicle: endurance 90 min, turn penalty 10 s, cruise 18 m/s are
 # the three values the aircraft-math functions actually consume.
 def _test_aircraft():
-    return O.Aircraft(90, 15, 3.35, 1.80, 57, 10, 12, 18)
+    return OBJ.Aircraft(90, 15, 3.35, 1.80, 57, 10, 12, 18)
 
 
 def test_total_endurance_distance():
