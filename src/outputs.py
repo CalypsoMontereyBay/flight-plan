@@ -123,7 +123,7 @@ def _output_path(plan_name: str, extension: str, out_dir: str = "EMPTY"):
     # gets the current date and time after establishing it
     curr_datetime = datetime.now()
 
-    curr_date_str = curr_datetime.strftime("%Y%m%d-%H%M")
+    curr_date_str = curr_datetime.strftime("%Y%m%d-%H%M%S")
 
     output_path = f"{out_dir}/{plan_name}_{curr_date_str}.{extension}"
 
