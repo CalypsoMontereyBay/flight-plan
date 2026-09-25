@@ -227,3 +227,5 @@ __marimo__/
 
 #test .plan files
 *.plan
+!exp..plan
+!exp2.plan
