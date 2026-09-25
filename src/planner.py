@@ -68,7 +68,7 @@ _Launch_Waypoint = Waypoint(
     CONST.BLACKSWIFT_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAUNCH,
     "Launch point",
-    "Seymour-Beach-Launch",
+    "Terrace-Point-Launch",
 )
 
 _Land_Waypoint = Waypoint(
@@ -79,7 +79,7 @@ _Land_Waypoint = Waypoint(
     CONST.BLACKSWIFT_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAND,
     "land waypoint",
-    "Seymour-Road-Land",
+    "Terrace-Point-Land",
 )
 
 _M1_Waypoint = Waypoint(
