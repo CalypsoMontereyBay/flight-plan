@@ -28,10 +28,12 @@ is SIDELINED behind Step J (JSON output).** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
-**Step J progress as of 2026-09-22: J-0 through J-5 are BUILT (71 tests green, also under
-`-W error`). `outputs.write_qgc_plan` writes a QGC `.plan`, verified 27/27 against checks
-derived from `exp2.plan`. One J-5 item remains: the first QGC round trip (load, re-export,
-diff). The J-6 warning gate is CLEARED, so J-6 (the entry point) is next.** The two
+**Step J progress as of 2026-09-25: J-0 through J-7 are BUILT (92 tests green, also under
+`-W error`). Every run writes a QGC `.plan`, and the terminal summary reports the
+grid/transit split and both bearings (J-6). 20 Tier 5 tests pin the file against the
+MAVLink spec and QGC's own exports (J-7). Two things remain: the first QGC round trip (load,
+re-export, diff) and the J-8 closeout. The open S2 takeoff question blocks a flight test,
+not the close of J.** The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -102,7 +104,8 @@ takeoff/land commands Step J must emit):
 >
 > **2. No output has been flown, or even round-tripped through QGC.** The `.plan` writer
 > exists as of 2026-09-22 (J-5). Its key sets and per-class frames match `exp2.plan`, and
-> its camera items match `exp..plan`'s DO item. A generated file has also been **loaded
+> its camera items match `exp..plan`'s DO item. Since 2026-09-25 the suite enforces all of
+> that (J-7). A generated file has also been **loaded
 > into QGC and checked by eye**: no stray waypoints, a home icon, and direction lines through
 > every waypoint. It has not yet been re-exported from QGC and diffed. Until it has, and
 > until the S2 takeoff question below is answered, treat the file as unverified for flight.
@@ -128,6 +131,8 @@ takeoff/land commands Step J must emit):
 ## Layout
 
 - `flight_plan_maker.py` — terminal entry point (run this). CLI flags: `--name`, `--out-dir`, `--date`, `--time`.
+  Writes the KML, PNG and `.plan`, then prints the total, transit and grid duration and
+  distance, the margin, both bearings, and the three output paths.
 - `src/` — engine modules:
   - `constants.py` — engine constants (aircraft, M1, sensor, date/time defaults + timezone, weather, actions).
   - `objects.py` — core classes (Aircraft, **Vehicle**, Sensor, Weather, CurrentSunState,
@@ -144,14 +149,18 @@ takeoff/land commands Step J must emit):
   - `weather.py` — **leaf**: live NWS weather for a lat/lon/datetime → populated `Weather`, or `None` (planner falls back to the stub).
   - `planner.py` — the hub: assembles objects, scores glint, builds the plan.
   - `outputs.py` — KML, PNG and QGC `.plan` writers (`write_kml`, `write_png`,
-    `write_qgc_plan`). The pilot-notes document (constraint 4) is still to come.
+    `write_qgc_plan`). The pilot-notes document (constraint 4) is still to come. Files are
+    named `<name>_<YYYYMMDD-HHMMSS>.<ext>`. Seconds were added on 2026-09-25, after two runs
+    within one minute overwrote each other.
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
-- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** tiers, 71 tests); see [Setup & run](#setup--run).
-- `exp2.plan` — a **real QGroundControl export for this site**, and the only ground truth
-  the repo has for the `.plan` format. J-5 must be checked against it; several format
-  questions that docs left ambiguous are settled by reading it. See
+- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 92 tests); see [Setup & run](#setup--run).
+- `exp2.plan`, `exp..plan` — **real QGroundControl exports for this site**, and the only
+  ground truth the repo has for the `.plan` format. Several format questions that docs left
+  ambiguous are settled by reading them, and the J-7 tests read both. `.gitignore` ignores
+  `*.plan` but makes explicit exceptions for these two, so generated plans are never
+  committed and the references always are. See
   [What `exp2.plan` settles](#what-exp2plan-settles).
 - `conftest.py`, `pytest.ini`, `requirements-dev.txt`, `pyrightconfig.json` — test wiring
   and editor import resolution (`pyrightconfig` sets `extraPaths: ["src"]` so Pylance
@@ -197,10 +206,14 @@ takeoff/land commands Step J must emit):
     `import constants as CONST`. The only code allowed between imports is an ordering
     constraint with a comment saying why (`matplotlib.use("Agg")`, the `sys.path` insert in
     `flight_plan_maker.py`).
-  - **Documentation:** every function and class carries a `"""` docstring *inside* it. Do
-    not use a bare string or comment block above the `def`. Module docstrings sit at the top,
-    and section banners stay as module-level `"""` strings. Comments inside functions
-    explain *why*.
+  - **Documentation:** a docstring goes *inside* the `def` or `class` it documents, never as
+    a bare string or comment block above it. Every class and every public module-level
+    function has one. Private helpers, `__init__`, getters and setters, `main()` and tests
+    may go without when the name and body say enough; a test explains itself with `#`
+    comments inside. Module docstrings sit at the top, and section banners stay as
+    module-level `"""` strings. Comments inside functions explain *why*. (Corrected
+    2026-09-25: this line used to say *every* function, which about 180 accessors and tests
+    never did. Placement is what the cleanup enforced.)
   - **Comments** start with `#` and one space; inline comments sit at least two spaces after
     the code.
   - **Formatting:** PEP 8 blank lines (two around top-level defs, one between methods), no
@@ -335,6 +348,27 @@ Read this before touching the grid, classification, or output code.
 
     Collapsing any two of these reintroduces the defect. It has already happened twice under
     different names — see the last bullet in [Design conventions](#design-conventions).
+    Since J-6 the plan also carries the **measured transit** itself: `plan.non_grid_transit_m`
+    (44,953 m, set by `set_transit_distance_m`). It is stored, not derived, so no consumer
+    subtracts two of the four.
+
+- **Grid/transit split (V2 Step J-6, built 2026-09-25).** The summary reports the flight as a
+  grid part and a transit part: `plan.grid_duration_min` / `plan.total_grid_distance_m` and
+  `plan.transit_duration_min` / `plan.non_grid_transit_m`. Default plan: **grid 31.3 min /
+  32,343 m, transit 41.6 min / 44,953 m, total 72.9 min**. A boat launch 2 km from M1 flips it
+  to grid 60.5 min, transit 6.6 min: the Step F argument in two numbers.
+  - **The grid is costed; the transit is the remainder.** `planner` Step 9 calls
+    `route_duration_min(total_grid_distance_m, N, aircraft)` for the grid and subtracts it
+    from the total. Every one of the N−1 turn penalties is a grid turn, and the transit legs
+    carry none. When Step G adds climb and descent to `route_duration_min`, those happen in
+    transit and the remainder picks them up. A separate transit formula would silently miss
+    them, and the parts would stop summing to the total.
+  - ⚠️ **Two wrong ways that look right.** `route_duration_min(transit_m, 0, ...)` counts
+    `(0 − 1)` turns, a negative turn, and comes out 10 s short. Splitting the total by distance
+    share spreads the grid's turn time into the transit and gives **42.4 / 30.5**, which is
+    what the docs and the artifact quoted before this was built. Correct: **41.6 / 31.3**.
+  - Pinned in Tier 3 (`test_flight_splits_into_grid_and_transit`, shore and boat), in closed
+    form. The line that asserts transit = distance ÷ cruise is the one to rebase in Step G.
 
 - **Transit bearings (V2 Step J-4.5, done).** `plan.departure_bearing_deg` (**174.8°**) and
   `plan.approach_bearing_deg` (**344.6°**) are set by `set_transit_bearings` from the same
@@ -384,11 +418,22 @@ Read this before touching the grid, classification, or output code.
     trap; a note beside the table says so. The constant is a QGC constant, so renaming it is
     the user's call.
   - Measured on the default plan: 65 items = 7N + 2; commands 16×45, 206×18, 22×1, 21×1;
-    frames 0×45, 2×18, 3×2; key sets identical to `exp2.plan`; 35,615 bytes. The boat plan
-    gives 93 = 7·13 + 2. VTOL gives 84/85, and a multirotor gives 22/21 with `hoverSpeed`.
+    frames 0×45, 2×18, 3×2; key sets identical to `exp2.plan`; 34,248 bytes (35,615 before
+    the camera-key fix). The boat plan gives 93 = 7·13 + 2. VTOL gives 84/85, and a
+    multirotor gives 22/21 with `hoverSpeed`.
+  - **All of the above is pinned by J-7** (`tests/test_6_outputs.py`, 20 tests). ⚠️ **Every
+    expected value there is a MAVLink-spec literal or is read out of `exp2.plan` /
+    `exp..plan`, never out of `constants.py`.** A test that read the QGC constants back
+    would pass on the typo it exists to catch. Keep it that way when adding tests. Verified
+    by breaking the writer 15 ways in a scratch copy (swapped frame rows, a `NAV_LAND` typo,
+    inverted VTOL columns, a hard-coded home, a leaked `Source_Action`, a bearing written as
+    yaw, unsorted keys and more). Each break turned its test red.
 
-- **J-6 warning gate (cleared 2026-09-22).** The console must stay quiet enough for J-6's
-  new output to be read. That is a **state to keep**, not a task that was done once.
+- **J-6 warning gate (cleared 2026-09-22; held when J-6 landed, re-run 2026-09-25).** The
+  console must stay quiet enough for J-6's new output to be read. That is a **state to
+  keep**, not a task that was done once. The 2026-09-25 re-run: the entry point exits 0
+  with nothing on stderr under `-W error` on the default date, a live-forecast date and an
+  out-of-forecast date; 92 tests pass under `-W error`; pyright reports 0 errors.
   - `simplekml`'s `codecs.open()` DeprecationWarning is **fixed at source**. `write_kml`
     writes `kml.kml()` itself with `open(..., encoding="utf-8", newline="")` instead of
     calling `kml.save()`. Verified byte-identical to `save()`.
@@ -403,10 +448,10 @@ Read this before touching the grid, classification, or output code.
       `NWS_MAX_RETRIES < 0`. The resulting `TypeError` escaped `get_weather`'s stub
       fallback and crashed the planner. It now raises `RequestException`, which
       `get_weather` catches.
-  - **Re-run before J-6 lands and after any dependency bump:**
+  - **Re-run after any dependency bump, and before any change to what the entry point prints:**
     - the entry point under `-W error`;
     - `pytest -o addopts="" -W error`;
-    - pyright over `src flight_plan_maker.py`.
+    - pyright over `src tests flight_plan_maker.py conftest.py`.
 
     Pyright isn't installed on this machine, so use a throwaway venv. Any new warning gets
     fixed, or filtered at its call site, never blanket-suppressed.
@@ -423,7 +468,9 @@ Read this before touching the grid, classification, or output code.
   for. The J-4/J-4.5 additions live in Tier 3 (`test_4_grid_assembly.py`: both budget
   assertions, the retry-convergence probe, the boat-launch science gain and bearing swing)
   and Tier 4 (`test_5_classification.py`: bearings reach the plan, are measured on the final
-  route, and track the M1 reciprocal from shore).
+  route, and track the M1 reciprocal from shore). J-6 added the grid/transit split test to
+  Tier 3. J-7 added the `.plan` half of Tier 5 (`test_6_outputs.py`, 20 tests, described
+  under the J-5 writer bullet above).
 - **Known defects and deferred items:**
   - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
   - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1.** The *waypoint names* in
@@ -435,9 +482,9 @@ Read this before touching the grid, classification, or output code.
     reaches the plan. `ground_footprint_along_m` finally has a caller.
   - ✅ ~~`Vehicle` is never instantiated.~~ **Fixed.** `planner._Black_Swift` is a `Vehicle`.
     Measured on the default plan: `vehicle_type 1`, `firmware_type 12`, `is_VTOL False`,
-    `hover_speed_ms 0` — all four fields the writer branches on are reachable. ⚠️ **Nothing
-    asserts it**; add the `isinstance(plan.aircraft, Vehicle)` check in J-7, since the gap
-    survived three steps precisely because no test looked.
+    `hover_speed_ms 0` — all four fields the writer branches on are reachable. ✅ Asserted
+    since J-7 by `test_plan_aircraft_is_a_vehicle`. The gap had survived three steps precisely
+    because no test looked.
   - **Grid sizing is budget-derived, not requested.** `geo._initial_total_lines_from_budget`
     picks N from the endurance budget. `V1_DEFAULT_GRID_WIDTH_km`,
     `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km` are declared but never
@@ -470,11 +517,12 @@ the intended helper (`write_qgc_plan`). Today's KML is **visualization only** in
 does not import as a flyable mission — which is the entire reason this jumped the queue.
 **No other roadmap step may start until this ships.**
 
-> **STATUS 2026-09-22 — J-0 through J-5 are BUILT, 71 tests green (also under `-W error`),
-> and the J-6 warning gate is cleared.** `write_qgc_plan` produces a `.plan` that passes
-> 27/27 checks. Those checks cover the key sets against `exp2.plan`, per-class frames,
-> contiguous `doJumpId`, no `Source_Action` leak, a home that follows the takeoff, and the
-> VTOL and multirotor branches. **Left in J-5: the QGC round trip. Next: J-6.** Everything
+> **STATUS 2026-09-25 — J-0 through J-7 are BUILT, 92 tests green (also under `-W error`).**
+> Every run writes a `.plan` and the summary reports the grid/transit split and bearings
+> (J-6). The 27 ad hoc J-5 checks are now 20 permanent Tier 5 tests (J-7): key sets and
+> per-class frames against QGC's exports, MAVLink commands, contiguous `doJumpId`, paired
+> camera toggles, no `Source_Action` leak, a home that follows the takeoff, and the VTOL and
+> multirotor branches. **Left: the QGC round trip (J-5) and the J-8 closeout.** Everything
 > below marked "settled" or "done" is history — read it for the reasoning, not as work to do.
 
 **Scoping settled 2026-09-08:**
@@ -605,8 +653,11 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
   - **(b)** it treats the takeoff point as a position to reach, and loops back over the pad at
     low altitude before heading out.
 
-  QGC's display cannot distinguish them. **Resolve by asking BlackSwift, or with one PX4
-  SITL run.** If the answer is (a), no change is needed. Do **not** move the waypoint along
+  QGC's display cannot distinguish them. **Resolve by asking BlackSwift.** A PX4 SITL run
+  shows what PX4 does, which answers it for the S2 only if the S2 runs PX4's takeoff logic:
+  this file names BlackSwift's FMS as the S2's consumer (see "Two consumers" above), and
+  `firmwareType 12` in our output is unconfirmed for it. The question has lead time, so ask
+  before J closes. If the answer is (a), no change is needed. Do **not** move the waypoint along
   `departure_bearing_deg` without that answer, because that would be the engine choosing a
   launch direction. The landing has no equivalent question: `NAV_LAND` approaches along the
   line from the last grid waypoint (344.6°).
@@ -631,8 +682,8 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 | J-4.5 | `planner.py`, `objects.py` | Departure + approach bearings measured on the **final** route, reporting only | ✅ |
 | J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22; loads cleanly in QGC — **re-export diff pending** |
 | J-6 gate | `outputs.py`, `sun.py`, `planner.py`, `weather.py` | Clear every handleable warning before the entry point changes | ✅ 2026-09-22 |
-| J-6 | `flight_plan_maker.py` | Emit and report the `.plan` path; print grid/transit split and bearings | 🔶 **IN PROGRESS** — `.plan` emitted and its path printed; split + bearings not yet |
-| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ❌ |
+| J-6 | `flight_plan_maker.py`, `planner.py`, `objects.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ✅ 2026-09-25 — split computed in `planner` Step 9, pinned in Tier 3 |
+| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ✅ 2026-09-25 — 20 tests, broken 15 ways to confirm each catches its defect |
 | J-8 | docs | Closeout; fix the stale `Seymour-*` waypoint names | ❌ |
 
 **✅ J-5's PREREQUISITE IS CLEARED — `Vehicle` is adopted.** `BLACKSWIFT_VEHICLE_TYPE = 1`
@@ -643,9 +694,9 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 vehicle type and **warns + defaults to PX4** on an invalid firmware type, so a typo fails
 loudly rather than writing a bad file.
 
-- ⚠️ **Still add the Tier 1 or Tier 3 assertion that the default plan's aircraft *is* a
-  `Vehicle`.** Nothing checks it today, and the gap survived three steps precisely because
-  nothing checked.
+- ✅ **The default plan's aircraft is asserted to be a `Vehicle`** (J-7,
+  `test_plan_aircraft_is_a_vehicle`). The gap survived three steps precisely because nothing
+  checked.
 
 **✅ Landing item — SETTLED as plain `NAV_LAND` (21)**, which is what `_qgc_params` builds.
 `exp2.plan` expresses its fixed-wing landing as a **`ComplexItem` of
@@ -701,7 +752,9 @@ The rest:
     either way, but a round-trip diff will show it — expected, not a bug.
 - **No `DO_SET_CAM_TRIGG_DIST` items appear in it**, so the camera half of our output has no
   reference. **Round-trip the first file J-5 produces**: load into QGC, re-export, diff.
-  Anything QGC rewrites is something we got wrong.
+  Anything QGC rewrites is something we got wrong. Generate a fresh file for it, because
+  `V2 Plan_20260922-1240.plan` in the repo root predates the camera-key fix and would show
+  that fix as a difference.
 
 **What `exp..plan` adds** (the repo's second QGC export, diffed against our output on
 2026-09-22):
@@ -928,7 +981,7 @@ gate — read it as history. What remains for E:
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
   B (live NWS weather) and C-1 (along-track mount) are done**. Remaining, in execution
-  order: **J** (JSON output — active, J-0…J-5 built, J-6 gate cleared, **J-6 next**), **F** (mission
+  order: **J** (JSON output — active, J-0…J-7 built, QGC round trip and J-8 left), **F** (mission
   configurability), **G** (aircraft configurability), **C-2 re-scoped** (wind reporting),
   **D** (sun/cloud ranking), **E** (legality).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.

@@ -198,6 +198,56 @@ def test_closer_launch_buys_more_science():
     ) > 20
 
 
+def test_flight_splits_into_grid_and_transit():
+    # J-6 reports the flight as a grid part and a transit part. The grid is costed on its own
+    # (cruise over the grid distance plus all N-1 turns) and the transit is the remainder,
+    # so these closed-form relationships hold on any plan. Checked from the shore AND from
+    # the boat, so they hold for two different N rather than one literal.
+    #
+    # A split by distance share looks right and is not: it spreads the grid's turn time into
+    # the transit (42.4 / 30.5 min instead of 41.6 / 31.3 on the default plan).
+    sun_state, _, weather_state, sun_az = P._build_dated_objects(P.DEFAULT_MISSION_DATETIME)
+    boat_request = _mission_request_launching_from(
+        CONST.M1_MOORING_LAT + 0.018, CONST.M1_MOORING_LONG      # ~2 km north of M1
+    )
+    from_boat = P.build_candidate_plan(
+        P._Black_Swift, P._Black_Swift_usable_endurance_m, P._Calypso_payload,
+        boat_request, weather_state, sun_az, sun_state, "boat_split",
+    )
+
+    for plan in (P.plan_default_mission("shore_split"), from_boat):
+        n = plan.total_lines
+        grid_m = plan.total_grid_distance_m
+        transit_m = plan.non_grid_transit_m
+        flight_m = plan.total_flight_distance
+        grid_min = plan.grid_duration_min
+        transit_min = plan.transit_duration_min
+        total_min = plan.duration
+
+        # every part of the split reaches the plan
+        assert n is not None and grid_m is not None and transit_m is not None
+        assert flight_m is not None and total_min is not None
+        assert grid_min is not None and transit_min is not None
+
+        cruise_ms = plan.aircraft.vehicle_cruise_speed
+        turn_penalty_s = plan.aircraft.vehicle_turn_penalty
+
+        # the distances split the flight, and the transit is real
+        assert transit_m > 0
+        assert grid_m + transit_m == pytest.approx(flight_m)
+
+        # the durations split the total
+        assert grid_min + transit_min == pytest.approx(total_min)
+
+        # the grid carries every turn: N lines -> N-1 turns (60 s per minute)
+        assert grid_min == pytest.approx((grid_m / cruise_ms + (n - 1) * turn_penalty_s) / 60)
+
+        # so the transit is pure cruise. Climb and descent are unmodeled today; when Step G
+        # adds them to route_duration_min they land in this remainder, and this line is the
+        # one to rebase.
+        assert transit_min == pytest.approx(transit_m / cruise_ms / 60)
+
+
 def test_viewing_geometry_reaches_the_plan():
     # V2C-1 wiring: geo measures the swath and the parallax during grid assembly and
     # ships them in the metrics dict. Before set_grid_metrics learned to read those two

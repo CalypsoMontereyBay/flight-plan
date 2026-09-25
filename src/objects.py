@@ -925,18 +925,18 @@ class CandidatePlan:
     @property
     def camera_trigger_distance_m(self):
         return self._camera_trigger_distance_m
-    
+
     @property
     def transit_duration_min(self):
         return self._estimated_transit_duration_min
-        
+
     @property
     def grid_duration_min(self):
         return self._estimated_grid_duration_min
-    
+
     @property
-    def non_grid_transit_m(self):
-        return self._true_non_grid_transit_m        
+    def transit_distance_m(self):
+        return self._true_non_grid_transit_m
 
     # Methods and setters:
 
@@ -1000,15 +1000,15 @@ class CandidatePlan:
     def set_usable_endurance_distance_m(self, usable_endurance_distance_m):
         self._usable_endurance_distance_m = usable_endurance_distance_m
         return
-    
+
     def set_transit_distance_m(self, true_non_grid_transit_m):
         self._true_non_grid_transit_m = true_non_grid_transit_m
         return
-    
+
     def set_transit_duration_min(self, transit_duration_min):
         self._estimated_transit_duration_min = transit_duration_min
         return
-    
+
     def set_grid_duration_min(self, grid_duration_min):
         self._estimated_grid_duration_min = grid_duration_min
         return

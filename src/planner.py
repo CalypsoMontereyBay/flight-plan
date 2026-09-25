@@ -575,7 +575,7 @@ def build_candidate_plan(
     candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
 
     candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
-    
+
     candidate_plan.set_transit_distance_m(true_non_grid_transit_m)
 
     candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
@@ -587,11 +587,15 @@ def build_candidate_plan(
     candidate_plan_estimated_duration_min = route_duration_min(
         total_flight_distance_m, metrics["total_lines"], mission_aircraft
     )
-    
+
+    # The grid is costed on its own; the transit is the REMAINDER. Every turn penalty is a
+    # grid turn, so the transit legs carry none. Anything Step G adds to route_duration_min
+    # (climb, descent) happens during transit, and the remainder picks it up without a
+    # second formula that could drift from the first.
     grid_duration_min = route_duration_min(
         metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
     )
-    
+
     transit_duration_min = candidate_plan_estimated_duration_min - grid_duration_min
 
     candidate_plan_estimated_battery_margin_min = battery_margin_min(
@@ -599,6 +603,10 @@ def build_candidate_plan(
     )
 
     candidate_plan.set_duration_min(candidate_plan_estimated_duration_min)
+
+    candidate_plan.set_grid_duration_min(grid_duration_min)
+
+    candidate_plan.set_transit_duration_min(transit_duration_min)
 
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
 

@@ -548,8 +548,8 @@ def _plan_items(plan: CandidatePlan):
 
         if wp.action == CONST.WAYPOINT_ACTION_LAUNCH:
             items = [{"Keyword": "takeoff", "Alt_Frame_Ref": "RELATIVE",
-                     "Latitude": wp.latitude, "Longitude": wp.longitude,
-                     "Altitude_m": CONST.TAKEOFF_REL_m}]
+                      "Latitude": wp.latitude, "Longitude": wp.longitude,
+                      "Altitude_m": CONST.TAKEOFF_REL_m}]
 
         elif wp.action == CONST.WAYPOINT_ACTION_LAND:
             items = [{"Keyword": "land", "Alt_Frame_Ref": "RELATIVE",
