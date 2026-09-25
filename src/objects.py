@@ -736,6 +736,8 @@ class CandidatePlan:
         self._cross_track_width_m = None
 
         self._estimated_duration_min = None
+        self._estimated_transit_duration_min = None
+        self._estimated_grid_duration_min = None
         self._battery_margin_min = None
 
         self._passes_over_m1 = False
@@ -922,6 +924,15 @@ class CandidatePlan:
     @property
     def camera_trigger_distance_m(self):
         return self._camera_trigger_distance_m
+    
+    @property
+    def estimated_transit_duration_min(self):
+        return self._estimated_transit_duration_min
+    
+    @property
+    def estimated_grid_duration_min(self):
+        return self._estimated_grid_duration_min
+            
 
     # Methods and setters:
 
@@ -984,6 +995,14 @@ class CandidatePlan:
 
     def set_usable_endurance_distance_m(self, usable_endurance_distance_m):
         self._usable_endurance_distance_m = usable_endurance_distance_m
+        return
+    
+    def set_transit_endurance_min(self, transit_endurance_min):
+        self._estimated_transit_duration_min = transit_endurance_min
+        return
+    
+    def set_grid_endurance_min(self, grid_endurance_min):
+        self._estimated_grid_duration_min = grid_endurance_min
         return
 
     def set_transit_bearings(self, departure_bearing_deg, approach_bearing_deg):
