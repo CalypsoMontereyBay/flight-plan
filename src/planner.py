@@ -575,6 +575,8 @@ def build_candidate_plan(
     candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
 
     candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
+    
+    candidate_plan.set_transit_distance_m(true_non_grid_transit_m)
 
     candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
 
@@ -585,6 +587,12 @@ def build_candidate_plan(
     candidate_plan_estimated_duration_min = route_duration_min(
         total_flight_distance_m, metrics["total_lines"], mission_aircraft
     )
+    
+    grid_duration_min = route_duration_min(
+        metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
+    )
+    
+    transit_duration_min = candidate_plan_estimated_duration_min - grid_duration_min
 
     candidate_plan_estimated_battery_margin_min = battery_margin_min(
         mission_aircraft, candidate_plan_estimated_duration_min

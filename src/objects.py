@@ -725,6 +725,7 @@ class CandidatePlan:
         self._camera_trigger_distance_m = None
         self._grid_budget_m = None
         self._usable_endurance_distance_m = None
+        self._true_non_grid_transit_m = None
         self._grid_area_m2 = None
         self._offset_distance_m = None
         self._line_length_m = None
@@ -926,13 +927,16 @@ class CandidatePlan:
         return self._camera_trigger_distance_m
     
     @property
-    def estimated_transit_duration_min(self):
+    def transit_duration_min(self):
         return self._estimated_transit_duration_min
+        
+    @property
+    def grid_duration_min(self):
+        return self._estimated_grid_duration_min
     
     @property
-    def estimated_grid_duration_min(self):
-        return self._estimated_grid_duration_min
-            
+    def non_grid_transit_m(self):
+        return self._true_non_grid_transit_m        
 
     # Methods and setters:
 
@@ -997,12 +1001,16 @@ class CandidatePlan:
         self._usable_endurance_distance_m = usable_endurance_distance_m
         return
     
-    def set_transit_endurance_min(self, transit_endurance_min):
-        self._estimated_transit_duration_min = transit_endurance_min
+    def set_transit_distance_m(self, true_non_grid_transit_m):
+        self._true_non_grid_transit_m = true_non_grid_transit_m
         return
     
-    def set_grid_endurance_min(self, grid_endurance_min):
-        self._estimated_grid_duration_min = grid_endurance_min
+    def set_transit_duration_min(self, transit_duration_min):
+        self._estimated_transit_duration_min = transit_duration_min
+        return
+    
+    def set_grid_duration_min(self, grid_duration_min):
+        self._estimated_grid_duration_min = grid_duration_min
         return
 
     def set_transit_bearings(self, departure_bearing_deg, approach_bearing_deg):

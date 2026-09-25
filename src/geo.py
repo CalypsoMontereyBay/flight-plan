@@ -199,7 +199,7 @@ def furthest_point_distance_m(reference_point, points: list):
     those are equivalent, but this form is trivially correct and survives any future
     non-rectangular grid.
     """
-    if len(points) == 0 :
+    if len(points) == 0:
         raise ValueError("List of Points is empty, expected non-zero.")
 
     # Every distance is measured FROM reference_point -- the landing waypoint. Measuring
