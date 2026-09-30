@@ -604,10 +604,7 @@ def _qgc_params(item, is_vtol):
                     item["Latitude"], item["Longitude"], item["Altitude_m"]]
 
     if keyword in ("cam_on", "cam_off"):
-
-        on_off_toggle = (CONST.CAM_TRIGGER_START if keyword == "cam_on" else CONST.CAM_TRIGGER_END)
-
-        return [item["Trigger_Distance_m"], CONST.CAM_SHUTTER_INTEGRATION_millis, on_off_toggle, CONST.TARGET_CAM_ID,
+        return [item["Trigger_Distance_m"], CONST.CAM_SHUTTER_INTEGRATION_millis, CONST.CAM_TRIGGER_ONCE_IMMEDIATELY, CONST.TARGET_CAM_ID,
                 0, 0, 0]
 
     if keyword == "nav":

@@ -23,18 +23,18 @@ route as `.kml` and `.png`. See [`README.md`](README.md) for the full descriptio
 
 **V1 (proof-of-engine) is complete and tested. V2 Steps A (selectable date/time), B
 (live NWS weather) and C-1 (along-track payload mount) are complete and tested. C-2 is
-HALF BUILT and has been RE-SCOPED — it is no longer a gate. Everything on the V2 roadmap
-is SIDELINED behind Step J (JSON output).** See
+HALF BUILT and has been RE-SCOPED — it is no longer a gate. Step J (JSON output) is
+COMPLETE as of 2026-09-30, and Step F (mission configurability) is next.** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
-**Step J progress as of 2026-09-25: J-0 through J-7 are BUILT (92 tests green, also under
-`-W error`). Every run writes a QGC `.plan`, and the terminal summary reports the
-grid/transit split and both bearings (J-6). 20 Tier 5 tests pin the file against the
-MAVLink spec and QGC's own exports (J-7). Two things remain: the first QGC round trip (load,
-re-export, diff) and the J-8 closeout. The S2 takeoff question (sent to BlackSwift
-2026-09-30 for the S2 and the S3, reply pending) blocks a flight test, not the close of J.**
-The two
+**Step J is COMPLETE as of 2026-09-30: J-0 through J-8 are done (94 tests green, also
+under `-W error`). Every run writes a QGC `.plan`, and the terminal summary reports the
+grid/transit split, both bearings (J-6) and the final-frame RPIC note. 22 Tier 5 tests pin
+the file against the MAVLink spec and QGC's own files (J-7). The QGC round trip is clean:
+QGC changed one value, a camera-stop parameter, and the engine now writes the same value.
+The S2 takeoff question (sent to BlackSwift 2026-09-30 for the S2 and the S3, reply
+pending) blocks a flight test, not J. Next is Step F, which has no step table yet.** The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -50,11 +50,12 @@ section wins.
 1. **JSON output is the exclusive active priority.** A QGC-compatible `.plan` (JSON)
    writer must exist before *any* other V2 work resumes. Everything else on the roadmap —
    C-2, D, E, and the new configurability work — is **sidelined** until it lands. See
-   [Step J](#j-json-plan-output--current-and-exclusive-priority).
+   [Step J](#j-json-plan-output--complete-2026-09-30). ✅ **It landed on 2026-09-30:**
+   Step J is complete, and F is next in the execution order.
 2. **The mission must become configurable.** Users set line length, grid width, center
    point, launch point, landing point, desired grid area (honoured when mathematically
    feasible), overlap percentage in **both** the along- and cross-track directions, and
-   the camera viewing angle. See [Step F](#f-mission-configurability-sidelined).
+   the camera viewing angle. See [Step F](#f-mission-configurability-next-not-started).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 3. **The aircraft must become configurable.** Fixed-wing, quadcopter, or hexacopter. For
    a fixed wing every performance constant currently hard-coded to the BlackSwift S2 must
@@ -93,8 +94,8 @@ takeoff/land commands Step J must emit):
 > ## ⚠️ READ THIS BEFORE TRUSTING A GENERATED PLAN
 >
 > A generated plan is a **planning sketch for review**, never a flyable mission. This box
-> used to carry three reasons. **Two are fixed as of 2026-09-17** and are recorded below
-> as history, because the reasoning is worth keeping and because re-measuring is expensive.
+> lists the reasons that still stand. The ones fixed since are recorded below as history,
+> because the reasoning is worth keeping and because re-measuring is expensive.
 >
 > **1. Nothing validates anything.** `validator.py` holds a docstring and no code. Note
 > that under the 2026-09-08 constraints this is *no longer* about wind: the RTH/crosswind
@@ -102,10 +103,13 @@ takeoff/land commands Step J must emit):
 > whether **battery/endurance feasibility** stays a gate or also becomes a report — see
 > [Step E](#e-validatorpy--legalityfeasibility-gating-sidelined-and-narrowed). Note that
 > J-4 makes the *sizing* honest; it does not add a *gate*, and the two are different jobs.
-> 
-> **2. No output has been flown, or even round-tripped through QGC.**, We are still deep in the construction
-> and design phase of this software, and actual UAS hardware. Further, a GZ sim for our possible vehicle types
-> and plans is under construction. 
+>
+> **2. No output has been flown.** We are still deep in the construction and design phase
+> of this software and of the actual UAS hardware, and a Gazebo (GZ) simulation for our
+> possible vehicle types and plans is under construction. Until BlackSwift answers the S2
+> takeoff question below (asked 2026-09-30, reply pending), treat the file as unverified
+> for flight. A Gazebo run carries the same caveat there as a PX4 SITL run: it shows what
+> PX4 does, which answers for the S2 only if the S2 runs PX4's takeoff logic.
 >
 > **3. Climb and descent are counted as zero time.** The whole route is timed at cruise.
 > At 609.6 m a full vertical profile is worth several minutes, against a reported 17.1 min
@@ -123,18 +127,22 @@ takeoff/land commands Step J must emit):
 > **~~The launch point in `constants.py` is stale.~~ Fixed in J-1.** The constants held
 > the south shore (36.637, −121.936) while the waypoint names said Seymour. They now hold
 > **Terrace Point, 36.94840 N / 122.06538 W**, one pad for both launch and land, **22,386 m
-> from M1**. ⚠️ **The waypoint NAMES in `planner.py` are still `Seymour-Beach-Launch` /
-> `Seymour-Road-Land`** — cosmetic, reaches the KML labels, worth fixing in J-8.
+> from M1**. The waypoint names followed in J-8 (`e0630ff`): `Terrace-Point-Launch` /
+> `Terrace-Point-Land`.
+>
+> **~~No output has been round-tripped through QGC.~~ Done 2026-09-30, clean.** The `.plan`
+> writer exists as of 2026-09-22 (J-5). Its key sets and per-class frames match `exp2.plan`,
+> its camera items match `exp..plan`'s DO item, and since 2026-09-25 the suite enforces all
+> of that (J-7). A generated file was **loaded into QGC and checked by eye** (no stray
+> waypoints, a home icon, and direction lines through every waypoint), then saved by QGC
+> and diffed. QGC changed one value, `params[2]` on the camera-stop items, and ours now
+> matches, so every science line ends with a final frame the RPIC disregards (see the
+> final-frame bullet under the J-5 writer). QGC has no Save As and its Save writes back to
+> the file it opened, so a manual round trip opens a copy, then saves the copy. The full
+> procedure is in [What `exp2.plan` settles](#what-exp2plan-settles).
 >
 > The one V2C-2 change that IS live is the parallax line extension in
 > `geo.make_lawnmower_grid_through_m1` — it lengthens every line by 808 m.
-> 
-> The `.plan` writer exists as of 2026-09-22 (J-5). Its key sets and per-class frames match `exp2.plan`, and
-> its camera items match `exp..plan`'s DO item. Since 2026-09-25 the suite enforces all of
-> that (J-7). A generated file has also been **loaded
-> into QGC and checked by eye**: no stray waypoints, a home icon, and direction lines through
-> every waypoint. It has also been re-exported from QGC and diffed. A QGC overwrite-on-save issue was
-> identified and accounted for. To manually diff plans against QGC, open a copy, then save the copy.
 
 ## Layout
 
@@ -499,9 +507,8 @@ Read this before touching the grid, classification, or output code.
   items against `roundtrip_qgc.plan`, and the RPIC note in the summary.
 - **Known defects and deferred items:**
   - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
-  - ✅ ~~**DONE** :Launch/land constants are stale.~~ **Fixed in J-1.** The *waypoint names* in
-    `planner.py` are still `Seymour-Beach-Launch` / `Seymour-Road-Land` and reach the KML
-    labels — cosmetic, fix in J-8.
+  - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1**, and the waypoint names followed
+    in J-8 (`Terrace-Point-Launch` / `Terrace-Point-Land`, `e0630ff`).
   - ✅ ~~Along-track overlap does not exist.~~ **Built in J-2/J-3.** `Sensor` carries
     `cross_track_overlap` and `along_track_overlap` separately;
     `metrics["camera_trigger_distance_m"]` is **280.74 m** (561.48 m footprint × 50%) and
@@ -526,8 +533,9 @@ Read this before touching the grid, classification, or output code.
 ## V2 roadmap — what comes next
 
 **Execution order as of 2026-09-08: `J` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
-Nothing but **J** is active. Letters record the order steps were *scoped*, not the order
-they are *built* — the same convention the `V1_` constant prefixes follow.
+**J is complete (2026-09-30); F is next and not yet started.** Letters record the order
+steps were *scoped*, not the order they are *built* — the same convention the `V1_`
+constant prefixes follow.
 
 The original through-line was "make the mission situation-aware, fold that into ranking,
 then gate for legality." Constraint 4 retires the gating half of that: the aircraft
@@ -536,20 +544,24 @@ accurately, not to veto or re-steer on them. The new through-line is **make the 
 configurable and its output machine-usable, and report honestly.** Preserve dumb
 unidirectionality throughout.
 
-### J. JSON `.plan` output — CURRENT AND EXCLUSIVE PRIORITY
+### J. JSON `.plan` output — COMPLETE (2026-09-30)
 A `.plan` (JSON) writer, so a plan can be uploaded and flown instead of merely looked at.
 `constants.EXTENSION_JSON` already exists and `outputs.write_kml`'s docstring already names
 the intended helper (`write_qgc_plan`). Today's KML is **visualization only** in QGC — it
 does not import as a flyable mission — which is the entire reason this jumped the queue.
-**No other roadmap step may start until this ships.**
+**No other roadmap step may start until this ships.** ✅ Shipped 2026-09-30.
 
-> **STATUS 2026-09-25 — J-0 through J-7 are BUILT, 92 tests green (also under `-W error`).**
-> Every run writes a `.plan` and the summary reports the grid/transit split and bearings
-> (J-6). The 27 ad hoc J-5 checks are now 20 permanent Tier 5 tests (J-7): key sets and
-> per-class frames against QGC's exports, MAVLink commands, contiguous `doJumpId`, paired
-> camera toggles, no `Source_Action` leak, a home that follows the takeoff, and the VTOL and
-> multirotor branches. **Left: the QGC round trip (J-5) and the J-8 closeout.** Everything
-> below marked "settled" or "done" is history — read it for the reasoning, not as work to do.
+> **STATUS 2026-09-30 — STEP J IS COMPLETE. J-0 through J-8 are done, 94 tests green (also
+> under `-W error`).** Every run writes a `.plan`, and the summary reports the grid/transit
+> split, both bearings and the final-frame RPIC note (J-6). The 27 ad hoc J-5 checks are now
+> permanent Tier 5 tests (J-7), 22 of them: key sets and per-class frames against QGC's
+> exports, MAVLink commands, contiguous `doJumpId`, paired camera toggles, no
+> `Source_Action` leak, a home that follows the takeoff, the VTOL and multirotor branches,
+> and, since the round trip, the camera items against QGC's own re-export. **The QGC round
+> trip is clean (2026-09-30):** after one camera value was matched, a fresh default plan has
+> exactly the same values as `roundtrip_qgc.plan`. The S2/S3 takeoff question is with
+> BlackSwift, reply pending; it blocks a flight test, not J. Everything below marked
+> "settled" or "done" is history — read it for the reasoning, not as work to do.
 
 **Scoping settled 2026-09-08:**
 - **Two consumers.** QGroundControl driving **PX4** (custom rotorcraft), and BlackSwift's
@@ -709,11 +721,11 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 | J-3 | `geo.py` | Trigger distance into the metrics dict (along-track FOV/overlap passed as **parameters**, not read from `constants`); `total_route_distance_m` → `total_grid_distance_m` | ✅ |
 | J-4 | `planner.py` | Reserve the transit before `geo` sizes anything; measure the true transit; bounded retry; duration from the total; `grid_budget_m` vs `usable_endurance_distance_m` split | ✅ |
 | J-4.5 | `planner.py`, `objects.py` | Departure + approach bearings measured on the **final** route, reporting only | ✅ |
-| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22; loads cleanly in QGC — **re-export diff pending** |
+| J-5 | `outputs.py` | `_plan_items` → `_serialize_qgc` → `write_qgc_plan`; plain land item at the pad | ✅ built 2026-09-22; round trip clean 2026-09-30, after the camera-stop trigger was matched to QGC's |
 | J-6 gate | `outputs.py`, `sun.py`, `planner.py`, `weather.py` | Clear every handleable warning before the entry point changes | ✅ 2026-09-22 |
 | J-6 | `flight_plan_maker.py`, `planner.py`, `objects.py` | Emit and report the `.plan` path; print grid/transit split and bearings | ✅ 2026-09-25 — split computed in `planner` Step 9, pinned in Tier 3 |
-| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ✅ 2026-09-25 — 20 tests, broken 15 ways to confirm each catches its defect |
-| J-8 | docs | Closeout; fix the stale `Seymour-*` waypoint names | ❌ |
+| J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ✅ 2026-09-25 — 20 tests, broken 15 ways to confirm each catches its defect; 22 since the 2026-09-30 round trip |
+| J-8 | docs | Closeout: warning box narrowed, round trip recorded, stale `Seymour-*` waypoint names fixed (`Terrace-Point-*`, `e0630ff`), status lines | ✅ 2026-09-30 |
 
 **✅ J-5's PREREQUISITE IS CLEARED — `Vehicle` is adopted.** `BLACKSWIFT_VEHICLE_TYPE = 1`
 (Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4) are in `constants.py`, and
@@ -780,12 +792,18 @@ The rest:
   - QGC writes `0` for takeoff yaw where `TAKEOFF_YAW_deg = None` would emit `null`.
   - QGC writes `0` for acceptance radius where `ACCEPTANCE_RADIUS_m = 28.5`. `0` means "use
     the vehicle default"; 28.5 m is a deliberate override tied to the S2 turn radius. Valid
-    either way, but a round-trip diff will show it — expected, not a bug.
-- **No `DO_SET_CAM_TRIGG_DIST` items appear in it**, so the camera half of our output has no
-  reference. **Round-trip the first file J-5 produces**: load into QGC, re-export, diff.
-  Anything QGC rewrites is something we got wrong. Generate a fresh file for it, because
-  `V2 Plan_20260922-1240.plan` in the repo root predates the camera-key fix and would show
-  that fix as a difference.
+    either way.
+  - **The 2026-09-30 round trip kept both of ours.** QGC writes these values when it builds
+    a plan itself, and keeps ours when it loads our file.
+- **No `DO_SET_CAM_TRIGG_DIST` items appear in it.** The camera reference is
+  **`roundtrip_qgc.plan`** instead: our default plan after a QGC load and save on
+  2026-09-30, and the first file in which QGC wrote camera items. QGC kept every value but
+  one: it set `params[2]` ("trigger once immediately") to 1 on every camera-stop item, and
+  ours now writes the same (see the final-frame bullet under the J-5 writer).
+  **To repeat a round trip:** generate a fresh file and open a *copy* in QGC with no vehicle
+  connected. QGC has no Save As, and its Save writes back to the file it opened. Save, then
+  compare the two files with `python -m json.tool --sort-keys`. Anything QGC rewrites is
+  something we got wrong.
 
 **What `exp..plan` adds** (the repo's second QGC export, diffed against our output on
 2026-09-22):
@@ -804,7 +822,7 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### F. Mission configurability (SIDELINED)
+### F. Mission configurability (NEXT, NOT STARTED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,
 landing point, desired grid area (honoured **when mathematically feasible**, otherwise
 reported as infeasible with the closest achievable), cross-track overlap %, along-track
@@ -1011,10 +1029,10 @@ gate — read it as history. What remains for E:
   `planner._classify_waypoints`) requires 3.12.
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
-  B (live NWS weather) and C-1 (along-track mount) are done**. Remaining, in execution
-  order: **J** (JSON output — active, J-0…J-7 built, QGC round trip and J-8 left), **F** (mission
-  configurability), **G** (aircraft configurability), **C-2 re-scoped** (wind reporting),
-  **D** (sun/cloud ranking), **E** (legality).
+  B (live NWS weather), C-1 (along-track mount) and J (JSON `.plan` output, completed
+  2026-09-30) are done**. Remaining, in execution order: **F** (mission configurability —
+  next), **G** (aircraft configurability), **C-2 re-scoped** (wind reporting), **D**
+  (sun/cloud ranking), **E** (legality).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.
   `V1_DEFAULT_SENSOR_OFF_NADIR_deg` is 30, the V2C angle). The prefix records where the
   constant was introduced, not which version's value it holds — don't infer currency from it.

@@ -11,7 +11,8 @@ to the sun** (to avoid sun glint), so the engine builds a lawnmower data collect
 > run. Four constraints now drive development, and they supersede earlier planning:
 >
 > 1. **A QGC-compatible `.plan` (JSON) writer is the exclusive priority.** All other V2 work
->    is sidelined until it exists — including the half-built V2C wind work.
+>    is sidelined until it exists — including the half-built V2C wind work. ✅ **It shipped
+>    on 2026-09-30** (Step J).
 > 2. **The mission becomes configurable:** line length, grid width, center point, launch and
 >    landing points, desired grid area (when feasible), along- **and** cross-track overlap,
 >    and camera viewing angle.
@@ -34,17 +35,18 @@ to the sun** (to avoid sun glint), so the engine builds a lawnmower data collect
 > ones. The engine was built around a cross-track mount (135°, 40° off-nadir) through V1;
 > see the mounting note at the top of `src/geo.py` before changing any field-of-view math.
 
-The engine produces two artifacts per run:
+The engine produces three artifacts per run:
 
 - **`.kml`** — for visual review in QGroundControl, BlackSwift's FMS, or Google Earth.
 - **`.png`** — a quick visual reference (grid, route, launch/land/M1 markers, sun arrow, metrics).
+- **`.plan`** — a QGroundControl mission file (JSON) that QGC loads as a mission. None has
+  been flown yet; see the warning box below.
 
 > **Note on KML + QGroundControl:** a KML in QGC is **visualization only** — it
-> does *not* import as a flyable mission with auto-generated headings. A QGC
-> `.plan` (JSON) exporter is **the current top-priority work item** (Step J); until it
-> lands, nothing this engine emits can be uploaded and flown.
+> does *not* import as a flyable mission with auto-generated headings. That is why the
+> engine also writes the `.plan` (Step J, complete 2026-09-30).
 
-The `.plan` will be a **plain waypoint list, never a survey block** — a survey item lets the
+The `.plan` is a **plain waypoint list, never a survey block** — a survey item lets the
 ground station regenerate the lawnmower from its own parameters, which would discard the
 sun-oriented geometry this engine exists to compute. Camera control is **baked into the
 file** using distance-based triggering, both to cut pilot workload and because constant
@@ -55,8 +57,8 @@ belly-lands at a very low stall speed with steep descent capability, so no appro
 is generated. The **approach direction is a recommendation to the RPIC**, not part of the
 flight plan, and the pilot can take manual control of the landing as with any QGC plan.
 
-A third artifact — a **PDF pilot-notes document** carrying the wind/crab/return numbers — is
-planned after the JSON, so that reporting stays out of the machine-readable outputs. Its
+A fourth artifact — a **PDF pilot-notes document** carrying the wind/crab/return numbers — is
+planned, so that reporting stays out of the machine-readable outputs. Its
 first job is that landing recommendation, and **the engine already computes the input**:
 every plan carries the bearing it departs on (**174.8°** from Terrace Point) and the one it
 arrives home on (**344.6°**). The notes compare the arrival against the into-wind heading
@@ -216,7 +218,7 @@ flight-plan/
 │   ├── geo.py               # geodesic math + M1-centered lawnmower grid geometry
 │   ├── weather.py           # leaf: live NWS weather -> Weather object (or None -> stub)
 │   ├── planner.py           # the hub: assembles objects, scores glint, builds the plan
-│   ├── outputs.py           # KML + PNG writers (QGC .plan JSON writer goes here — Step J)
+│   ├── outputs.py           # KML, PNG and QGC .plan writers
 │   └── validator.py         # docstring only, NO CODE — its docstring describes the
 │                            #   CANCELLED RTH gate; read it as history (see CLAUDE.md, Step E)
 └── tests/                   # tiered pytest harness (test_0_* … test_6_*, seven tiers)
@@ -226,7 +228,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 71 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 94 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -250,21 +252,21 @@ object for in-horizon dates and gracefully falls back to a clear-sky stub otherw
 Step C-1 — the **along-track payload mount** (90° relative azimuth, 30° off-nadir, every
 leg collecting).
 
-**Step J is underway and most of the way there.** As of 2026-09-17 the engine sizes the
-mission against a budget that pays for the transit, reports the duration of the route it
-would actually fly, carries the camera trigger spacing (280.7 m) and knows its own
-departure and arrival bearings. **What is left is the writer itself** — turning a finished
-plan into QGroundControl's JSON. Everything upstream of that file is done and tested.
+**Step J is complete (2026-09-30).** Every run writes a QGroundControl `.plan`: a plain
+waypoint list with distance-triggered camera items, sized against a budget that pays for
+the transit. The summary reports the grid/transit split, both bearings and the RPIC note.
+The file has been round-tripped through QGC: QGC changed one camera value on load and
+save, the engine now writes that value too, and a fresh plan matches QGC's save exactly.
+Still open: how the S2 behaves with its takeoff waypoint on the launch point, a question
+now with BlackSwift. It blocks a flight test, not the file.
 
-**Remaining work, in execution order:** **J** — QGC `.plan` JSON output (*active, and the
-only active step*); **F** — mission configurability; **G** — aircraft configurability;
-**C-2** — wind/boresight reporting (half built, re-scoped from a safety gate to
-report-only); **D** — sun/cloud-quality ranking; **E** — legality gating. Everything after
-J is sidelined until J ships.
+**Remaining work, in execution order:** **F** — mission configurability (*next*); **G** —
+aircraft configurability; **C-2** — wind/boresight reporting (half built, re-scoped from a
+safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — legality gating.
 
 > ### ⚠️ A generated plan is a planning sketch, not a flyable mission
 >
-> This box used to list three reasons. What is left:
+> This box lists the reasons that still stand. What has been fixed is kept below as history.
 >
 > **1. Nothing validates anything.** `src/validator.py` holds a docstring and no code. Note
 > that its docstring describes the **cancelled** return-to-home gate: per the 2026-09-08
@@ -274,16 +276,16 @@ J is sidelined until J ships.
 >
 > **2. No output has ever been flown.**
 >
-> 
->
 > #### ✅ Fixed on 2026-09-17
 >
 > **The distance budget used to leave out the transit legs.** The engine budgeted and
 > reported the **grid only**, so nothing paid for the flight out to the mooring and back —
-> 112,187 m actually flown against a 90-minute battery, reported as +11.4 min of margin.
+> 112,187 m actually flown from the old south-shore pads against a 90-minute battery,
+> reported as +11.4 min of margin. (From Terrace Point the same defect would have flown
+> 127,559 m.)
 > The engine now reserves the round trip *before* choosing how many flight lines fit. The
-> default mission is **9 lines / 77,296 m / 72.9 min / 17.1 min margin**, and `Duration`
-> and `Margin` describe the route that would actually be flown.
+> default mission is **9 lines / 77,296 m / 72.9 min / 17.1 min margin**, and
+> `Total Flight Duration` and `Margin` describe the route that would actually be flown.
 >
 > **The launch/land coordinates used to be stale**, holding a south-shore position while
 > their waypoint names said Seymour. They now hold **Terrace Point** (36.94840 N,
