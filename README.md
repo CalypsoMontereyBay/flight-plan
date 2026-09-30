@@ -62,7 +62,8 @@ every plan carries the bearing it departs on (**174.8°** from Terrace Point) an
 arrives home on (**344.6°**). The notes compare the arrival against the into-wind heading
 and state the component the pilot will actually meet — a wind from about **164.6°** is a
 pure tailwind on that approach, which is the case worth warning about on an airframe that
-lands on its belly.
+lands on its belly. The notes will also carry the **final-frame note** the terminal summary
+prints today: disregard the last photograph of each science line (see below).
 
 > The arrival bearing is **recomputed for every plan, never assumed.** From shore it barely
 > moves, because the 22 km run to the mooring dominates a grid a few kilometres across. From
@@ -130,22 +131,34 @@ source .venv/bin/activate          # macOS / Linux  (Windows: .venv\Scripts\Acti
 python flight_plan_maker.py
 ```
 
-That single command runs the whole engine and writes a timestamped `.kml` and
-`.png` pair, then prints a summary, e.g.:
+That single command runs the whole engine and writes a timestamped `.kml`, `.png` and
+QGroundControl `.plan`, then prints a summary, e.g.:
 
 ```
 Mission : V2 Plan
 When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
 Lines   : 9  |  Glint Score: 0.0
-Duration: 72.9 min | Margin: 17.1 min
-KML -> ./CALYPSO_OUTPUT/V2 Plan_20260917-1357.kml
-PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260917-1357.png
+Total Flight Duration: 72.9 min
+Transit Flight: 41.62 min, 44952.79 meters
+Grid Flight: 31.28 min, 32343.06 meters
+Margin: 17.1 min
+Departure Bearing: 174.83 deg | Approach Bearing: 344.6 deg
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.png
+PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.plan
+RPIC NOTE: Disregard the last photograph of each science line. The camera fires one final frame where triggering stops, at the end of the line as the aircraft heads into the turn, and that frame's glint and attitude have not been verified.
 ```
 
+> ⚠️ **The `RPIC NOTE` is permanent until that last frame is characterized.** Every science
+> line ends with one extra photograph where triggering stops, because that is how
+> QGroundControl writes a camera-stop item. Nobody has yet checked that frame's sun glint,
+> or the aircraft's attitude as it leaves the line, so treat the last photograph of each
+> line as unusable.
+>
 > The `When` line shows the mission time you selected in **Monterey local** and the
 > **UTC** instant the engine actually computed the sun position with.
 >
-> ✅ **`Duration` and `Margin` now cover the whole flight**, transit included — fixed
+> ✅ **`Total Flight Duration` and `Margin` now cover the whole flight**, transit included — fixed
 > 2026-09-17. They used to measure the grid alone, which made a 106-minute flight look like
 > it had 11 minutes to spare on a 90-minute battery. The engine now reserves the round trip
 > to the mooring *before* deciding how many flight lines fit, which is why the default
@@ -251,7 +264,7 @@ J is sidelined until J ships.
 
 > ### ⚠️ A generated plan is a planning sketch, not a flyable mission
 >
-> This box used to list three reasons. **Two were fixed on 2026-09-17.** What is left:
+> This box used to list three reasons. What is left:
 >
 > **1. Nothing validates anything.** `src/validator.py` holds a docstring and no code. Note
 > that its docstring describes the **cancelled** return-to-home gate: per the 2026-09-08
@@ -259,13 +272,9 @@ J is sidelined until J ships.
 > feasibility remains a gate is an open decision — though the everyday case is now handled
 > by sizing rather than gating (see below).
 >
-> **2. No output has ever been flown, or even round-tripped through QGC.** The `.plan`
-> writer does not exist yet. Until a generated file has been loaded into QGroundControl,
-> re-exported and compared, treat the format as unverified.
+> **2. No output has ever been flown.**
 >
-> **3. Climb and descent are counted as zero time.** The whole route is timed at cruise.
-> At 609.6 m a full vertical profile is worth several minutes, against a reported 17.1 min
-> margin. This is now the largest remaining optimism in the duration.
+> 
 >
 > #### ✅ Fixed on 2026-09-17
 >

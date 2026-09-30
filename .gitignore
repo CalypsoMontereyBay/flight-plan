@@ -229,3 +229,4 @@ __marimo__/
 *.plan
 !exp..plan
 !exp2.plan
+!roundtrip_qgc.plan

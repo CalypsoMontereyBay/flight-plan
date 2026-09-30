@@ -27,8 +27,7 @@ M1_MOORING_LAT = 36.750
 # set here in Step J-1. It replaced a south-shore position 14,615 m from M1.
 #
 # LAUNCH AND LAND ARE THE SAME POINT; the V1 split into a beach launch and a separate
-# road landing collapsed to one pad. (planner's waypoint NAMES still say "Seymour-*" --
-# cosmetic, fixed in J-8.)
+# road landing collapsed to one pad.
 #
 # Terrace Point measures 22,386 m from M1 (bearing 169.6 deg). Round-trip transit alone
 # is ~44.8 km = ~41.5 min of a 90 min endurance, which is why the grid budget reserves the
@@ -300,6 +299,16 @@ EXTENSION_JSON = "json"
 
 EXTENSION_PLAN = "plan"
 
+# Printed with every terminal summary, and owed to the pilot-notes document once it exists.
+# Every stop item fires one final frame, as QGC writes it (see roundtrip_qgc.plan). Nobody
+# has checked that frame's glint or the aircraft's attitude as it leaves the line, so the
+# RPIC treats it as unusable until someone does.
+RPIC_NOTE_FINAL_FRAME = (
+    "Disregard the last photograph of each science line. The camera fires one final frame "
+    "where triggering stops, at the end of the line as the aircraft heads into the turn, and "
+    "that frame's glint and attitude have not been verified."
+)
+
 '''
 ========================================================================================
 '''
@@ -504,7 +513,7 @@ CAM_SHUTTER_INTEGRATION_millis = 0
 
 CAM_TRIGGER_START = 1
 
-CAM_TRIGGER_END = 0
+CAM_TRIGGER_END = 1
 
 CAM_TRIGGER_DISTANCE_m = 280.74
 

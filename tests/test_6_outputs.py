@@ -7,9 +7,10 @@ Top of the cake: depends on everything below. Two halves:
      legs (not stubs) with clean boundaries. The aliasing assert specifically guards the
      flush bug we fixed (segments must not share a mutable list object).
   2. QGC .plan (J-7), the file the aircraft would actually fly. Every expected MAVLink value
-     is a literal from the MAVLink spec or is read out of exp2.plan / exp..plan, the repo's
-     two real QGC exports. None comes from constants.py: a test that read the QGC constants
-     back would pass on the very typo it exists to catch.
+     is a literal from the MAVLink spec or is read out of one of the repo's three files that
+     QGC wrote: exp2.plan and exp..plan, QGC's own exports, and roundtrip_qgc.plan, our
+     default plan after a QGC load and save. None comes from constants.py: a test that read
+     the QGC constants back would pass on the very typo it exists to catch.
 """
 
 import copy
@@ -20,6 +21,7 @@ from pathlib import Path
 import pytest
 
 import constants as CONST
+import flight_plan_maker
 import objects as OBJ
 import outputs as OUT
 import planner as P
@@ -230,6 +232,14 @@ def _reject_non_json(token):
     raise ValueError(f"{token} is not valid JSON")
 
 
+def _camera_item_shape(qgc_item):
+    # a camera item minus its position in the file and its trigger distance
+    return {
+        key: (value[1:] if key == "params" else value)
+        for key, value in qgc_item.items() if key != "doJumpId"
+    }
+
+
 def test_plan_aircraft_is_a_vehicle():
     # The writer branches on four Vehicle fields. J-2 built the class and it went unused for
     # three steps, because no test looked. This one looks.
@@ -401,6 +411,46 @@ def test_trigger_distance_comes_from_the_plan():
             assert qgc_item["params"][0] == plan.camera_trigger_distance_m
         elif item["Keyword"] == "cam_off":
             assert qgc_item["params"][0] == 0
+
+
+def test_camera_items_match_qgcs_round_trip():
+    # roundtrip_qgc.plan is our default plan after QGC loaded and saved it (2026-09-30), and
+    # the first file in which QGC itself wrote DO_SET_CAM_TRIGG_DIST items. QGC folds each
+    # camera item into the waypoint before it and writes it back from its own template, so
+    # its version is what QGC would upload. The round trip changed exactly one thing:
+    # params[2], "trigger once immediately", went from 0 to 1 on every stop item. Ours must
+    # now match QGC's field for field, apart from the jump id and the trigger distance (the
+    # plan's own, pinned above). Checked on the shore and boat plans, so it holds for two N.
+    round_trip = _reference_plan("roundtrip_qgc.plan")
+    qgc_camera = [
+        item for item in round_trip["mission"]["items"]
+        if item["command"] == MAV_CMD_DO_SET_CAM_TRIGG_DIST
+    ]
+    # A distance of 0 stops triggering, which is what tells QGC's stop items from its start
+    # items. Every item of a kind must be alike, so each kind has one template.
+    templates = {
+        "cam_on": [_camera_item_shape(item) for item in qgc_camera if item["params"][0] > 0],
+        "cam_off": [_camera_item_shape(item) for item in qgc_camera if item["params"][0] == 0],
+    }
+    for shapes in templates.values():
+        assert shapes and all(shape == shapes[0] for shape in shapes)
+
+    for plan in (_default_plan(), _boat_plan()):
+        items, doc = _serialized(plan)
+        for item, qgc_item in zip(items, doc["mission"]["items"]):
+            if item["Keyword"] in CAMERA_KEYWORDS:
+                assert _camera_item_shape(qgc_item) == templates[item["Keyword"]][0]
+
+
+def test_summary_carries_the_rpic_note(capsys):
+    # Every stop item fires one final frame (pinned just above). Nobody has yet checked that
+    # frame's glint, or the aircraft's attitude as it leaves the line for the turn, so the
+    # RPIC is told to disregard it on every run. The summary is the only RPIC-facing text the
+    # engine writes today; the pilot-notes document will owe the same note.
+    flight_plan_maker._print_summary(
+        _default_plan(), "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME
+    )
+    assert CONST.RPIC_NOTE_FINAL_FRAME in capsys.readouterr().out
 
 
 def test_positions_come_from_the_waypoints():

@@ -58,6 +58,7 @@ def _print_summary(plan, kml_path, png_path, json_path, mission_datetime):
     print(f"KML -> {kml_path}")
     print(f"PNG -> {png_path}")
     print(f"PLAN -> {json_path}")
+    print(f"RPIC NOTE: {CONST.RPIC_NOTE_FINAL_FRAME}")
 
 
 def main():
