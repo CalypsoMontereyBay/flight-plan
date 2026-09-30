@@ -511,7 +511,8 @@ WITH FCU
 #**CLAUDE**: Replace "stub" with actuall FLIR BOSON Shutter speed
 CAM_SHUTTER_INTEGRATION_millis = 0
 
-#Fixes dead code issue regarding QGC's overwriting of param[2] for specific camera items.
+# For DO_SET_CAM_TRIGG_DIST items param[3], (param[2]): fire one camera frame now
+# QGC writes a 1 in on starts and stops. 
 CAM_TRIGGER_ONCE_IMMEDIATELY = 1
 
 CAM_TRIGGER_DISTANCE_m = 280.74
