@@ -218,7 +218,7 @@ def test_flight_splits_into_grid_and_transit():
     for plan in (P.plan_default_mission("shore_split"), from_boat):
         n = plan.total_lines
         grid_m = plan.total_grid_distance_m
-        transit_m = plan.non_grid_transit_m
+        transit_m = plan.transit_distance_m
         flight_m = plan.total_flight_distance
         grid_min = plan.grid_duration_min
         transit_min = plan.transit_duration_min

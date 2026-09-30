@@ -348,13 +348,13 @@ Read this before touching the grid, classification, or output code.
 
     Collapsing any two of these reintroduces the defect. It has already happened twice under
     different names — see the last bullet in [Design conventions](#design-conventions).
-    Since J-6 the plan also carries the **measured transit** itself: `plan.non_grid_transit_m`
+    Since J-6 the plan also carries the **measured transit** itself: `plan.transit_distance_m`
     (44,953 m, set by `set_transit_distance_m`). It is stored, not derived, so no consumer
     subtracts two of the four.
 
 - **Grid/transit split (V2 Step J-6, built 2026-09-25).** The summary reports the flight as a
   grid part and a transit part: `plan.grid_duration_min` / `plan.total_grid_distance_m` and
-  `plan.transit_duration_min` / `plan.non_grid_transit_m`. Default plan: **grid 31.3 min /
+  `plan.transit_duration_min` / `plan.transit_distance_m`. Default plan: **grid 31.3 min /
   32,343 m, transit 41.6 min / 44,953 m, total 72.9 min**. A boat launch 2 km from M1 flips it
   to grid 60.5 min, transit 6.6 min: the Step F argument in two numbers.
   - **The grid is costed; the transit is the remainder.** `planner` Step 9 calls
