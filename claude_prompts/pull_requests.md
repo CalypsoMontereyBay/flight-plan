@@ -19,6 +19,12 @@ This file will be used to generate pull requests for the Calypso Monterey Bay fl
 
 ### Report
 
+> **⚠️ Current environment (as of 2026-08-13):** this machine is **macOS** (not Linux as
+> noted in the dated write-up below — on macOS use `brew install gh`, not `apt`). The active
+> branch is **`second_flight_engine_build`** (V2); the "one open PR #1 (V1)" referenced below
+> is historical. V2 Steps A (date/time) and B (live NWS weather) are complete. The `gh` /
+> `/review` workflow and the division-of-labor guidance below remain accurate.
+
 #### TL;DR
 
 Once the GitHub CLI (`gh`) is installed and authenticated, you just tell Claude

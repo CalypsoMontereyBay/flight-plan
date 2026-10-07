@@ -221,3 +221,12 @@ __marimo__/
 
 # Mac Ds Store files
 *.DS_Store
+
+# Calypso Output Artifacts
+/CALYPSO_OUTPUT
+
+#test .plan files
+*.plan
+!exp..plan
+!exp2.plan
+!roundtrip_qgc.plan
