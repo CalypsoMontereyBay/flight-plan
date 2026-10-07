@@ -518,6 +518,24 @@ Read this before touching the grid, classification, or output code.
     `hover_speed_ms 0` — all four fields the writer branches on are reachable. ✅ Asserted
     since J-7 by `test_plan_aircraft_is_a_vehicle`. The gap had survived three steps precisely
     because no test looked.
+  - ⏳ **The camera starts before the S2 has rolled out of its turn.** Found 2026-09-28 by
+    flying V2's lines in uas_sim (PX4 SITL); a fast-track fix opened 2026-10-06 on its own
+    branch. `V1_COLLECTION_INSET_m` = 52 m is shorter than the S2's 57 m still-air turn
+    radius, so each line's first image is taken banked (20–31° in SITL). That image is the
+    only one covering the first ~54 m of the science box, and one line was level only 281 m
+    past its turn waypoint. Write-up: `flight-plan_camera-rollout-issue.md`.
+    - **The fix, as planned:** derive the inset from the ground turn radius at a **design
+      wind** W at altitude: R_g = R·(1 + W/V)², inset = 2·R_g + 50 m between lines. Strat 1
+      handles the transit's turn onto line 1: when the arrival angle θ > 90°, line 1's first
+      turn waypoint moves back by R_g·(tan(θ/2) − 1). The loop alternative, Strat 2, is
+      deferred to Step F.
+    - **The design wind is a planning input the RPIC owns** (decided 2026-10-06). The engine
+      reports the forecast beside it and never changes the geometry on the forecast by
+      itself, per constraint 4. Where the default comes from is still open.
+    - **Measured cost:** 9 lines hold up to a design wind of ~10.6 m/s at altitude (inset
+      337 m), and above that the grid drops to 7. Even still air costs 1.9 min of margin.
+    - The settle allowance in that formula (R_g + 50 m after the turn ends) comes from one
+      PX4 run. A uas_sim sweep calibrates it before the constants are fixed.
   - **Grid sizing is budget-derived, not requested.** `geo._initial_total_lines_from_budget`
     picks N from the endurance budget. `V1_DEFAULT_GRID_WIDTH_km`,
     `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km` are declared but never
@@ -848,6 +866,22 @@ overlap %, and camera off-nadir viewing angle.
   should be first-class.
 - Delivery mechanism (CLI flags vs. a mission config file) is undecided. The flag list is
   already at four and this adds ~9 more, which argues for a config file.
+- **Build the Strat 2 loop (noted 2026-10-06).** The camera-rollout fast track (see Known
+  defects) fixes each line's entry with a longer collection inset, plus **Strat 1** for the
+  turn from the transit onto line 1: line 1's first turn waypoint moves back along the line,
+  with no new waypoints. Strat 1's cost grows with tan(θ/2) of the arrival angle θ, and it
+  passes the loop's cost at about 118° at every wind speed. Shore launches arrive at
+  2°–120°, but a launch point F makes settable (a boat) can arrive near 180°.
+  - **The Strat 2 loop:** keep the outbound heading, turn onto a leg running opposite to
+    line 1 and offset from it by 2·R_g, then make a 180° turn onto line 1 with a straight
+    run-in before the camera starts.
+  - The same loop replaces the two 90° turns **between lines** once the design wind passes
+    `W*` ≈ 11.8 m/s at altitude, where 2·R_g is wider than the 313.4 m line spacing.
+  - Size the offset from R_g at the design wind, never from the still-air 57 m. At 15 m/s a
+    114 m offset overshoots line 1 by up to ~270 m.
+  - The turn onto line 1 depends on the launch point, so its loop lives in `planner`, and
+    `geo` still never learns where launch is. The loop between lines is grid geometry and can
+    live in `geo`, with R_g passed in as a parameter.
 
 ### G. Aircraft configurability (SIDELINED)
 Per constraint 3. Fixed-wing, quadcopter, or hexacopter, with every fixed-wing performance
