@@ -276,6 +276,14 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 >
 > **2. No output has ever been flown.**
 >
+> **3. The camera starts before the aircraft has rolled out of its turns.** Each science
+> line's first photograph is taken while the S2 is still banked (20–35° in simulation), and
+> it is the only photograph covering the first ~54 m of that line's science area. The cause
+> is the 52 m between each line's turn point and its camera start, which is shorter than
+> the S2's 57 m turn radius in still air. A fix is in progress (added 2026-10-09). Until it
+> lands, treat each line's first photograph, and the first ~54 m of the line's science
+> area, as unreliable.
+>
 > #### ✅ Fixed on 2026-09-17
 >
 > **The distance budget used to leave out the transit legs.** The engine budgeted and

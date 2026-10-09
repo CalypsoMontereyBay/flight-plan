@@ -153,6 +153,33 @@ BLACKSWIFT_FIRMWARE_TYPE = 12
 ========================================================================================
 '''
 
+'''
+ROLLOUT HOTFIX CONSTANTS (10/08/2026):
+The first three come from the uas_sim calibration sweep of 10/08/2026, flown in PX4 SITL on
+a Gazebo model of the BlackSwift S2, not on the airframe itself. Further in-depth
+explanations for each are in S2 Rollout Calibration Results.md. They describe PX4 on the
+S2, so Step G decides where they finally live. aircraft_math's rollout section reads them.
+========================================================================================
+'''
+
+ROLLOUT_RADIUS_FACTOR = 2.5  # Units = none, multiplies R_g. Slope of the D_level envelope.
+
+ROLLOUT_SETTLE_ALLOWANCE_m = 80  # Units = m. With the factor, clears every flight in the worst wind direction.
+
+# Kept apart from the settle allowance on purpose: this one is how early PX4 switches
+# waypoints, and BlackSwift's own autopilot may differ.
+CAMERA_EARLY_START_ALLOWANCE_m = 70  # Units = m. PX4 turned the camera on up to 71 m early.
+
+# The 90th percentile of the 10:00-local wind at 609.6 m over M1, 2022-2025: Open-Meteo's
+# archived model winds, interpolated between 950 and 925 hPa, computed 10/09/2026. The mean
+# is 4.9 m/s, and 9 m/s is exceeded on about 9% of mornings. Over M1 the morning wind aloft
+# is ~1.15x the 10 m wind, not the 1/7 power law's 1.79x, so never derive this from a 10 m
+# value that way. R-6 will let the RPIC override it per plan; the forecast never will.
+DEFAULT_DESIGN_WIND_ALOFT_ms = 9  # Units = m/s, at flight altitude, NOT at 10 m.
+
+'''
+========================================================================================
+'''
 
 '''
 NWS SERVICE CONSTANTS:

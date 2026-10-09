@@ -34,7 +34,9 @@ grid/transit split, both bearings (J-6) and the final-frame RPIC note. 22 Tier 5
 the file against the MAVLink spec and QGC's own files (J-7). The QGC round trip is clean:
 QGC changed one value, a camera-stop parameter, and the engine now writes the same value.
 The S2 takeoff question (sent to BlackSwift 2026-09-30 for the S2 and the S3, reply
-pending) blocks a flight test, not J. Next is Step F, which has no step table yet.** The two
+pending) blocks a flight test, not J. Next is Step F, which has no step table yet; its F-0
+decisions are in (2026-10-09). A fast-track fix for the camera-rollout defect runs
+alongside it (warning box item 4).** The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -114,6 +116,13 @@ takeoff/land commands Step J must emit):
 > **3. Climb and descent are counted as zero time.** The whole route is timed at cruise.
 > At 609.6 m a full vertical profile is worth several minutes, against a reported 17.1 min
 > margin. This is now the largest remaining optimism in the duration.
+>
+> **4. The camera starts before the S2 has rolled out of its turns** (added 2026-10-09).
+> Every science line's first image is taken banked, 20–35° in PX4 SITL, and it is the only
+> image covering the first ~54 m of that line's science box. `V1_COLLECTION_INSET_m` = 52 m
+> is shorter than the S2's 57 m still-air turn radius. The fast-track fix is planned and
+> calibrated but not built; see the ⏳ entry under Known defects. Until it lands, treat each
+> line's first image, and the first ~54 m of its box, as suspect.
 >
 > ### ✅ FIXED — kept as history, do not re-diagnose
 >
@@ -520,22 +529,55 @@ Read this before touching the grid, classification, or output code.
     because no test looked.
   - ⏳ **The camera starts before the S2 has rolled out of its turn.** Found 2026-09-28 by
     flying V2's lines in uas_sim (PX4 SITL); a fast-track fix opened 2026-10-06 on its own
-    branch. `V1_COLLECTION_INSET_m` = 52 m is shorter than the S2's 57 m still-air turn
-    radius, so each line's first image is taken banked (20–31° in SITL). That image is the
-    only one covering the first ~54 m of the science box, and one line was level only 281 m
-    past its turn waypoint. Write-up: `flight-plan_camera-rollout-issue.md`.
-    - **The fix, as planned:** derive the inset from the ground turn radius at a **design
-      wind** W at altitude: R_g = R·(1 + W/V)², inset = 2·R_g + 50 m between lines. Strat 1
-      handles the transit's turn onto line 1: when the arrival angle θ > 90°, line 1's first
-      turn waypoint moves back by R_g·(tan(θ/2) − 1). The loop alternative, Strat 2, is
-      deferred to Step F.
-    - **The design wind is a planning input the RPIC owns** (decided 2026-10-06). The engine
-      reports the forecast beside it and never changes the geometry on the forecast by
-      itself, per constraint 4. Where the default comes from is still open.
-    - **Measured cost:** 9 lines hold up to a design wind of ~10.6 m/s at altitude (inset
-      337 m), and above that the grid drops to 7. Even still air costs 1.9 min of margin.
-    - The settle allowance in that formula (R_g + 50 m after the turn ends) comes from one
-      PX4 run. A uas_sim sweep calibrates it before the constants are fixed.
+    branch (`rollout_hotfix`). `V1_COLLECTION_INSET_m` = 52 m is shorter than the S2's 57 m
+    still-air turn radius, so each line's first image is taken banked (20–35° in SITL). That
+    image is the only one covering the first ~54 m of the science box. Write-ups:
+    `flight-plan_camera-rollout-issue.md` (the defect) and `S2 Rollout Calibration
+    Results.md` (the 2026-10-08 sweep, 43 runs and 159 line entries).
+    - **The calibrated model (2026-10-08 sweep).** D_level, the distance past the turn
+      waypoint at which the aircraft is wings-level and on the line, is
+      **2.5·R_g + 80 m** over every flight seen in the worst wind direction, with
+      R_g = R·(1 + W/V)² at the design wind W at altitude. PX4 then starts the camera up to
+      **71 m before** collect_start (about 2 s of ground speed), so the planning inset is
+      **2.5·R_g + 150 m**: 293 m in still air, 495 m at 10 m/s, 629 m at the 15 m/s rating.
+      The pre-sweep guess, 2·R_g + 50, was short at every wind, and a 326 m inset failed at
+      8, 10 and 11 m/s.
+    - **What sets D_level is the new line's own tailwind.** A line flown into the wind
+      settles within ~35 m; a downwind one overshoots and S-turns for 230–510 m. Lines
+      alternate direction, so every grid has downwind lines and a fixed inset must be sized
+      on the worst case. Over all directions D_level has no relation to R_g (R² 0.003).
+      Don't fit to the mean.
+    - **Strat 1 stays for the turn onto line 1:** when the arrival angle θ > 90°, line 1's
+      first turn waypoint moves back by R_g·(tan(θ/2) − 1). The sweep found it conservative
+      by 9–103 m on the 117.7° default entry, and kept it. The Strat 2 loop is deferred to
+      Step F.
+    - **Decided:**
+      - The design wind is a planning input the RPIC owns (2026-10-06). The engine reports the
+        forecast beside it and never changes the geometry on the forecast by itself, per
+        constraint 4.
+      - The default is a **fixed value**, overridable per plan, and it must be derived from
+        Monterey Bay wind data, not set arbitrarily (2026-10-09). Its value is **9 m/s at
+        altitude** (2026-10-09): the 90th percentile of the 10:00 wind at 609.6 m over M1.
+        That gives R_g = 128.25 m, an inset of 470.6 m, 7 lines and a 22.7 min margin.
+      - `V1_COLLECTION_INSET_m` is **retired** once `geo` takes the inset as a parameter
+        (2026-10-09).
+      - The defect is in both warning boxes now, not at the fast track's close (2026-10-09).
+    - **R-2 built 2026-10-09:** the rollout constants in `constants.py`, and
+      `ground_turn_radius_m`, `rollout_inset_m` and `entry_pushback_m` in `aircraft_math.py`.
+      They have no caller until R-4. Five closed-form Tier 2 tests take the suite to 99.
+    - **Measured cost, with Strat 1:**
+      - 9 lines hold only up to a design wind of **~2.8 m/s at altitude** (inset ~340 m).
+      - Above that the grid drops to 7 lines, with a 24.4 min margin at 3 m/s and 20.5 min
+        at 15 m/s.
+      - The 7-line grid has 56% of the 9-line area, because the grid is square. Step F-4
+        undoes that: at 9 m/s, a 7-line grid with 1.5 km longer lines covers 6.36 km² (today
+        6.29 km²) with a 12.9 min margin.
+    - **Wind data for the default (2026-10-09, not in the repo).** Archived model winds over
+      M1 for 2022–2025, at 10:00 local, interpolated to 609.6 m: mean 4.9 m/s, p90 8.8 m/s,
+      ≤ 2.8 m/s on 26% of mornings. The wind at 609.6 m is only ~1.15× the 10 m wind on
+      morning flights (0.84× in the afternoon), not the 1.79× of the simulator's 1/7 power
+      law. **Never scale a 10 m forecast to altitude with the 1/7 law.** The M1 buoy (NDBC
+      46092, 2015–2025, anemometer 4 m) agrees at the surface: 3.5 m/s mean at 10:00.
   - **Grid sizing is budget-derived, not requested.** `geo._initial_total_lines_from_budget`
     picks N from the endurance budget. `V1_DEFAULT_GRID_WIDTH_km`,
     `V1_DEFAULT_LINE_LENGTH_km` and `V1_DEFAULT_LINE_SPACING_km` are declared but never
@@ -864,8 +906,21 @@ overlap %, and camera off-nadir viewing angle.
   visible: transit is **54% of the battery** from Terrace Point, and a launch 2 km from M1
   takes the mission from N=9 to N=13. Whatever the delivery mechanism, launch/land coordinates
   should be first-class.
-- Delivery mechanism (CLI flags vs. a mission config file) is undecided. The flag list is
-  already at four and this adds ~9 more, which argues for a config file.
+- **F-0 decided 2026-10-09:**
+  - **F-1 comes first:** launch and land as real inputs, before the pilot-notes PDF.
+  - **Settings come in through a mission config file** (for example `--mission FILE`), and the
+    four existing flags stay. F-1 builds the loader, with launch and land as its first
+    fields.
+  - **Both sizing modes,** with "fill my endurance" the default, so a run with no settings
+    keeps today's plan.
+  - **A requested grid that doesn't fit:** report the closest grid that fits and proceed.
+    Whether it should also refuse stays with Step E's open endurance-gate question.
+- **F-4 also undoes most of the rollout fix's cost.** The camera-rollout inset drops the
+  default grid from 9 lines to 7 at any design wind above ~2.8 m/s, and the square-grid rule
+  (side = offset × (N − 1)) then shrinks the lines too, to 56% of the area. With line length
+  independent of N, the freed margin buys longer lines. Measured 2026-10-09 at a 9 m/s
+  design wind: 7 lines, 1.5 km longer, 6.36 km² against today's 6.29 km², with a 12.9 min
+  margin. The box is 1.9 × 3.4 km instead of 2.5 × 2.5 km, which is a science call.
 - **Build the Strat 2 loop (noted 2026-10-06).** The camera-rollout fast track (see Known
   defects) fixes each line's entry with a longer collection inset, plus **Strat 1** for the
   turn from the transit onto line 1: line 1's first turn waypoint moves back along the line,
@@ -879,6 +934,15 @@ overlap %, and camera off-nadir viewing angle.
     `W*` ≈ 11.8 m/s at altitude, where 2·R_g is wider than the 313.4 m line spacing.
   - Size the offset from R_g at the design wind, never from the still-air 57 m. At 15 m/s a
     114 m offset overshoots line 1 by up to ~270 m.
+  - **The 2026-10-08 sweep makes the case for the loop stronger.** Most of D_level is not
+    the turn but the overshoot and S-turn after a downwind 90° fly-by onto the line, which
+    PX4 does even in still air (D_level 180–188 m against a 57 m radius). A loop or lead-in
+    that joins the line's axis outside the grid is designed to remove exactly that. It
+    needs its own sim sweep before it is built, because waypoint-following is not
+    arc-following. **That sweep was requested 2026-10-09** (the user's choice: now, in
+    parallel with building Strat 1). It also validates Strat 1 at the 9 m/s default, tests
+    turns flown through waypoints on an arc, and compares the loop with Strat 1 onto line 1
+    at a 160° arrival. Results go to `~/Desktop/S2 Strat 2 Loop Sweep Results.md`.
   - The turn onto line 1 depends on the launch point, so its loop lives in `planner`, and
     `geo` still never learns where launch is. The loop between lines is grid geometry and can
     live in `geo`, with R_g passed in as a parameter.

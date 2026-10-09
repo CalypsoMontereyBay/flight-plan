@@ -38,6 +38,10 @@ on its own. Omitting the track silently hard-codes a due-north track.
 
 airspeed_ms is TRUE AIRSPEED, never ground speed. Keeping those two apart is the entire
 point of V2C-2; the moment a variable name blurs them the module is lying.
+
+CAMERA ROLLOUT (fast track, 2026-10): the last section sizes the straight the aircraft
+needs after a turn before the camera may start. planner becomes its caller at step R-4;
+until then it has none.
 """
 
 import math
@@ -327,3 +331,67 @@ def wind_aware_usable_distance_m(blowing_from_deg, wind_speed_ms, axis_deg,
         return None
     else:
         return (flyable_min * SECONDS_PER_MINUTE * effective_speed)
+
+
+"""
+Camera rollout geometry (fast track, 2026-10) -- how far past a turn the aircraft is
+wings-level and on the new line, so the camera starts only once it is. Calibrated in
+uas_sim on 2026-10-08 (S2 Rollout Calibration Results.md). The wind here is the DESIGN
+wind, a planning input the RPIC owns, never the forecast, so constraint 4 still holds.
+=============================================================================================
+"""
+
+
+def ground_turn_radius_m(aircraft: Aircraft, wind_aloft_ms):
+    """
+    Worst-case ground turn radius in a steady wind, in meters: R * (1 + W / V)^2. The
+    aircraft turns at its still-air radius R through the air mass, and its ground track is
+    widest when it heads straight downwind, at a ground speed of V + W. wind_aloft_ms is
+    the wind at flight altitude, never the 10 m wind.
+    """
+
+    if wind_aloft_ms < 0:
+        raise ValueError("wind_aloft_ms cannot be negative")
+
+    ground_to_air_speed_ratio = 1 + (wind_aloft_ms / aircraft.vehicle_cruise_speed)
+
+    return (aircraft.vehicle_turn_radius * ground_to_air_speed_ratio ** 2)
+
+
+def rollout_inset_m(aircraft: Aircraft, design_wind_aloft_ms,
+                    radius_factor=CONST.ROLLOUT_RADIUS_FACTOR,
+                    settle_allowance_m=CONST.ROLLOUT_SETTLE_ALLOWANCE_m,
+                    camera_early_start_m=CONST.CAMERA_EARLY_START_ALLOWANCE_m):
+    """
+    Distance from a line's turn waypoint to its camera-on point, in meters:
+    radius_factor * R_g + settle_allowance_m + camera_early_start_m. It applies at both
+    ends of every line, and it is sized on the line flown downwind, the worst case, because
+    lines alternate direction. 470.6 m at the 9 m/s default design wind.
+    """
+
+    ground_radius_m = ground_turn_radius_m(aircraft, design_wind_aloft_ms)
+
+    return ((radius_factor * ground_radius_m) + settle_allowance_m + camera_early_start_m)
+
+
+def entry_pushback_m(aircraft: Aircraft, design_wind_aloft_ms, arrival_angle_deg):
+    """
+    Strat 1: how far line 1's first turn waypoint moves back along the line, in meters, for
+    a transit arriving at arrival_angle_deg. R_g * (tan(theta / 2) - 1) above 90 deg, and 0
+    at or below it. 83.9 m at the default plan's 117.7 deg entry and 9 m/s.
+    """
+
+    # tan(theta / 2) runs to infinity at 180 deg. Arrivals that steep are the Strat 2
+    # loop's job (Step F), not this formula's.
+    if not 0 <= arrival_angle_deg < 180:
+        raise ValueError("arrival_angle_deg must be at least 0 and less than 180")
+
+    # A fly-by turn of theta ends R_g * tan(theta / 2) past its waypoint. The inset was
+    # calibrated on 90 deg turns, which end one R_g past it, so only the excess needs room.
+    if arrival_angle_deg <= 90:
+        return 0.0
+
+    ground_radius_m = ground_turn_radius_m(aircraft, design_wind_aloft_ms)
+    half_angle_rads = math.radians(arrival_angle_deg / 2)
+
+    return (ground_radius_m * (math.tan(half_angle_rads) - 1))

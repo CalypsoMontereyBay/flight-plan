@@ -212,3 +212,65 @@ def test_candidate_orientation():
     # flown in opposite directions. This is the structural reason both leg directions
     # collect science under the along-track mount.
     assert P._angular_distance(first, second) == pytest.approx(180)
+
+
+# ---- Camera rollout (fast track) -----------------------------------------------------
+# Closed form on _test_aircraft(): turn radius 57 m, cruise 18 m/s. Wherever a number is
+# asserted, the calibration values are passed in explicitly, so these pin the formulas and
+# not whatever CONST holds after the next sweep. Wind is always at flight altitude.
+
+
+def test_ground_turn_radius_in_still_air_is_the_air_radius():
+    ac = _test_aircraft()
+    assert A.ground_turn_radius_m(ac, 0) == pytest.approx(ac.vehicle_turn_radius)
+
+
+def test_ground_turn_radius_grows_with_wind():
+    ac = _test_aircraft()
+    radii_m = [A.ground_turn_radius_m(ac, wind_ms) for wind_ms in (0, 5, 10, 15)]
+    assert all(lower < higher for lower, higher in zip(radii_m, radii_m[1:]))
+
+    # A wind equal to cruise speed doubles the downwind ground speed, and the radius goes
+    # with its square: 57 * (1 + 18/18)^2.
+    assert A.ground_turn_radius_m(ac, 18) == pytest.approx(4 * 57)
+
+    with pytest.raises(ValueError):
+        A.ground_turn_radius_m(ac, -1)
+
+
+def test_rollout_inset_is_factor_radius_plus_allowances():
+    ac = _test_aircraft()
+    # 2.5 * 57 + 80 + 70
+    assert A.rollout_inset_m(
+        ac, 0, radius_factor=2.5, settle_allowance_m=80, camera_early_start_m=70
+    ) == pytest.approx(292.5)
+    # 2.5 * 228 + 80 + 70, at a wind equal to cruise speed
+    assert A.rollout_inset_m(
+        ac, 18, radius_factor=2.5, settle_allowance_m=80, camera_early_start_m=70
+    ) == pytest.approx(720)
+
+
+def test_rollout_inset_always_clears_the_turn():
+    # The defect's own invariant, on the constants as shipped: the camera may never start
+    # inside the turn. The old 52 m inset against a 57 m radius fails this at every wind.
+    ac = _test_aircraft()
+    for wind_ms in range(ac.vehicle_wind_rating + 1):
+        assert A.rollout_inset_m(ac, wind_ms) > A.ground_turn_radius_m(ac, wind_ms)
+
+
+def test_entry_pushback():
+    ac = _test_aircraft()
+    # At 90 deg or less, the fly-by turn ends within one radius of its waypoint, which the
+    # inset already pays for, so line 1 doesn't move.
+    assert A.entry_pushback_m(ac, 0, 45) == 0
+    assert A.entry_pushback_m(ac, 0, 90) == 0
+
+    # 57 * (tan 60 - 1)
+    assert A.entry_pushback_m(ac, 0, 120) == pytest.approx(41.7269, abs=1e-3)
+    # It scales with the ground radius: 4x at a wind equal to cruise speed.
+    assert A.entry_pushback_m(ac, 18, 120) == pytest.approx(4 * 41.7269, abs=1e-3)
+
+    # tan(theta/2) runs to infinity at 180 deg, and an arrival angle is never negative.
+    for bad_angle_deg in (-1, 180, 200):
+        with pytest.raises(ValueError):
+            A.entry_pushback_m(ac, 0, bad_angle_deg)
