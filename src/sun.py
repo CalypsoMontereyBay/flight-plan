@@ -1,118 +1,146 @@
 """
-Sun.py is used to populate the CurrentSunState object, found in objects.py.
-When this file recieves input in the form of long, lat, and date_time, it returns
-a populated current sun state object.
+sun.py populates the CurrentSunState object found in objects.py. Given a latitude,
+longitude and datetime, it returns a populated sun state.
 
-We do not need two sun states (one for launch and land), because the aircraft
-return heading is not determined by sun azimuth.
+One sun state serves the whole mission: the aircraft's return heading is not
+determined by sun azimuth, so launch and land do not need separate ones.
 
+The helpers are written in the order of the CurrentSunState constructor's parameters.
 """
 
-# module imports:
-from pysolar.solar import get_azimuth, get_altitude
 import datetime
-from objects import CurrentSunState
+import warnings
+from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
-# constants imports
+from pysolar.solar import get_azimuth, get_altitude
+
 from constants import (
     V1_LAUNCH_POINT_LAT,
     V1_LAUNCH_POINT_LONG,
     V1_DEFAULT_MISSION_YEAR,
     V1_DEFAULT_MISSION_MONTH,
     V1_DEFAULT_MISSION_DAY_OF_MONTH,
-    V1_DEFAULT_MISSION_HOUR,
+    V2_DEFAULT_MISSION_LOCAL_HOUR,
+    V2_MISSION_INPUT_TIMEZONE,
+    V2_DEFAULT_MISSION_LOCAL_MINUTE
 )
+from objects import CurrentSunState
 
-# date constants in datetime module form are below:
-TIME_ZONE_INFO = datetime.timezone.utc
 
-# The datetime library is used in conjunction with pysolar for my helper functions
-mission_date = datetime.datetime(
-    V1_DEFAULT_MISSION_YEAR,
-    V1_DEFAULT_MISSION_MONTH,
-    V1_DEFAULT_MISSION_DAY_OF_MONTH,
-    V1_DEFAULT_MISSION_HOUR,
-    tzinfo=TIME_ZONE_INFO,
-)
+_PYSOLAR_LEAP_SECOND_WARNING = r"Leap seconds for year \d+ are not available"
 
-"""
-Below are the list of helper functions used to populate the current sun state
-object for the start of the mission.
 
-The functions are written in order of their listing in the currentSunState Constructor
-in order to hopefully increase readability and decrease confusion. 
-"""
+@contextmanager
+def _pysolar_without_leap_second_warning():
+    """
+    J-6 WARNING GATE -- pysolar's leap-second warning is filtered HERE, and only here.
 
-"""
-The calc_azimuth(latitude, longitude, and date) function
-calculates the azimuth angle of the sun given some coordinates
-and a date. Latitude and longitude will be the launch position,
-and date will be our assumed mission date for V1.
-It returns the azimuth angle in degrees in decimal form.
+    pysolar 0.13's leap-second table ends at 2025, so it raises
+    "UserWarning: Leap seconds for year 2025 are not available" for every date after
+    2026-06-30 -- which is every real mission from now on, not just the tests.
 
-pysolar 0.13 returns azimuth clockwise from North (0-360).
-"""
+    It cannot be fixed in engine code, and it is safe to silence:
+      - no leap second has been inserted since 2016-12-31, so pysolar's "no further
+        adjustments" assumption is the correct one;
+      - even a missed leap second is a 1 s timing error. Measured with pysolar at Terrace
+        Point, 1 s moves the sun <= 0.008 deg in azimuth and <= 0.003 deg in elevation,
+        against a 15 deg glint tolerance.
+
+    The filter is scoped to the two pysolar calls below (catch_warnings restores the filters
+    on exit) and matches this one message, so every other warning -- ours included -- still
+    reaches the console. Revisit when pysolar ships a newer table.
+    """
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message=_PYSOLAR_LEAP_SECOND_WARNING, category=UserWarning, module="pysolar"
+        )
+        yield
 
 
 def calc_azimuth(latitude, longitude, date):
+    """
+    Azimuth of the sun, in decimal degrees, at a coordinate and datetime. The engine
+    passes the launch position and the mission datetime.
 
-    launch_point_sun_az_deg = get_azimuth(latitude, longitude, date)
+    pysolar 0.13 returns azimuth clockwise from North (0-360).
+    """
+
+    with _pysolar_without_leap_second_warning():
+        launch_point_sun_az_deg = get_azimuth(latitude, longitude, date)
 
     return launch_point_sun_az_deg
 
 
-# ===================================================================
-
-"""
-The calc_elevation (latitude, longitude, date) function
-calculates the elevation of the sun given some coordinates
-and a date. Latitude and longitude will always be the launch position,
-and date will always be our assumed mission date for V1. It returns
-the elevation angle in degrees in decimal form.
-"""
-
-
 def calc_elevation(latitude, longitude, date):
+    """
+    Elevation of the sun, in decimal degrees, at a coordinate and datetime. The engine
+    passes the launch position and the mission datetime.
+    """
 
-    launch_point_sun_elev_deg = get_altitude(latitude, longitude, date)
+    with _pysolar_without_leap_second_warning():
+        launch_point_sun_elev_deg = get_altitude(latitude, longitude, date)
 
     return launch_point_sun_elev_deg
 
 
-# ===================================================================
-
-"""
-The calc_zenith function (solar_elevation_deg) returns
-the zenith angle of the sun in degrees as a decimal. It only
-accepts one parameter because date, time, and coordinates have already
-been taken into account when calculating the solar elevation, which
-is required to be completed beforehand (pysolar does not have a zenith
-function).
-"""
-
-
 def calc_zenith(solar_elevation_deg):
+    """
+    Zenith angle of the sun, in decimal degrees. It takes only the elevation because date,
+    time and coordinates are already accounted for there, so calc_elevation must run
+    first (pysolar has no zenith function).
+    """
 
     launch_point_solar_zenith_deg = 90.0 - solar_elevation_deg
 
     return launch_point_solar_zenith_deg
 
 
-# ===================================================================
+def resolve_mission_datetime(date_str: str | None = None, time_str: str | None = None):
+    """
+    Convert a local Pacific date and time (DST-aware) into a tz-aware UTC instant, so the
+    engine is date/time aware for its weather, flight restrictions and sun data. Either
+    half falls back to its V2 default when omitted or unparseable.
+    """
 
-"""
-The create_sun_state function puts it all together by populating
-the constructor of a CurrentSunState object and returning it. It uses
-the helper functions above and calculates the values needed for the rest
-of the engine to have proper sun data. Latitude, longitude, and date all
-default to the V1 launch point and assumed mission date.
-"""
+    try:
+        mission_date_component = datetime.date.fromisoformat(date_str)  # type: ignore[arg-type]
+
+    except (ValueError, TypeError):
+        mission_date_component = datetime.date(
+            V1_DEFAULT_MISSION_YEAR,
+            V1_DEFAULT_MISSION_MONTH,
+            V1_DEFAULT_MISSION_DAY_OF_MONTH,
+        )
+
+    try:
+        mission_time_component = datetime.time.fromisoformat(time_str)  # type: ignore[arg-type]
+
+    except (ValueError, TypeError):
+        mission_time_component = datetime.time(
+            V2_DEFAULT_MISSION_LOCAL_HOUR,
+            V2_DEFAULT_MISSION_LOCAL_MINUTE,
+        )
+
+    local_datetime = datetime.datetime.combine(mission_date_component, mission_time_component, tzinfo=ZoneInfo(V2_MISSION_INPUT_TIMEZONE))
+
+    return local_datetime.astimezone(datetime.timezone.utc)
 
 
-# Creator function is getting defaults for now
+# Module-level default instant, used when no CLI date/time is supplied: the V2
+# local-time defaults resolved to UTC. create_sun_state and planner fall back to
+# this so a plan can still be built with no --date/--time chosen.
+mission_datetime = resolve_mission_datetime()
+
+
 def create_sun_state(
-    latitude=V1_LAUNCH_POINT_LAT, longitude=V1_LAUNCH_POINT_LONG, date=mission_date
+    latitude=V1_LAUNCH_POINT_LAT, longitude=V1_LAUNCH_POINT_LONG, date=mission_datetime
 ):
+    """
+    Populate and return a CurrentSunState from the helpers above. Latitude, longitude and
+    date default to the launch point and the V2 default mission datetime.
+    """
 
     # calculating launch point azimuth for object
     current_launch_point_az_deg = calc_azimuth(latitude, longitude, date)
@@ -127,9 +155,9 @@ def create_sun_state(
         current_launch_point_az_deg,
         current_launch_point_elev_deg,
         current_launch_point_zen_deg,
-        V1_DEFAULT_MISSION_DAY_OF_MONTH,
-        V1_DEFAULT_MISSION_HOUR,
-        0,
+        date.day,
+        date.hour,
+        date.minute,
     )
 
     return launch_sun_state

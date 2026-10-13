@@ -19,6 +19,12 @@ This file will be used to generate pull requests for the Calypso Monterey Bay fl
 
 ### Report
 
+> **⚠️ Current environment (as of 2026-08-13):** this machine is **macOS** (not Linux as
+> noted in the dated write-up below — on macOS use `brew install gh`, not `apt`). The active
+> branch is **`second_flight_engine_build`** (V2); the "one open PR #1 (V1)" referenced below
+> is historical. V2 Steps A (date/time) and B (live NWS weather) are complete. The `gh` /
+> `/review` workflow and the division-of-labor guidance below remain accurate.
+
 #### TL;DR
 
 Once the GitHub CLI (`gh`) is installed and authenticated, you just tell Claude
@@ -197,3 +203,45 @@ Other findings:
 
 Suggested the science-tagging fix as the one blocking change before merge; the
 rest are follow-ups. Did not run any git state-changing commands (per CLAUDE.md).
+### 2026-10-13 (Reviewed PR #2 "Second flight engine build")
+
+Reviewed the open PR #2 by Robert Wandel (`second_flight_engine_build` -> `main`, head
+`ae74fe9`, +7617 / -1160, 33 files, 40 commits). Read `planner.py`, `weather.py`, the
+`.plan` half of `outputs.py` and the grid half of `geo.py`. Ran the suite and the entry point
+from a clean `git archive` export of `ae74fe9`: **94 tests pass**, and the default run gives
+N=9, 72.9 min, 17.1 min margin, with the RPIC note printed. `gh` is installed and
+authenticated as `sub250Rob`. I did not run any git commands that change state.
+
+**Blocking, and it is not code.** `profxj` submitted CHANGES_REQUESTED on 2026-10-11:
+*add the prompts you issued to Claude as a separate Markdown doc in the repo, and I'll
+approve.* Nothing on the branch does that yet. `claude_prompts/start_up.md` and
+`pull_requests.md` hold the two bootstrap prompts and Claude's logs, not the prompts issued
+across V2 A, B, C-1 and J. Add one doc (for example `claude_prompts/v2_prompts.md`), dated and
+grouped by step, then push and re-request review. Source for the prompts: the session
+transcripts in `~/.claude/projects/` for this repo.
+
+**No correctness bug found in the reviewed paths.** The J-4 transit loop is sound (a pass that
+fails to fit has a measured transit strictly above the seed, so the budget shrinks and the
+loop cannot spin), and the `.plan` writer matches its documented rules.
+
+Follow-ups, none blocking:
+- **Unflown, and the PR body should say so.** The body says "complete". The file is still
+  unverified for flight: BlackSwift's takeoff-on-the-pad reply is pending, and the camera
+  rollout defect (first image of each line is taken banked) is open. Both are in CLAUDE.md;
+  put one line of each in the PR description, since the reviewer reads that first.
+- **Climb and descent are counted as zero time**, against a 17.1 min margin. The body asks
+  that changes "consider real world flight physics", and this is the largest optimism left.
+- **ArduPilot is named in the body but the file is PX4-only.** `firmwareType` is hard-coded
+  to 12, and the takeoff, land and nav params follow PX4/QGC semantics. If ArduPilot sims
+  consume this file, say how, or note that they do not yet.
+- **`weather.get_weather` can still crash a plan.** Its docstring promises a plan is always
+  produced, but it catches only `RequestException`, `KeyError` and `ValueError`. A naive
+  `when` datetime reaches `_value_at_time`, where comparing with NWS's aware datetimes raises
+  `TypeError`. The planner always passes an aware datetime today, so this is latent.
+- **Home altitude is the Terrace Point constant for every plan** (`_qgc_home`), so a boat
+  launch gets the pad's 16 m. Already documented as a residual that Step F fixes.
+- **History noise:** 40 commits including "Test commit" and "reverted test commit". Squash-merge
+  would keep `main` readable.
+
+Environment note: this session began on `rollout_hotfix`, whose CLAUDE.md describes R-2 work
+(99 tests) that is not on this branch. The review above is of `second_flight_engine_build`.
