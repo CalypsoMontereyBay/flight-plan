@@ -139,15 +139,18 @@ QGroundControl `.plan`, then prints a summary, e.g.:
 ```
 Mission : V2 Plan
 When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
-Lines   : 9  |  Glint Score: 0.0
-Total Flight Duration: 72.9 min
-Transit Flight: 41.62 min, 44952.79 meters
-Grid Flight: 31.28 min, 32343.06 meters
-Margin: 17.1 min
-Departure Bearing: 174.83 deg | Approach Bearing: 344.6 deg
-KML -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.kml
-PNG -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.png
-PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20260930-143854.plan
+Lines   : 7  |  Glint Score: 0.0
+Total Flight Duration: 67.3 min
+Transit Flight: 41.73 min, 45070.82 meters
+Grid Flight: 25.59 min, 26559.24 meters
+Margin: 22.7 min
+Departure Bearing: 174.88 deg | Approach Bearing: 344.58 deg
+Design Wind: 9.0 m/s at flight altitude (planning input) | Collection Inset: 470.62 m
+Line 1 Lead-in: 83.36 m, for a 117.56 deg turn in from the transit
+Forecast Wind: none for this date and time (reported only, never applied)
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.png
+PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.plan
 RPIC NOTE: Disregard the last photograph of each science line. The camera fires one final frame where triggering stops, at the end of the line as the aircraft heads into the turn, and that frame's glint and attitude have not been verified.
 ```
 
@@ -160,14 +163,24 @@ RPIC NOTE: Disregard the last photograph of each science line. The camera fires 
 > The `When` line shows the mission time you selected in **Monterey local** and the
 > **UTC** instant the engine actually computed the sun position with.
 >
+> The `Design Wind` line is the wind at flight altitude that the plan is sized for, which
+> you set with `--design-wind`. After every turn the aircraft needs a straight stretch to
+> level out before the camera starts, and that stretch grows with the wind: 470.62 m at the
+> default 9 m/s. `Line 1 Lead-in` is the extra straight before the first line, because the
+> turn in from the transit is sharper than the turns between lines. `Forecast Wind` is the
+> National Weather Service forecast, which is for 10 m above the sea. It is shown for
+> comparison only and never changes the plan. Don't read it as the wind at flight altitude:
+> on a Monterey Bay morning the wind at 2000 ft runs about 1.15 times the 10 m wind.
+>
 > ✅ **`Total Flight Duration` and `Margin` now cover the whole flight**, transit included — fixed
 > 2026-09-17. They used to measure the grid alone, which made a 106-minute flight look like
 > it had 11 minutes to spare on a 90-minute battery. The engine now reserves the round trip
-> to the mooring *before* deciding how many flight lines fit, which is why the default
-> mission is **9 lines rather than 15**.
+> to the mooring *before* deciding how many flight lines fit, which took the default
+> mission from 15 lines to **9**. The camera-rollout fix (2026-10-18) then took it to **7**
+> (see the warning box below).
 >
 > ⚠️ One optimism remains: **climb and descent are still counted as zero time.** At 609.6 m
-> that is worth several minutes out of the 17.1 shown. Do not read the margin as slack.
+> that is worth several minutes out of the 22.7 shown. Do not read the margin as slack.
 
 ### Options
 
@@ -177,6 +190,7 @@ RPIC NOTE: Disregard the last photograph of each science line. The camera fires 
 | `--out-dir` | `OUTPUT_DIRECTORY` in `constants.py` (`./CALYPSO_OUTPUT`) | Directory to write the `.kml` / `.png` into (created if missing). |
 | `--date` | `2026-01-01` (V2 defaults in `constants.py`) | Mission date `YYYY-MM-DD`, interpreted as **Monterey local time**. |
 | `--time` | `10:00` local | Mission start `HH:MM`, Monterey local; converted to UTC (DST-aware) to drive the sun position and glint scoring. |
+| `--design-wind` | `9` (`DEFAULT_DESIGN_WIND_ALOFT_ms` in `constants.py`) | The wind the plan is sized for, in m/s **at flight altitude**, not the 10 m forecast. A higher value gives longer, safer straights after each turn and may fit fewer lines. Must be 0 or more. |
 
 Each flag is independent; omit either `--date` or `--time` and it falls back to its
 default. Unparseable values also fall back to the defaults rather than erroring.
@@ -184,6 +198,7 @@ default. Unparseable values also fall back to the defaults rather than erroring.
 ```bash
 python flight_plan_maker.py --name my_mission --out-dir ./outputs
 python flight_plan_maker.py --date 2026-07-15 --time 14:30    # afternoon sun, Monterey local
+python flight_plan_maker.py --design-wind 12                  # plan for 12 m/s at altitude
 ```
 
 > **Output directory:** the default `OUTPUT_DIRECTORY` in `src/constants.py` is
@@ -228,7 +243,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 94 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 104 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -276,13 +291,23 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 >
 > **2. No output has ever been flown.**
 >
-> **3. The camera starts before the aircraft has rolled out of its turns.** Each science
-> line's first photograph is taken while the S2 is still banked (20–35° in simulation), and
-> it is the only photograph covering the first ~54 m of that line's science area. The cause
-> is the 52 m between each line's turn point and its camera start, which is shorter than
-> the S2's 57 m turn radius in still air. A fix is in progress (added 2026-10-09). Until it
-> lands, treat each line's first photograph, and the first ~54 m of the line's science
-> area, as unreliable.
+> **3. The camera-rollout fix has not been checked in simulation yet** (2026-10-18). Each
+> line now leaves a straight stretch after its turn, sized from the design wind, so the
+> aircraft is level before the camera starts (470.6 m at the default 9 m/s). The sizes come
+> from a simulator calibration, but the finished geometry has not been flown in the
+> simulator yet. Two limits remain after that check. The simulator flies PX4, and the S2's
+> own autopilot may behave differently. And on a day windier than the design wind, the
+> first photograph of some lines may be taken while the aircraft is still banked, so set
+> `--design-wind` for the day.
+>
+> #### ✅ Fixed on 2026-10-18
+>
+> **The camera used to start before the aircraft had rolled out of its turns.** Each
+> science line's first photograph was taken while the S2 was still banked (20–35° in
+> simulation), and it was the only photograph of the first ~54 m of that line's science
+> area. The camera started 52 m after each turn point, less than the S2's 57 m turn radius
+> in still air. The straight is now sized from the design wind, and the turn onto the first
+> line gets extra room.
 >
 > #### ✅ Fixed on 2026-09-17
 >
@@ -292,7 +317,8 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 > reported as +11.4 min of margin. (From Terrace Point the same defect would have flown
 > 127,559 m.)
 > The engine now reserves the round trip *before* choosing how many flight lines fit. The
-> default mission is **9 lines / 77,296 m / 72.9 min / 17.1 min margin**, and
+> default mission became **9 lines / 77,296 m / 72.9 min / 17.1 min margin** (7 lines,
+> 67.3 min and 22.7 min since the 2026-10-18 rollout fix), and
 > `Total Flight Duration` and `Margin` describe the route that would actually be flown.
 >
 > **The launch/land coordinates used to be stale**, holding a south-shore position while
@@ -319,8 +345,11 @@ Still assumed (V2 work in progress):
 - **Where you launch from is the biggest lever on how much science you get.** From Terrace
   Point the round trip to the mooring consumes **54% of the battery** before a single
   science line is flown. Launching from a stationary boat 2 km off M1 takes the same
-  aircraft from 9 flight lines to 13. Making the launch point user-settable (step **F**) is
+  aircraft from 7 flight lines to 11. Making the launch point user-settable (step **F**) is
   therefore an efficiency feature, not just a convenience one.
+- **A design wind of 9 m/s at flight altitude**, unless you set another with
+  `--design-wind`. It sizes the straight after every turn. The engine never takes it from
+  the forecast: the forecast is for 10 m, and choosing the day's value is the pilot's call.
 - **Sun glint** is the only ranking metric (science legs held 90° off the sun at a 15°
   tolerance). Cloud cover is fetched but not yet folded into ranking (step **D**).
 - The 90° is measured on the **camera boresight**, which follows the fuselage, so crosswind

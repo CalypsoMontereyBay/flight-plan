@@ -8,7 +8,8 @@ imports nothing from the engine.
     - Weather (conditions at the mission time, from NWS or the clear-sky stub)
     - Sensor (camera viewing geometry and overlaps)
     - Waypoint (the smallest unit of a route)
-    - MissionRequest (launch, land and M1 waypoints, altitude and datetime for one mission)
+    - MissionRequest (launch, land and M1 waypoints, altitude, datetime and design wind for one
+      mission)
     - CandidatePlan (bringing it all together: the route, its metrics, and its score)
 """
 
@@ -612,8 +613,13 @@ class Waypoint:
 
 class MissionRequest:
     """
-    One mission's request: launch, land and M1 waypoints, altitude and datetime. It no
-    longer holds line length, grid width, etc.; the grid is sized from the budget.
+    One mission's request: launch, land and M1 waypoints, altitude, datetime and design
+    wind. It no longer holds line length, grid width, etc.; the grid is sized from the
+    budget.
+
+    design_wind_aloft_ms is the wind at flight altitude the RPIC plans for. It sizes the
+    straight each line needs after a turn before the camera starts. It is a planning input,
+    never the forecast (constraint 4), and it is never a 10 m wind.
     """
 
     def __init__(
@@ -624,6 +630,7 @@ class MissionRequest:
         m1_waypoint,
         altitude_m,
         valid_time: datetime,
+        design_wind_aloft_ms,
         require_m1_overflight=True,
         grid_orientation_deg=None,
         notes=None,
@@ -632,6 +639,8 @@ class MissionRequest:
 
         if not isinstance(valid_time, datetime):
             raise TypeError("valid_time must be a datetime.datetime instance")
+        if design_wind_aloft_ms < 0:
+            raise ValueError("design_wind_aloft_ms cannot be negative")
 
         self._mission_name = mission_name
         self._launch_waypoint = launch_waypoint
@@ -639,6 +648,7 @@ class MissionRequest:
         self._m1_waypoint = m1_waypoint
         self._altitude_m = altitude_m
         self._date = valid_time
+        self._design_wind_aloft_ms = design_wind_aloft_ms
         self._require_M1_overflight = require_m1_overflight
         self._grid_orientation_deg = grid_orientation_deg
         self._notes = notes
@@ -667,6 +677,10 @@ class MissionRequest:
     @property
     def altitude(self):
         return self._altitude_m
+
+    @property
+    def design_wind_aloft_ms(self):
+        return self._design_wind_aloft_ms
 
     @property
     def grid_orientation(self):
@@ -735,6 +749,7 @@ class CandidatePlan:
         self._offset_lines = None
         self._parallax_m = None
         self._cross_track_width_m = None
+        self._collection_inset_m = None
 
         self._estimated_duration_min = None
         self._estimated_transit_duration_min = None
@@ -758,6 +773,9 @@ class CandidatePlan:
 
         self._departure_bearing_deg = None
         self._approach_bearing_deg = None
+
+        self._entry_pushback_m = None
+        self._entry_arrival_angle_deg = None
 
     # Properties:
 
@@ -854,6 +872,24 @@ class CandidatePlan:
     @property
     def cross_track_width_m(self):
         return self._cross_track_width_m
+
+    # Camera rollout (fast track, 2026-10). The inset is what geo placed at both ends of
+    # every line, sized by planner from the design wind. The pushback is how far line 1's
+    # first turn waypoint moved back for the turn in from the transit (Strat 1), and the
+    # arrival angle is the turn it was sized on. All three are geometry the route already
+    # contains, so they are reported, never written to the .plan.
+
+    @property
+    def collection_inset_m(self):
+        return self._collection_inset_m
+
+    @property
+    def entry_pushback_m(self):
+        return self._entry_pushback_m
+
+    @property
+    def entry_arrival_angle_deg(self):
+        return self._entry_arrival_angle_deg
 
     # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
     # the terminal summary read these. validator, when it is written, must NOT: it has to
@@ -964,6 +1000,7 @@ class CandidatePlan:
         self._parallax_m = metrics.get("sensor_parallax_m")
         self._cross_track_width_m = metrics.get("cross_track_swath_m")
         self._camera_trigger_distance_m = metrics.get("camera_trigger_distance_m")
+        self._collection_inset_m = metrics.get("collection_inset_m")
         return
 
     def has_m1_overflight(self):
@@ -1016,6 +1053,11 @@ class CandidatePlan:
     def set_transit_bearings(self, departure_bearing_deg, approach_bearing_deg):
         self._departure_bearing_deg = departure_bearing_deg
         self._approach_bearing_deg = approach_bearing_deg
+        return
+
+    def set_entry_pushback(self, entry_pushback_m, entry_arrival_angle_deg):
+        self._entry_pushback_m = entry_pushback_m
+        self._entry_arrival_angle_deg = entry_arrival_angle_deg
         return
 
     # V2C-2 setters for the viewing geometry and RTH figures (reporting only):

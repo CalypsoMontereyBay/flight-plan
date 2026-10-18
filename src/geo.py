@@ -240,21 +240,26 @@ def calculate_grid_area_m2(offset_m, total_lines):
     return line_length_m ** 2
 
 
-def make_line_through_point(center_point, grid_orientation_deg, line_length_m):
+def make_line_through_point(center_point, grid_orientation_deg, line_length_m, collection_inset_m):
     """
-    Create a LineString centered on center_point and aligned to grid_orientation_deg.
+    Create a LineString centered on center_point and aligned to grid_orientation_deg, as
+    [turn, collect_start, center, collect_stop, turn]. Each collect point sits
+    collection_inset_m in from its turn, the straight the aircraft needs to roll out of
+    the turn before the camera starts.
     """
     center = _as_point(center_point)
     if line_length_m <= 0:
         raise ValueError("line_length_m must be positive")
+    if collection_inset_m < 0:
+        raise ValueError("collection_inset_m cannot be negative")
 
     half_length_m = line_length_m / 2
     start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m)
     end = destination_point(center, grid_orientation_deg, half_length_m)
 
-    if half_length_m > CONST.V1_COLLECTION_INSET_m:
-        collect_start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m - CONST.V1_COLLECTION_INSET_m)
-        collect_end = destination_point(center, grid_orientation_deg, half_length_m - CONST.V1_COLLECTION_INSET_m)
+    if half_length_m > collection_inset_m:
+        collect_start = destination_point(center, normalize_heading(grid_orientation_deg + 180), half_length_m - collection_inset_m)
+        collect_end = destination_point(center, grid_orientation_deg, half_length_m - collection_inset_m)
 
     else:
         # For a tiny grid, just place the collection points halfway between the middle and the turns.
@@ -300,9 +305,9 @@ def _initial_total_lines_from_budget(usable_distance_m, offset_m):
     return max(3, total_lines)
 
 
-def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines, line_extension_m=0):
+def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lines, collection_inset_m, line_extension_m=0):
     line_length_m = (calculate_line_length_m(offset_m, total_lines) + line_extension_m)
-    center_line = make_line_through_point(center_point, grid_orientation_deg, line_length_m)
+    center_line = make_line_through_point(center_point, grid_orientation_deg, line_length_m, collection_inset_m)
     perpendicular_heading = normalize_heading(grid_orientation_deg + 90)
     opposite_perpendicular_heading = normalize_heading(grid_orientation_deg - 90)
 
@@ -338,13 +343,18 @@ def _build_centered_grid(center_point, grid_orientation_deg, offset_m, total_lin
 def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_distance_m,
                                    altitude_m, cross_track_fov_deg,
                                    cross_track_overlap_pct, off_nadir_deg,
-                                   along_track_fov_deg, along_track_overlap_pct):
+                                   along_track_fov_deg, along_track_overlap_pct,
+                                   collection_inset_m):
     """
     Build the largest V1 M1-centered lawnmower grid that fits usable_distance_m.
 
     V1 uses an odd total_lines so the center line passes directly through M1; the
     M1 overflight is then a natural waypoint at route_points[metrics["m1_route_index"]]
     and adds zero detour distance.
+
+    collection_inset_m is the straight between each turn waypoint and its collect point,
+    at both ends of every line. planner sizes it from the aircraft and the design wind;
+    geo only places it.
 
     Returns:
         flight_lines, route_points, metrics
@@ -369,7 +379,7 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
     # makes both of these user-settable, and a Sensor read here would be ignored.
     camera_trigger_distance_m = ((ground_footprint_along_m(altitude_m, along_track_fov_deg, off_nadir_deg)) * (1 - (along_track_overlap_pct / 100)))
 
-    extension_m = ((parallax_m + CONST.V1_COLLECTION_INSET_m) * 2)
+    extension_m = ((parallax_m + collection_inset_m) * 2)
 
     while total_lines >= 3:
         flight_lines, route_points, m1_route_index = _build_centered_grid(
@@ -377,6 +387,7 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
             grid_orientation_deg,
             offset_m,
             total_lines,
+            collection_inset_m,
             line_extension_m=extension_m
         )
         total_grid_distance_m = _route_distance_m(route_points)
@@ -403,6 +414,7 @@ def make_lawnmower_grid_through_m1(center_point, grid_orientation_deg, usable_di
                 "line_length_m": line_length_m,
                 "physical_line_length_m": line_length_m + extension_m,
                 "line_extension_m": extension_m,
+                "collection_inset_m": collection_inset_m,
                 "total_lines": total_lines,
                 "science_lines": total_lines,
                 "traverse_lines": 0,

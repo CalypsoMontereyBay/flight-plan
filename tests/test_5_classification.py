@@ -7,11 +7,13 @@ test, which pins the subtle reversal fix (science follows the actual flown headi
 pre-reversal index) so V2 can never silently regress it.
 """
 
+import datetime
 from collections import Counter
 
 import pytest
 from shapely.geometry import Point
 
+import aircraft_math as A
 import constants as CONST
 import geo as G
 import planner as P
@@ -24,6 +26,10 @@ def _plan():
 def _legs(grid_wps):
     step = CONST.V1_POINTS_PER_LINE
     return [grid_wps[i:i + step] for i in range(0, len(grid_wps), step)]
+
+
+def _point(waypoint):
+    return Point(waypoint.longitude, waypoint.latitude)
 
 
 def test_route_shape_and_endpoints():
@@ -150,3 +156,75 @@ def test_shore_approach_tracks_the_m1_reciprocal():
     reciprocal = (outbound_to_m1 + 180) % CONST.FULL_CIRCLE_DEG
 
     assert P._angular_distance(plan.approach_bearing_deg, reciprocal) < 15
+
+
+def test_camera_starts_an_inset_past_every_turn():
+    # THE invariant of the camera rollout fix. Every collect point sits the inset in from its
+    # turn waypoint, at both ends of every line, so the aircraft has rolled out of the turn
+    # before the camera starts. Line 1's first turn sits a further pushback out (Strat 1).
+    # The inset is the plan's own, sized from its aircraft and design wind, and it is checked
+    # at both ends of the wind range, so it holds for two different N.
+    for design_wind_ms in (0, P._Black_Swift.vehicle_wind_rating):
+        plan = P.plan_default_mission("rollout", design_wind_aloft_ms=design_wind_ms)
+        inset = plan.collection_inset_m
+        pushback = plan.entry_pushback_m
+        assert inset is not None and pushback is not None
+        assert plan.line_length_m is not None and plan.parallax_m is not None
+
+        assert inset == pytest.approx(A.rollout_inset_m(plan.aircraft, design_wind_ms))
+
+        # the inset clears the turn itself, which the old 52 m against a 57 m radius did not
+        assert inset > A.ground_turn_radius_m(plan.aircraft, design_wind_ms)
+
+        # Each line is extended by parallax + inset at both ends, so every collect point sits
+        # exactly one parallax outside the science box and image 1's boresight lands on the
+        # box edge. Extend by any other inset and the box's first metres go unimaged.
+        box_edge_m = plan.line_length_m / 2 + plan.parallax_m
+
+        for index, leg in enumerate(_legs(plan.waypoints[1:-1])):
+            in_turn, collect_start, center, collect_stop, out_turn = (_point(w) for w in leg)
+            lead_in = inset + pushback if index == 0 else inset
+
+            assert G.distance_between(in_turn, collect_start) == pytest.approx(lead_in, abs=1.0)
+            assert G.distance_between(collect_stop, out_turn) == pytest.approx(inset, abs=1.0)
+            assert G.distance_between(center, collect_start) == pytest.approx(box_edge_m, abs=1.0)
+            assert G.distance_between(center, collect_stop) == pytest.approx(box_edge_m, abs=1.0)
+
+
+def test_line_one_entry_meets_the_turn_rule():
+    # Strat 1. The pushback is aircraft_math's formula at the arrival angle the plan records,
+    # and that angle is the turn the route actually flies onto line 1. Moving the waypoint
+    # back widens the turn slightly and never narrows it: well under a degree from the shore.
+    plan = _plan()
+    angle = plan.entry_arrival_angle_deg
+    assert angle is not None and plan.entry_pushback_m is not None
+    assert plan.entry_pushback_m == pytest.approx(
+        A.entry_pushback_m(plan.aircraft, plan.mission_request.design_wind_aloft_ms, angle)
+    )
+
+    wps = plan.waypoints
+    flown = P._angular_distance(
+        G.bearing_between(_point(wps[0]), _point(wps[1])),
+        G.bearing_between(_point(wps[1]), _point(wps[2])),
+    )
+    assert 0 <= flown - angle < 1
+
+    # the moved waypoint stays on line 1's axis
+    assert P._angular_distance(
+        G.bearing_between(_point(wps[1]), _point(wps[2])),
+        G.bearing_between(_point(wps[2]), _point(wps[3])),
+    ) == pytest.approx(0, abs=0.5)
+
+    # A turn of 90 deg or less needs no pushback, and line 1 keeps the plain inset. 08:00
+    # local on 2026-02-15 arrives at about 40 deg. The date is past, so no forecast is fetched.
+    gentle = P.plan_default_mission(
+        "gentle_entry", datetime.datetime(2026, 2, 15, 16, 0, tzinfo=datetime.timezone.utc)
+    )
+    assert gentle.entry_arrival_angle_deg is not None and gentle.collection_inset_m is not None
+    assert gentle.entry_arrival_angle_deg <= 90
+    assert gentle.entry_pushback_m == 0
+
+    gentle_wps = gentle.waypoints
+    assert G.distance_between(_point(gentle_wps[1]), _point(gentle_wps[2])) == pytest.approx(
+        gentle.collection_inset_m, abs=1.0
+    )

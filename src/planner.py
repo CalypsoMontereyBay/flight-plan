@@ -15,8 +15,11 @@ import itertools
 
 import constants as CONST
 import weather
-from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
-from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
+from aircraft_math import (
+    max_planned_distance_m, route_duration_min, battery_margin_min, rollout_inset_m,
+    entry_pushback_m,
+)
+from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between, destination_point
 from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
 from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 
@@ -96,10 +99,11 @@ _M1_Waypoint = Waypoint(
 # Step 1.4: the date/time dependent objects are built per run by a builder function.
 
 
-def _build_dated_objects(mission_datetime):
+def _build_dated_objects(mission_datetime, design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
     """
     Build the objects that depend on the mission datetime -- sun state, mission request
-    and weather -- and return them with the sun azimuth.
+    and weather -- and return them with the sun azimuth. The mission request also carries
+    the design wind, the RPIC's planning input at flight altitude.
     """
 
     sun_state = create_sun_state(
@@ -115,6 +119,7 @@ def _build_dated_objects(mission_datetime):
         m1_waypoint=_M1_Waypoint,
         altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
         valid_time=mission_datetime,
+        design_wind_aloft_ms=design_wind_aloft_ms,
         require_m1_overflight=True,
         grid_orientation_deg=None,
         notes="V2 Grid",
@@ -218,7 +223,8 @@ def _passes_glint_gate(score):
 
 
 def _build_grid_for_orientation(
-    orientation_deg, mission_request: MissionRequest, payload: Sensor, usable_distance_m
+    orientation_deg, mission_request: MissionRequest, payload: Sensor, usable_distance_m,
+    collection_inset_m
 ):
     """
     Thin wrapper around geo.make_lawnmower_grid_through_m1 that pulls the grid
@@ -240,6 +246,7 @@ def _build_grid_for_orientation(
         off_nadir_deg=payload.off_nadir,
         along_track_fov_deg=payload.along_track_fov,
         along_track_overlap_pct=payload.along_track_overlap,
+        collection_inset_m=collection_inset_m,
     )
 
 
@@ -249,6 +256,7 @@ def _pick_best_orientation(
     mission_request: MissionRequest,
     payload: Sensor,
     predicted_grid_distance_m,
+    collection_inset_m,
 ):
     """
     Score both candidate science headings (glint, science-leg only), keep the
@@ -284,7 +292,8 @@ def _pick_best_orientation(
 
     for orientation_deg, orientation_score in gate_passers:
         flight_lines, route_points, metrics = _build_grid_for_orientation(
-            orientation_deg, mission_request, payload, predicted_grid_distance_m
+            orientation_deg, mission_request, payload, predicted_grid_distance_m,
+            collection_inset_m
         )
         nearest_corner_dist_m = min(
             distance_between(launch_point, route_points[0]),
@@ -332,6 +341,38 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
         return (updated_route_list, updated_m1_idx)
     else:
         return (route_points, m1_idx)
+
+
+def _apply_entry_pushback(route_points: list, launch_point, aircraft: Vehicle, design_wind_aloft_ms):
+    """
+    Strat 1 (camera rollout fast track, 2026-10): move line 1's first turn waypoint back
+    along line 1, so the turn in from the transit has rolled out before the camera starts.
+    The distance is aircraft_math.entry_pushback_m at the arrival angle, and it is 0 for a
+    turn of 90 deg or less. Returns (route_points, pushback_m, arrival_angle_deg), with only
+    the first point moved.
+    """
+
+    first_turn = route_points[0]
+    collect_start = route_points[1]
+
+    # The turn at line 1's first waypoint: 0 deg flies straight on, 180 deg reverses.
+    inbound_bearing_deg = bearing_between(launch_point, first_turn)
+    line_bearing_deg = bearing_between(first_turn, collect_start)
+    arrival_angle_deg = _angular_distance(inbound_bearing_deg, line_bearing_deg)
+
+    pushback_m = entry_pushback_m(aircraft, design_wind_aloft_ms, arrival_angle_deg)
+
+    if pushback_m == 0:
+        return (route_points, pushback_m, arrival_angle_deg)
+
+    # Measured from collect_start, so the moved waypoint stays on line 1's own geodesic and
+    # sits exactly inset + pushback before the camera starts. Moving it back widens the
+    # arrival angle slightly. The formula's margin covers that, so it is not iterated.
+    outward_bearing_deg = bearing_between(collect_start, first_turn)
+    lead_in_m = distance_between(collect_start, first_turn) + pushback_m
+    moved_first_turn = destination_point(collect_start, outward_bearing_deg, lead_in_m)
+
+    return ([moved_first_turn] + route_points[1:], pushback_m, arrival_angle_deg)
 
 
 def _angular_distance(heading1_deg, heading2_deg):
@@ -448,9 +489,11 @@ def build_candidate_plan(
     a finished, scored CandidatePlan. In order:
 
       1. identify the two candidate orientations
-      2. reserve the transit, so geo sizes the grid against what is left
+      2. size the collection inset from the design wind, and reserve the transit, so geo
+         sizes the grid against what is left
       3. pick the best orientation (which builds the lawnmower grid through M1)
-      4. reorient the grid so the route starts at the corner closest to launch
+      4. reorient the grid so the route starts at the corner closest to launch, then move
+         line 1's first turn waypoint back for the turn in from the transit (Strat 1)
       5. classify each waypoint now that the orientation is final
       6. measure the real transit; if the flight does not fit, re-seed and repeat
       7-10. build the CandidatePlan and set its metrics, duration, margin and score
@@ -459,7 +502,13 @@ def build_candidate_plan(
     # Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
 
-    # Step 2, RESERVE THE TRANSIT before geo is allowed to size anything.
+    # Step 2, size the collection inset, the straight at both ends of every line between
+    # the turn waypoint and the camera. It comes from the plan's own aircraft and the
+    # request's design wind, a planning input the RPIC owns. The forecast never sets it
+    # (constraint 4).
+    collection_inset_m = rollout_inset_m(mission_aircraft, mission_request.design_wind_aloft_ms)
+
+    # Then RESERVE THE TRANSIT before geo is allowed to size anything.
     #
     # geo.make_lawnmower_grid_through_m1 takes a centre, an orientation and a distance --
     # it does not know where launch is and must not learn, so this subtraction belongs to
@@ -493,11 +542,21 @@ def build_candidate_plan(
             mission_request,
             payload,
             grid_budget_m,
+            collection_inset_m,
         )
 
         # Step 4, reorient the grid so the route starts at the corner closest to launch
         route_shapely_waypoints, m1_index = _reorient_to_launch(
             route_points, metrics["m1_route_index"], mission_request.launch_point
+        )
+
+        # Step 4 continued, Strat 1. It needs the final entry corner, so it runs after the
+        # reorientation, and before Step 6 measures the transit and the bearings from it.
+        route_shapely_waypoints, line_one_pushback_m, entry_arrival_angle_deg = _apply_entry_pushback(
+            route_shapely_waypoints,
+            mission_request.launch_point,
+            mission_aircraft,
+            mission_request.design_wind_aloft_ms
         )
 
         # Step 5, walk the route and classify each waypoint and assign it an index:
@@ -515,9 +574,15 @@ def build_candidate_plan(
         # been reoriented and the pad waypoints are in it.
         # Launch Waypoint IDX = 0, Land Waypoint IDX = -1
         # First Grid Waypoint IDX = 1, Last Grid Waypoint IDX = -2
+        #
+        # The outbound leg includes line 1's lead-in, the pushback flown on line 1's axis
+        # before the turn waypoint geo placed. geo's grid distance starts at that waypoint,
+        # so the lead-in is flown but outside the grid, and the launch point sets its
+        # length. Counting it here keeps grid + transit equal to the flight, and lets the
+        # re-seed below pay for it.
         true_outbound_non_grid_transit_m = distance_between(
             mission_request.launch_wp, mission_route_list_classified[1]
-        )
+        ) + line_one_pushback_m
         true_returning_non_grid_transit_m = distance_between(
             mission_route_list_classified[-2], mission_request.land_wp
         )
@@ -580,6 +645,8 @@ def build_candidate_plan(
 
     candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
 
+    candidate_plan.set_entry_pushback(line_one_pushback_m, entry_arrival_angle_deg)
+
     # Step 9, calculate the duration of the flight in minutes and then send it to the
     # candidate. This consumes the TOTAL flight distance, not the grid figure -- that
     # substitution is the reporting half of the J-4 transit fix.
@@ -616,10 +683,12 @@ def build_candidate_plan(
     return candidate_plan
 
 
-def plan_default_mission(candidate_name, mission_datetime=None):
+def plan_default_mission(candidate_name, mission_datetime=None,
+                         design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
     """
     Public wrapper for flight_plan_maker.py, so the entry point never reaches into internals.
-    Builds the default mission for mission_datetime (or the module default).
+    Builds the default mission for mission_datetime (or the module default), planned for
+    design_wind_aloft_ms, the wind at flight altitude in m/s.
     """
 
     # With no datetime, fall back to the module-level V2 default so a plan can be
@@ -630,7 +699,9 @@ def plan_default_mission(candidate_name, mission_datetime=None):
         mission_datetime = DEFAULT_MISSION_DATETIME
 
     # unpacking dated objects:
-    sun_state, mission_request, weather_state, sun_az = _build_dated_objects(mission_datetime)
+    sun_state, mission_request, weather_state, sun_az = _build_dated_objects(
+        mission_datetime, design_wind_aloft_ms
+    )
 
     return build_candidate_plan(
         mission_aircraft=_Black_Swift,

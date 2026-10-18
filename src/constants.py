@@ -108,8 +108,6 @@ V1_EMERGENCY_RESERVE_FRACTION = (
 
 V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg = 48  # Units = degrees. Across the ground track.
 
-V1_COLLECTION_INSET_m = 52  # Units = meters. Rollout-of-turn and settle distance after a turn before data collection starts.
-
 V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG = 36.8  # Units = degrees. Along the ground track (the TILTED axis).
 
 V1_DEFAULT_SENSOR_OFF_NADIR_deg = 30  # Units = degrees. Camera pitched forward under the nose.
@@ -158,7 +156,8 @@ ROLLOUT HOTFIX CONSTANTS (10/08/2026):
 The first three come from the uas_sim calibration sweep of 10/08/2026, flown in PX4 SITL on
 a Gazebo model of the BlackSwift S2, not on the airframe itself. Further in-depth
 explanations for each are in S2 Rollout Calibration Results.md. They describe PX4 on the
-S2, so Step G decides where they finally live. aircraft_math's rollout section reads them.
+S2, so Step G decides where they finally live. aircraft_math's rollout section reads them,
+and planner and the entry point default to the design wind below.
 ========================================================================================
 '''
 
@@ -174,7 +173,7 @@ CAMERA_EARLY_START_ALLOWANCE_m = 70  # Units = m. PX4 turned the camera on up to
 # archived model winds, interpolated between 950 and 925 hPa, computed 10/09/2026. The mean
 # is 4.9 m/s, and 9 m/s is exceeded on about 9% of mornings. Over M1 the morning wind aloft
 # is ~1.15x the 10 m wind, not the 1/7 power law's 1.79x, so never derive this from a 10 m
-# value that way. R-6 will let the RPIC override it per plan; the forecast never will.
+# value that way. The RPIC overrides it per plan with --design-wind; the forecast never does.
 DEFAULT_DESIGN_WIND_ALOFT_ms = 9  # Units = m/s, at flight altitude, NOT at 10 m.
 
 '''
@@ -192,6 +191,7 @@ NWS_REQUEST_TIMEOUT_s = 10  # CFE will wait for 10 seconds before bailing
 NWS_MAX_RETRIES = 1  # CFE will retry the api request once before bailing
 NWS_ACCEPT_HEADER = "application/geo+json"  # NWS api output formatting
 NWS_FORECAST_HORIZON_days = 7  # NWS forecasting horizon
+NWS_WIND_HEIGHT_m = 10  # Units = m. NWS forecasts the sustained wind at 10 m; the summary labels it there and never scales it aloft.
 WEATHER_SOURCE_NWS = "NWS"  # tags a Weather object as live NWS data (vs the "STUB" fallback)
 WEATHER_SOURCE = "NWS"
 

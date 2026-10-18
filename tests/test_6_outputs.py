@@ -13,6 +13,7 @@ Top of the cake: depends on everything below. Two halves:
      the QGC constants back would pass on the very typo it exists to catch.
 """
 
+import argparse
 import copy
 import json
 import math
@@ -20,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+import aircraft_math as A
 import constants as CONST
 import flight_plan_maker
 import objects as OBJ
@@ -201,6 +203,7 @@ def _boat_plan():
         m1_waypoint=P._M1_Waypoint,
         altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
         valid_time=P.DEFAULT_MISSION_DATETIME,
+        design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms,
         require_m1_overflight=True,
         grid_orientation_deg=None,
         notes="boat launch",
@@ -451,6 +454,47 @@ def test_summary_carries_the_rpic_note(capsys):
         _default_plan(), "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME
     )
     assert CONST.RPIC_NOTE_FINAL_FRAME in capsys.readouterr().out
+
+
+def test_summary_reports_the_design_wind_beside_the_forecast(capsys, monkeypatch):
+    # The summary shows the design wind the plan was sized for and the inset it gave, with
+    # the forecast beside them, reported only. The forecast is printed at the 10 m NWS gives
+    # it, never scaled to flight altitude: over M1 the 1/7 law overstates the wind aloft.
+    import weather
+    forecast = OBJ.Weather(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, P.DEFAULT_MISSION_DATETIME,
+        42, 7.0, 300, 9.0, 9000, "overcast", wind_is_measured=True,
+        source=CONST.WEATHER_SOURCE_NWS,
+    )
+    monkeypatch.setattr(weather, "get_weather", lambda lat, lon, when: forecast)
+
+    plan = P.plan_default_mission("t5_wind", design_wind_aloft_ms=12)
+    assert plan.collection_inset_m is not None
+
+    # sized for the design wind, never the forecast (constraint 4)
+    assert plan.collection_inset_m == pytest.approx(A.rollout_inset_m(plan.aircraft, 12))
+
+    flight_plan_maker._print_summary(plan, "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME)
+    out = capsys.readouterr().out
+    assert "12.0 m/s at flight altitude" in out
+    assert f"Collection Inset: {round(plan.collection_inset_m, 2)} m" in out
+    assert "7.0 m/s from 300 deg at 10 m" in out
+
+    # with no forecast for the date, the summary says so rather than showing a calm wind
+    monkeypatch.setattr(weather, "get_weather", lambda lat, lon, when: None)
+    flight_plan_maker._print_summary(
+        _default_plan(), "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME
+    )
+    assert "Forecast Wind: none" in capsys.readouterr().out
+
+
+def test_design_wind_flag_rejects_bad_values():
+    # A negative or non-numeric design wind is a typo. argparse reports it and exits rather
+    # than planning on it.
+    assert flight_plan_maker._design_wind_ms("9") == 9
+    for bad in ("-1", "calm"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            flight_plan_maker._design_wind_ms(bad)
 
 
 def test_positions_come_from_the_waypoints():

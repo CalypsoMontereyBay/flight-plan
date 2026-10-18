@@ -40,8 +40,8 @@ airspeed_ms is TRUE AIRSPEED, never ground speed. Keeping those two apart is the
 point of V2C-2; the moment a variable name blurs them the module is lying.
 
 CAMERA ROLLOUT (fast track, 2026-10): the last section sizes the straight the aircraft
-needs after a turn before the camera may start. planner becomes its caller at step R-4;
-until then it has none.
+needs after a turn before the camera may start. planner calls it to size every line's
+inset and line 1's lead-in from the design wind.
 """
 
 import math

@@ -28,7 +28,8 @@ def _m1_point():
 def test_make_line_through_point_structure():
     orientation = 90.0
     line_length = 2000.0                       # >> 2 * inset, so the normal branch runs
-    line = G.make_line_through_point(_m1_point(), orientation, line_length)
+    inset = 300.0                              # geo places whatever inset it is handed
+    line = G.make_line_through_point(_m1_point(), orientation, line_length, inset)
     coords = list(line.coords)
 
     assert len(coords) == CONST.V1_POINTS_PER_LINE            # [turn, collect, center, collect, turn]
@@ -45,8 +46,12 @@ def test_make_line_through_point_structure():
     assert P._angular_distance(G.bearing_between(center, end), orientation) == pytest.approx(0, abs=0.5)
 
     # collection points sit one inset in from each turn
-    assert G.distance_between(start, c_start) == pytest.approx(CONST.V1_COLLECTION_INSET_m, abs=1.0)
-    assert G.distance_between(end, c_end) == pytest.approx(CONST.V1_COLLECTION_INSET_m, abs=1.0)
+    assert G.distance_between(start, c_start) == pytest.approx(inset, abs=1.0)
+    assert G.distance_between(end, c_end) == pytest.approx(inset, abs=1.0)
+
+    # a negative inset would put the camera on before the turn
+    with pytest.raises(ValueError):
+        G.make_line_through_point(_m1_point(), orientation, line_length, -1)
 
 
 def test_assembled_grid_invariants():
@@ -98,9 +103,11 @@ def test_assembled_grid_invariants():
     assert plan.offset_lines == N - 1
 
 
-def _mission_request_launching_from(launch_point_lat, launch_point_long):
+def _mission_request_launching_from(launch_point_lat, launch_point_long,
+                                    design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
     # A MissionRequest identical to the default except for where the aircraft starts and
-    # ends. Launch and land are the same pad, as at Terrace Point.
+    # ends, and optionally its design wind. Launch and land are the same pad, as at
+    # Terrace Point.
     import objects
 
     launch = objects.Waypoint(
@@ -120,6 +127,7 @@ def _mission_request_launching_from(launch_point_lat, launch_point_long):
         m1_waypoint=P._M1_Waypoint,
         altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
         valid_time=P.DEFAULT_MISSION_DATETIME,
+        design_wind_aloft_ms=design_wind_aloft_ms,
         require_m1_overflight=True,
         grid_orientation_deg=None,
         notes="transit fit probe",
@@ -132,29 +140,36 @@ def test_transit_seed_retry_converges():
     # accurate to 0.40% and fits on the first pass -- so the retry branch never executes
     # on the default mission and would rot untested.
     #
-    # Launching AT M1 is the degenerate case that forces it: the seed is 0, geo is handed
-    # the whole battery, sizes a grid that consumes it, and the real transit out to the
-    # nearest grid corner and back is then unpayable. The loop must re-seed with the
-    # MEASURED transit and come back with a grid that actually fits.
+    # Launching AT M1 makes the seed 0, so geo is handed the whole battery. Whether the real
+    # transit out to the nearest grid corner and back still fits depends on how much of the
+    # budget the chosen N left over, and that slack moves with the collection inset. So the
+    # probe plans for every design wind up to the aircraft's rating: at least one of them
+    # must take the re-seed, and every one must converge on a grid that actually fits.
     sun_state, _, weather_state, sun_az = P._build_dated_objects(P.DEFAULT_MISSION_DATETIME)
-    request = _mission_request_launching_from(CONST.M1_MOORING_LAT, CONST.M1_MOORING_LONG)
     usable = P._Black_Swift_usable_endurance_m
+    retried = []
 
-    plan = P.build_candidate_plan(
-        P._Black_Swift, usable, P._Calypso_payload, request,
-        weather_state, sun_az, sun_state, "transit_retry",
-    )
+    for design_wind_ms in range(P._Black_Swift.vehicle_wind_rating + 1):
+        request = _mission_request_launching_from(
+            CONST.M1_MOORING_LAT, CONST.M1_MOORING_LONG, design_wind_ms
+        )
+        plan = P.build_candidate_plan(
+            P._Black_Swift, usable, P._Calypso_payload, request,
+            weather_state, sun_az, sun_state, "transit_retry",
+        )
+        assert plan.total_lines is not None              # a built plan always has its metrics populated
+        assert plan.total_grid_distance_m is not None and plan.grid_budget_m is not None
 
-    # the retry actually ran: a zero seed means pass 1 handed geo the FULL budget, so a
-    # grid budget below it can only have come from a re-seed with the measured transit
-    assert plan.grid_budget_m < usable
+        # a zero seed means pass 1 handed geo the FULL budget, so a grid budget below it can
+        # only have come from a re-seed with the measured transit
+        retried.append(plan.grid_budget_m < usable)
 
-    # and it converged on something flyable
-    assert plan.total_lines is not None                  # a built plan always has its metrics populated
-    assert plan.total_grid_distance_m is not None and plan.grid_budget_m is not None
-    assert plan.total_flight_distance <= usable
-    assert plan.total_grid_distance_m <= plan.grid_budget_m
-    assert plan.total_lines % 2 == 1
+        # converged on something flyable
+        assert plan.total_flight_distance <= usable
+        assert plan.total_grid_distance_m <= plan.grid_budget_m
+        assert plan.total_lines % 2 == 1
+
+    assert any(retried)
 
 
 def test_closer_launch_buys_more_science():
@@ -236,6 +251,13 @@ def test_flight_splits_into_grid_and_transit():
         assert transit_m > 0
         assert grid_m + transit_m == pytest.approx(flight_m)
 
+        # and the flight is the route actually handed downstream, waypoint to waypoint. Line
+        # 1's lead-in (Strat 1) is flown but sits outside geo's grid, so leaving it out of the
+        # transit would still split cleanly and would fail only here.
+        wps = plan.waypoints
+        flown_m = sum(G.distance_between(a.point, b.point) for a, b in zip(wps, wps[1:]))
+        assert flown_m == pytest.approx(flight_m, abs=1.0)
+
         # the durations split the total
         assert grid_min + transit_min == pytest.approx(total_min)
 
@@ -246,6 +268,33 @@ def test_flight_splits_into_grid_and_transit():
         # adds them to route_duration_min they land in this remainder, and this line is the
         # one to rebase.
         assert transit_min == pytest.approx(transit_m / cruise_ms / 60)
+
+
+def test_higher_design_wind_never_gives_more_lines():
+    # Camera rollout fix. The design wind sets the inset at both ends of every line, so
+    # a windier plan flies longer lines and the same battery buys no more of them. Planned
+    # for every design wind up to the aircraft's rating, so it holds wherever the step to
+    # fewer lines falls, not at one pinned wind.
+    plans = [
+        P.plan_default_mission("design_wind", design_wind_aloft_ms=design_wind_ms)
+        for design_wind_ms in range(P._Black_Swift.vehicle_wind_rating + 1)
+    ]
+
+    for calmer, windier in zip(plans, plans[1:]):
+        assert calmer.total_lines is not None and windier.total_lines is not None
+        assert calmer.collection_inset_m is not None and windier.collection_inset_m is not None
+        assert windier.collection_inset_m > calmer.collection_inset_m
+        assert windier.total_lines <= calmer.total_lines
+
+    # and every one of them still fits the battery
+    for plan in plans:
+        assert plan.total_flight_distance is not None
+        assert plan.usable_endurance_distance_m is not None
+        assert plan.total_flight_distance <= plan.usable_endurance_distance_m
+
+    # a negative design wind is a typo, never a calm day
+    with pytest.raises(ValueError):
+        _mission_request_launching_from(CONST.M1_MOORING_LAT, CONST.M1_MOORING_LONG, -1)
 
 
 def test_viewing_geometry_reaches_the_plan():
