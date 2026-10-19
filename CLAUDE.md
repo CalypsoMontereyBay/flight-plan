@@ -33,12 +33,14 @@ under `-W error`). Every run writes a QGC `.plan`, and the terminal summary repo
 grid/transit split, both bearings (J-6) and the final-frame RPIC note. 22 Tier 5 tests pin
 the file against the MAVLink spec and QGC's own files (J-7). The QGC round trip is clean:
 QGC changed one value, a camera-stop parameter, and the engine now writes the same value.
-The S2 takeoff question (sent to BlackSwift 2026-09-30 for the S2 and the S3, reply
-pending) blocks a flight test, not J. Next is Step F, which has no step table yet; its F-0
+**BlackSwift answered on 2026-10-13: the S2 is end of life, and the S3, a VTOL, is the
+default and only non-copter aircraft** (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)). Next is
+**Step K, S3 adoption**, built before Step F, which has no step table yet; its F-0
 decisions are in (2026-10-09). The camera-rollout fast track was BUILT on 2026-10-18
 (R-3 to R-7, 104 tests green): every line now leaves 2.5·R_g + 150 m between its turn and
-the camera, sized from a design wind the RPIC sets. It closes once the loop sweep's Part A
-confirms that geometry in simulation (warning box item 4).** The two
+the camera, sized from a design wind the RPIC sets. Its constants came from PX4 flying an
+S2 model, so they are provisional placeholders for the S3, and the S2 loop sweep that was
+to check them is cancelled (warning box item 4).** The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -59,7 +61,7 @@ section wins.
 2. **The mission must become configurable.** Users set line length, grid width, center
    point, launch point, landing point, desired grid area (honoured when mathematically
    feasible), overlap percentage in **both** the along- and cross-track directions, and
-   the camera viewing angle. See [Step F](#f-mission-configurability-next-not-started).
+   the camera viewing angle. See [Step F](#f-mission-configurability-after-k-not-started).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 3. **The aircraft must become configurable.** Fixed-wing, quadcopter, or hexacopter. For
    a fixed wing every performance constant currently hard-coded to the BlackSwift S2 must
@@ -82,18 +84,78 @@ section wins.
 north shore) at **36.94840 N, 122.06538 W**, and stays that way until re-specified. This is
 a standing assumption, not a per-mission choice, even though item 2 also makes it
 user-settable. **Launch and land are the SAME point** — the two-waypoint (beach launch /
-road land) split from V1 collapses.
+road land) split from V1 collapses. A boat launch is the exception: BlackSwift advises
+launching from a boat and landing on solid ground (2026-10-13).
 
 **Vehicle facts that follow from the constraints** (recorded here because they decide the
 takeoff/land commands Step J must emit):
-- **BlackSwift S2 — pure fixed wing.** This is the default aircraft and the only one
-  currently available. No VTOL, therefore **no transition altitude**.
-- **The S3 was the tri-motor VTOL, and the only airframe was destroyed in company
-  testing.** The VTOL vehicle class is real but has no instance today.
+- **~~BlackSwift S2 — pure fixed wing, the default aircraft.~~ End of life (BlackSwift,
+  2026-10-13).** The code still builds it until Step K replaces it.
+- **The BlackSwift S3, a tri-motor VTOL, is the default and only non-copter aircraft
+  (2026-10-13).** Its only airframe was destroyed in company testing; BlackSwift has since
+  changed its PDB, with no change to endurance, electrics or aerodynamics. It takes off and
+  lands vertically and transitions at ~10–15 m AGL. See
+  [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts).
 - **Custom partner vehicles are essentially always rotorcraft**, flashed with PX4 and
   driven from QGC.
 - **No vehicle is ever hand-launched.** Every launch is from land or a **stationary boat**.
   A boat launch near M1 is operationally significant — see the transit note in Step J.
+
+## BlackSwift response — 2026-10-13 (SUPERSEDES the S2 vehicle facts)
+
+BlackSwift answered our questions in a meeting on 2026-10-13. The user's write-up is
+`BlackSwift Response Writeup.txt` in the repo root. Where an older section of this file
+conflicts with this one, this one wins. The code still builds the S2 until Step K lands, and
+the full list of changes, with the reason for each, is in the planning artifact's
+"BlackSwift response" section.
+
+- **The S2 is end of life.** It comes out of the engine and the sim. The **S3 is the default
+  and only non-copter aircraft.**
+- **S3 takeoff: it never flies back over home.** It hovers to ~10–15 m AGL, transitions to
+  forward flight, then climbs in an orbit to a **takeoff waypoint** between home and the
+  first mission waypoint, at mission altitude. BlackSwift recommends a 300–500 m orbit
+  radius, or as large as is legal. It orbits there until the operator starts the mission.
+- **Three XML files per plan:** takeoff (home, takeoff waypoint, orbit radius), mission and
+  landing. The S3 will not launch without the takeoff and landing files. It orbits after
+  the takeoff file and after the last mission waypoint until the operator moves it on.
+  There are no automatic transitions and no combined plan (as of 2026-10-13).
+- **Still to come by email:** example S3 plan files, and the minimum waypoint acceptance
+  radius of BlackSwift's flight management system (adjustable within software limits).
+- **Firmware: nothing like PX4 or ArduPilot** (a cascading closed-loop architecture), and
+  BlackSwift simulates in JSBSim, not Gazebo. PX4 SITL results do not describe the S3.
+- **Emergency belly landing** is supported, but it may damage the front two motors and the
+  non-folding props.
+- **Boats:** launch from a boat, and land on solid ground where possible.
+- **Payload:** BlackSwift's thermal photogrammetry payload uses a FLIR camera, so a
+  hard-mounted Boson-R cannot stand in for it.
+
+**Decided 2026-10-18:** S3 adoption is its own step, **Step K**, built before Step F. Which
+camera flies Calypso science on the S3 is **not decided**, so our payload model stays,
+marked provisional. The rollout constants stay as provisional S2/PX4 placeholders, and the
+S2 Strat 2 loop sweep is **cancelled**.
+
+**S3 numbers (2026-10-18, from the user):**
+- **Given:** endurance 90 min; cruise **21 m/s**; stall speed and wind rating as the S2's;
+  best transition at 10–15 m AGL. The waypoint capture distance is 2 × cruise × lookahead,
+  with a lookahead of 3.0 (a BlackSwift flight-controller constant), so **126 m**.
+- **Derived:** turn radius **77.6 m**, the S2's 30.1° bank flown at 21 m/s (to be confirmed
+  with BlackSwift). Turn penalty **0 s**, because fly-by arcs are shorter than the corners
+  the engine already counts.
+- **Placeholders:** climb and descent are the S2's 3.35 and 1.80 m/s, labelled provisional.
+  BlackSwift's limits can't be shared.
+- **The user sets** a max hover speed of a few m/s; the S3 isn't flown laterally in hover.
+
+**How the engine treats BlackSwift's example plans (`BS_EXAMPLES/`):** as the file format,
+not as a template. The engine serves many vehicles that BlackSwift doesn't make, and
+launch, landing and climb points are chosen for legality and operational feasibility.
+- The climb orbit sits on the departure bearing, seaward and clear of the pad, with a
+  500 m default radius. F-1's config can override it, and Step E checks it.
+- Each operator hand-off gets a small time reserve.
+
+**Measured at the S3 numbers:**
+- The default plan returns to 9 lines (96.4 km usable).
+- W* drops to 8.84 m/s, under the 9 m/s default, so the two turns between lines no longer fit
+  in the 313.4 m line spacing at the default design wind.
 
 > ## ⚠️ READ THIS BEFORE TRUSTING A GENERATED PLAN
 >
@@ -110,22 +172,23 @@ takeoff/land commands Step J must emit):
 >
 > **2. No output has been flown.** We are still deep in the construction and design phase
 > of this software and of the actual UAS hardware, and a Gazebo (GZ) simulation for our
-> possible vehicle types and plans is under construction. Until BlackSwift answers the S2
-> takeoff question below (asked 2026-09-30, reply pending), treat the file as unverified
-> for flight. A Gazebo run carries the same caveat there as a PX4 SITL run: it shows what
-> PX4 does, which answers for the S2 only if the S2 runs PX4's takeoff logic.
+> possible vehicle types and plans is under construction. BlackSwift's answers (2026-10-13)
+> settle the takeoff question and raise a larger one: the S3 flies three XML files through
+> BlackSwift's own flight management system, which the engine cannot write yet (Step K),
+> and its firmware is nothing like PX4, so PX4 SITL and Gazebo runs do not describe it.
 >
 > **3. Climb and descent are counted as zero time.** The whole route is timed at cruise.
 > At 609.6 m a full vertical profile is worth several minutes, against a reported 22.7 min
 > margin. This is now the largest remaining optimism in the duration.
 >
-> **4. The camera-rollout fix is built but not yet validated** (2026-10-18). Every line now
-> leaves a collection inset of 2.5·R_g + 150 m between its turn waypoint and the camera,
-> 470.6 m at the 9 m/s default design wind, and line 1's first turn moves back for the turn
-> in from the transit (Strat 1). The values were calibrated in PX4 SITL, but the geometry as
-> built has not been flown: the loop sweep's Part A does that. Two limits stand after it.
-> BlackSwift's own autopilot may switch waypoints earlier than PX4 did, and on a day windier
-> than the design wind the downwind lines' first images are banked again. The RPIC sets the
+> **4. The camera-rollout fix is built, with provisional constants** (2026-10-18). Every
+> line now leaves a collection inset of 2.5·R_g + 150 m between its turn waypoint and the
+> camera, 470.6 m at the 9 m/s default design wind, and line 1's first turn moves back for
+> the turn in from the transit (Strat 1). The constants were calibrated on PX4 SITL flying
+> an S2 model. The S2 is end of life and the S3's firmware is nothing like PX4, so they are
+> **provisional placeholders** for the S3, and the S2 sweep that was to check them is
+> cancelled. On a day windier than the design wind the downwind lines' first images are
+> banked again. The RPIC sets the
 > design wind per plan (`--design-wind`, m/s at flight altitude). See the Known defects
 > entry.
 >
@@ -160,8 +223,8 @@ takeoff/land commands Step J must emit):
 > 2026-10-18 (fast track R-3 to R-7).** `V1_COLLECTION_INSET_m` = 52 m was shorter than the
 > S2's 57 m still-air turn radius, so every line's first image was taken banked (20–35° in
 > PX4 SITL), and it was the only image of the first ~54 m of the science box. The constant
-> is retired, and `planner` sizes the inset from the design wind. Validation in simulation
-> is still open (item 4 above).
+> is retired, and `planner` sizes the inset from the design wind. Its constants are
+> provisional for the S3 (item 4 above).
 >
 > The one V2C-2 change that IS live is the parallax line extension in
 > `geo.make_lawnmower_grid_through_m1`. Each end of every line grows by the parallax plus
@@ -598,7 +661,7 @@ Read this before touching the grid, classification, or output code.
     since J-7 by `test_plan_aircraft_is_a_vehicle`. The gap had survived three steps precisely
     because no test looked.
   - ✅ **The camera started before the S2 had rolled out of its turn. Fixed in code
-    2026-10-18; validation in simulation pending.** Found 2026-09-28 by flying V2's lines in
+    2026-10-18; its constants are provisional for the S3.** Found 2026-09-28 by flying V2's lines in
     uas_sim (PX4 SITL); a fast-track fix opened 2026-10-06 on its own branch
     (`rollout_hotfix`). `V1_COLLECTION_INSET_m` = 52 m was shorter than the S2's 57 m
     still-air turn radius, so each line's first image was taken banked (20–35° in SITL). That
@@ -642,9 +705,11 @@ Read this before touching the grid, classification, or output code.
       reaches the summary with the forecast beside it, and five relationship tests take the
       suite to 104. How it works is in the camera rollout bullet under Current state.
     - **What still stands:**
-      - The loop sweep's Part A (G1 at 9, 11 and 15 m/s) has not been flown. It checks the
-        geometry as built, and it closes the fast track.
-      - The 70 m early-camera allowance is PX4's; BlackSwift's autopilot may differ.
+      - The S2 loop sweep that was to check the geometry as built is cancelled (2026-10-18),
+        because the S2 is end of life. The constants 2.5, 80 and 70 are provisional S2/PX4
+        placeholders until S3 data exists.
+      - The 70 m early-camera allowance is PX4's. BlackSwift is sending the minimum
+        acceptance radius of the S3's flight management system.
       - A design wind below the day's real wind brings back banked first images on the
         downwind lines. The summary shows the forecast beside the design wind for that reason.
       - Strat 1 near a reversal (the boat case above) waits on F-1.5.
@@ -675,8 +740,8 @@ Read this before touching the grid, classification, or output code.
 
 ## V2 roadmap — what comes next
 
-**Execution order as of 2026-09-08: `J` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
-**J is complete (2026-09-30); F is next and not yet started.** Letters record the order
+**Execution order as of 2026-10-18: `J` → `K` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
+**J is complete (2026-09-30). K, S3 adoption, is next (decided 2026-10-18), then F.** Letters record the order
 steps were *scoped*, not the order they are *built* — the same convention the `V1_`
 constant prefixes follow.
 
@@ -702,8 +767,8 @@ does not import as a flyable mission — which is the entire reason this jumped 
 > `Source_Action` leak, a home that follows the takeoff, the VTOL and multirotor branches,
 > and, since the round trip, the camera items against QGC's own re-export. **The QGC round
 > trip is clean (2026-09-30):** after one camera value was matched, a fresh default plan has
-> exactly the same values as `roundtrip_qgc.plan`. The S2/S3 takeoff question is with
-> BlackSwift, reply pending; it blocks a flight test, not J. Everything below marked
+> exactly the same values as `roundtrip_qgc.plan`. The S2/S3 takeoff question was then
+> with BlackSwift (answered 2026-10-13); it blocked a flight test, not J. Everything below marked
 > "settled" or "done" is history — read it for the reasoning, not as work to do.
 
 **Scoping settled 2026-09-08:**
@@ -823,7 +888,10 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 - The **launch item's altitude** is a climb-out altitude, not the 609.6 m mission altitude
   the launch waypoint carries. Set in J-1 as `TAKEOFF_REL_m = 50` (relative frame), with
   `LANDING_REL_m = 0` for the land item.
-- **⏳ PENDING — how the S2 behaves with its takeoff waypoint on the launch point** (recorded
+- **✅ ANSWERED 2026-10-13, and moot: the S2 is end of life.** The S3 never flies back over
+  home; it climbs in an orbit to a takeoff waypoint (see
+  [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)). The question as it stood, kept as history:
+  **how the S2 behaves with its takeoff waypoint on the launch point** (recorded
   2026-09-22, when the user could not answer it; **asked BlackSwift 2026-09-30, for the S2 and
   the S3, reply pending**). Our `NAV_TAKEOFF` sits exactly on the pad
   (0.0 m from home). QGC's own fixed-wing export (`exp2.plan`) puts it **71.7 m out at
@@ -965,7 +1033,24 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### F. Mission configurability (NEXT, NOT STARTED)
+### K. S3 adoption (NEXT, NOT STARTED)
+Decided 2026-10-18, from BlackSwift's answers (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)):
+retire the end-of-life S2 and make the S3 the default aircraft, before Step F, so F-1 builds
+on the aircraft that will fly. The planning artifact's §K has the step cards and the reason
+for each change. In outline:
+- **S3 constants and identity** replace the S2's, under new names (split, don't redefine):
+  the numbers in [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts).
+- **Takeoff and landing phases:** a hover takeoff, a transition at ~10–15 m AGL, an orbit
+  climb to a takeoff waypoint, and the landing file's descent. Climb is no longer zero time.
+- **A BlackSwift writer:** three XML files (takeoff, mission, landing), a sibling to the QGC
+  writer that consumes the same neutral item list. The format comes from `BS_EXAMPLES/`;
+  units, datum, waypoint numbering, camera control and the S3's vertical landing are open
+  questions for BlackSwift.
+- **Which writer runs** follows who flies the vehicle: BlackSwift's flight management
+  system gets XML, and QGC-driven partner vehicles keep the `.plan`.
+- **Tests** that read the S2 as the default aircraft are rebased.
+
+### F. Mission configurability (AFTER K, NOT STARTED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,
 landing point, desired grid area (honoured **when mathematically feasible**, otherwise
 reported as infeasible with the closest achievable), cross-track overlap %, along-track
@@ -1028,16 +1113,15 @@ overlap %, and camera off-nadir viewing angle.
     parallel with building Strat 1). It also validates Strat 1 at the 9 m/s default, tests
     turns flown through waypoints on an arc, and compares the loop with Strat 1 onto line 1
     at a 160° arrival. Results go to `~/Desktop/S2 Strat 2 Loop Sweep Results.md`.
-    **Not yet flown as of 2026-10-18.** uas_sim moved to `~/programs/Python/uas_sim` on
-    2026-10-15 and has flown no SITL mission since the move. Part A is the part the fast
-    track needs before it closes.
+    **Cancelled 2026-10-18, never flown.** It was written for the S2, which is end of life.
+    A loop sweep for the S3 needs an S3 model, and BlackSwift simulates in JSBSim.
   - The turn onto line 1 depends on the launch point, so its loop lives in `planner`, and
     `geo` still never learns where launch is. The loop between lines is grid geometry and can
     live in `geo`, with R_g passed in as a parameter.
   - **Measured 2026-10-18, once Strat 1 was built:** the Tier 3/5 boat launch 2 km north of
     M1 arrives at 178.2°, and Strat 1 pushes line 1's first waypoint back **7,990 m**. A
-    near-reversal fly-by is not what the formula models, and the sweep's Part C (Strat 1 at
-    160°) will show what PX4 flies instead. F-1 makes this reachable from the CLI, so F-1.5,
+    near-reversal fly-by is not what the formula models, and with the S2 sweep cancelled no
+    simulation shows what the S3 would fly instead. F-1 makes this reachable from the CLI, so F-1.5,
     or a cap on Strat 1 the user chooses, has to land with or before F-1.
 
 ### G. Aircraft configurability (SIDELINED)
@@ -1065,10 +1149,10 @@ constant user-settable rather than hard-coded to the BlackSwift S2.
   than an imaginary one. J-4 made
   the horizontal distance honest and nothing more; do not read the new margin as slack until
   this is modelled.
-- **Vehicle facts:** the S2 is a **pure fixed wing** (no VTOL, no transition altitude); the
-  tri-motor VTOL **S3 is not an option**, its only airframe having been destroyed in company
-  testing; custom partner vehicles are essentially always **rotorcraft** on PX4/QGC. Nothing
-  is ever hand-launched.
+- **Vehicle facts (updated 2026-10-13):** the S2, a pure fixed wing, is **end of life**. The
+  tri-motor VTOL **S3 is the default and only non-copter aircraft**, and Step K adopts it
+  ahead of G. Custom partner vehicles are essentially always **rotorcraft** on PX4/QGC.
+  Nothing is ever hand-launched.
 
 ### A. Selectable mission date/time ✅ DONE
 `flight_plan_maker` exposes `--date YYYY-MM-DD` / `--time HH:MM` (**Monterey local**, each
