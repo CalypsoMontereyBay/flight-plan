@@ -127,7 +127,8 @@ The S3, a tri-motor VTOL, is the default and only non-copter aircraft; planner b
 (Step K-3). It replaced the BlackSwift S2, which is end of life (BlackSwift, 10/13/2026).
 The given figures are the user's and BlackSwift's (10/18/2026). The derived ones are worked
 in their comments. The PROVISIONAL ones are the S2's: BlackSwift can't share the S3's
-limits, and has declined to share its JSBSim model.
+limits, and has declined to share its JSBSim model. The S3 transitions at TRANSITION_REL_m,
+the height every VTOL uses (10/27/2026).
 ========================================================================================
 '''
 
@@ -154,10 +155,6 @@ BLACKSWIFT_S3_CRUISE_SPEED_ms = 21  # Units = m/s. Given.
 # The S3 was not designed to travel laterally in hover and almost never does, and no plan
 # the engine writes asks it to.
 BLACKSWIFT_S3_MAX_HOVER_SPEED_ms = 1  # Units = m/s. Set by the user, 10/27/2026.
-
-# BlackSwift's best transition efficiency is at 10-15 m AGL. The low end over-counts the
-# climb slightly rather than under-counting it.
-BLACKSWIFT_S3_TRANSITION_AGL_m = 10  # Units = m, above the launch point.
 
 BLACKSWIFT_S3_VEHICLE_TYPE = 21  # MAVLink MAV_TYPE_VTOL_TILTROTOR, the kind of VTOL the S3 is.
 
@@ -206,7 +203,7 @@ DEFAULT_DESIGN_WIND_ALOFT_ms = 9  # Units = m/s, at flight altitude, NOT at 10 m
 CLIMB ORBIT AND HAND-OFF CONSTANTS (Step K-1, 10/27/2026):
 For any vehicle that climbs in an orbit to a takeoff waypoint, as the S3 does. They
 describe the site and the operation, not BlackSwift. F-1's config overrides them, and
-Step E checks what's legal at each site. Nothing reads them until K-4.
+Step E checks what's legal at each site. planner reads them (Step K-4).
 ========================================================================================
 '''
 
@@ -297,6 +294,7 @@ WAYPOINT_ACTION_LAND = "land"
 WAYPOINT_ACTION_COLLECT_START = "collect_start"
 WAYPOINT_ACTION_COLLECT_STOP = "collect_stop"
 WAYPOINT_ACTION_LINE_LABEL = "line_label"
+WAYPOINT_ACTION_CLIMB_ORBIT = "climb_orbit"
 
 '''
 ========================================================================================
@@ -557,9 +555,12 @@ TRANSITION_HEADING_SETTING = 3
 
 TRANSITION_YAW_deg = None
 
-TRANSITION_REL_m = 50
+# Every VTOL transitions 10 m above home, the standard set by the user on 10/27/2026: the
+# low end of BlackSwift's 10-15 m best-efficiency band. It is a VTOL takeoff's altitude in
+# the .plan, and where the engine starts counting the climb.
+TRANSITION_REL_m = 10
 
-TRANSITION_AMSL_m = 50 + TERRACE_POINT_AMSL_m
+TRANSITION_AMSL_m = 10 + TERRACE_POINT_AMSL_m
 
 '''
 ========================================================================================

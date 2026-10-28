@@ -111,10 +111,11 @@ def test_assembled_grid_invariants():
 
 
 def _mission_request_launching_from(launch_point_lat, launch_point_long,
-                                    design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
+                                    design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms,
+                                    climb_waypoint=None):
     # A MissionRequest identical to the default except for where the aircraft starts and
-    # ends, and optionally its design wind. Launch and land are the same pad, as at
-    # Terrace Point.
+    # ends, and optionally its design wind and climb point. Launch and land are the same
+    # pad, as at Terrace Point.
     import objects
 
     launch = objects.Waypoint(
@@ -139,6 +140,7 @@ def _mission_request_launching_from(launch_point_lat, launch_point_long,
         grid_orientation_deg=None,
         notes="transit fit probe",
         included_target_waypoints=[P._M1_Waypoint],
+        climb_waypoint=climb_waypoint,
     )
 
 
@@ -271,10 +273,12 @@ def test_flight_splits_into_grid_and_transit():
         # the grid carries every turn: N lines -> N-1 turns (60 s per minute)
         assert grid_min == pytest.approx((grid_m / cruise_ms + (n - 1) * turn_penalty_s) / 60)
 
-        # so the transit is pure cruise. Climb and descent are unmodeled today; when Step G
-        # adds them to route_duration_min they land in this remainder, and this line is the
-        # one to rebase.
-        assert transit_min == pytest.approx(transit_m / cruise_ms / 60)
+        # so the transit is cruise plus the phases flown outside the grid: the climb orbit,
+        # whatever descent the approach can't hold, and the two hand-offs (K-4). Rebased
+        # from pure cruise when K-4 stopped counting them as zero.
+        phase_min = plan.phase_duration_min
+        assert phase_min is not None and phase_min > 0
+        assert transit_min == pytest.approx(transit_m / cruise_ms / 60 + phase_min)
 
 
 def test_higher_design_wind_never_gives_more_lines():
@@ -360,3 +364,166 @@ def test_planner_uses_weather_leaf(monkeypatch):
     plan = P.plan_default_mission("t3_wx")
     assert plan.weather is sentinel                          # planner used the leaf's result
     assert plan.weather.source == CONST.WEATHER_SOURCE_NWS
+
+
+# ---- Step K-4: takeoff and landing phases --------------------------------------------
+
+
+def _plan_flown_by(vehicle, mission_request=None, name="k4_variant"):
+    # The default mission, or mission_request, flown by vehicle on its own battery.
+    sun_state, default_request, weather_state, sun_az = P._build_dated_objects(
+        P.DEFAULT_MISSION_DATETIME
+    )
+    return P.build_candidate_plan(
+        vehicle, A.max_planned_distance_m(vehicle, CONST.RTH_SEED_RESERVE_FRACTION),
+        P._Calypso_payload, mission_request or default_request, weather_state, sun_az,
+        sun_state, name,
+    )
+
+
+def _s3_with(climb_rate_ms=None, descent_rate_ms=None, waypoint_lookahead_s=None):
+    # The S3 with its climb and descent rates, or its lookahead, swapped out.
+    import objects
+
+    s3 = P._BlackSwift_S3
+    return objects.Vehicle(
+        s3.vehicle_endurance, s3.vehicle_wind_rating,
+        climb_rate_ms or s3.vehicle_climb_rate, descent_rate_ms or s3.vehicle_descent_rate,
+        s3.vehicle_turn_radius, s3.vehicle_turn_penalty, s3.vehicle_stall_speed,
+        s3.vehicle_cruise_speed, s3.vehicle_type, s3.firmware_type,
+        hover_speed_ms=s3.hover_speed_ms,
+        transition_height_agl_m=s3.transition_height_agl_m,
+        waypoint_lookahead_s=waypoint_lookahead_s or s3.waypoint_lookahead_s,
+    )
+
+
+def test_takeoff_and_landing_phases_are_paid_for():
+    # K-4. The climb is flown in an orbit and costs its whole duration. The descent is flown
+    # along the approach and costs only what the approach can't hold. Each of the two
+    # operator hand-offs has a reserve. Checked from the shore, whose 23 km approach holds
+    # the whole descent, and from the boat, whose short approach does not.
+    boat_request = _mission_request_launching_from(
+        CONST.M1_MOORING_LAT + 0.018, CONST.M1_MOORING_LONG      # ~2 km north of M1
+    )
+    shore = P.plan_default_mission("phases_shore")
+    boat = _plan_flown_by(P._BlackSwift_S3, boat_request, "phases_boat")
+
+    for plan in (shore, boat):
+        aircraft = plan.aircraft
+        wps = plan.waypoints
+        n = plan.total_lines
+        flight_m = plan.total_flight_distance
+        usable_m = plan.usable_endurance_distance_m
+        phase_min = plan.phase_duration_min
+        assert n is not None and flight_m is not None and usable_m is not None
+        assert phase_min is not None and plan.transition_height_agl_m is not None
+
+        # the climb and the descent span the transition height over the pad to cruise
+        height_m = plan.mission_request.altitude - (
+            CONST.TERRACE_POINT_AMSL_m + plan.transition_height_agl_m
+        )
+        assert plan.climb_duration_min == pytest.approx(A.climb_duration_min(aircraft, height_m))
+        assert plan.descent_duration_min == pytest.approx(A.descent_duration_min(aircraft, height_m))
+
+        # the descent's overrun is what the plan's own approach leg can't hold
+        approach_m = G.distance_between(wps[-2], wps[-1])
+        assert plan.descent_overrun_min == pytest.approx(
+            A.descent_overrun_min(aircraft, height_m, approach_m)
+        )
+
+        climb_min = plan.climb_duration_min
+        overrun_min = plan.descent_overrun_min
+        handoff_min = plan.handoff_reserve_min
+        assert climb_min is not None and overrun_min is not None and handoff_min is not None
+        assert handoff_min == pytest.approx(2 * CONST.OPERATOR_HANDOFF_RESERVE_min)
+        assert phase_min == pytest.approx(climb_min + overrun_min + handoff_min)
+
+        # the duration is the route at cruise plus the phases, and the battery pays for both
+        assert plan.duration == pytest.approx(A.route_duration_min(flight_m, n, aircraft) + phase_min)
+        assert flight_m + A.cruise_distance_m(aircraft, phase_min) <= usable_m
+
+    assert shore.descent_overrun_min == 0
+    assert boat.descent_overrun_min is not None and boat.descent_overrun_min > 0
+
+
+def test_slower_climbs_never_give_more_lines():
+    # The phases are reserved before geo sizes the grid, so an aircraft that spends longer
+    # climbing and descending flies the same grid or a smaller one, and at some rate a
+    # smaller one: the reservation reaches the sizing.
+    lines = []
+    for rate_ms in (100, 3, 1, 0.5):
+        plan = _plan_flown_by(_s3_with(climb_rate_ms=rate_ms, descent_rate_ms=rate_ms))
+        assert plan.total_lines is not None
+        lines.append(plan.total_lines)
+
+    assert all(slower <= faster for faster, slower in zip(lines, lines[1:]))
+    assert lines[-1] < lines[0]
+
+
+def test_climb_point_sits_on_the_departure_bearing_clear_of_the_pad():
+    # By default the climb orbit is centred on the departure bearing, one radius plus the
+    # pad clearance out, in line with line 1's first waypoint.
+    plan = P.plan_default_mission("climb_point")
+    climb = plan.climb_waypoint
+    radius_m = plan.climb_orbit_radius_m
+    pad = plan.waypoints[0]
+    assert climb is not None and radius_m is not None
+
+    # the aircraft leaves the pad for the climb point, and the climb point is on its way
+    assert plan.departure_bearing_deg == pytest.approx(G.bearing_between(pad, climb), abs=1e-6)
+    assert P._angular_distance(
+        G.bearing_between(pad, climb), G.bearing_between(pad, plan.waypoints[1])
+    ) == pytest.approx(0, abs=1e-6)
+
+    # and the whole orbit clears the pad
+    assert G.distance_between(pad, climb) == pytest.approx(
+        radius_m + CONST.CLIMB_ORBIT_PAD_CLEARANCE_m, abs=0.01
+    )
+    assert G.distance_between(pad, climb) > radius_m
+
+    # A climb point the request gives is used as given, off the default's axis. The
+    # outbound transit runs through it, the aircraft departs toward it, and line 1's entry
+    # is measured from it, so the turn the route flies from it matches the recorded angle.
+    import objects
+
+    given_point = G.destination_point(pad, 200, 3000)
+    given = objects.Waypoint(
+        "WP_CLIMB", given_point.y, given_point.x, CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+        CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms, CONST.WAYPOINT_ACTION_CLIMB_ORBIT,
+        "given climb", "Given-Climb",
+    )
+    request = _mission_request_launching_from(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, climb_waypoint=given
+    )
+    given_plan = _plan_flown_by(P._BlackSwift_S3, request, "given_climb")
+    wps = given_plan.waypoints
+    angle = given_plan.entry_arrival_angle_deg
+    assert given_plan.climb_waypoint is given
+    assert given_plan.entry_pushback_m is not None and angle is not None
+
+    outbound_m = (G.distance_between(wps[0], given) + G.distance_between(given, wps[1])
+                  + given_plan.entry_pushback_m)
+    assert given_plan.transit_distance_m == pytest.approx(
+        outbound_m + G.distance_between(wps[-2], wps[-1])
+    )
+    assert given_plan.departure_bearing_deg == pytest.approx(G.bearing_between(wps[0], given))
+
+    flown = P._angular_distance(
+        G.bearing_between(given, wps[1]), G.bearing_between(wps[1], wps[2])
+    )
+    assert 0 <= flown - angle < 1
+
+
+def test_no_leg_is_shorter_than_the_capture_distance():
+    # The S3 moves on to its next waypoint 126 m before reaching it, so a shorter leg would
+    # be skipped, camera item and all. Every leg of the default plan is longer.
+    plan = P.plan_default_mission("legs")
+    capture_m = A.waypoint_capture_distance_m(plan.aircraft)
+    assert capture_m is not None
+    wps = plan.waypoints
+    assert min(G.distance_between(a, b) for a, b in zip(wps, wps[1:])) >= capture_m
+
+    # A vehicle that captured 420 m early (a 10 s lookahead at 21 m/s) would skip the
+    # 313.4 m legs between lines, so the planner refuses to build it that route.
+    with pytest.raises(ValueError):
+        _plan_flown_by(_s3_with(waypoint_lookahead_s=10))

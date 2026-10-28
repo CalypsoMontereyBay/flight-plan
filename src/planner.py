@@ -17,7 +17,8 @@ import constants as CONST
 import weather
 from aircraft_math import (
     max_planned_distance_m, route_duration_min, battery_margin_min, rollout_inset_m,
-    entry_pushback_m,
+    entry_pushback_m, waypoint_capture_distance_m, climb_duration_min, descent_duration_min,
+    descent_overrun_min, cruise_distance_m,
 )
 from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between, destination_point
 from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
@@ -41,7 +42,7 @@ _BlackSwift_S3 = Vehicle(
     CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
     CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
     hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
-    transition_height_agl_m=CONST.BLACKSWIFT_S3_TRANSITION_AGL_m,
+    transition_height_agl_m=CONST.TRANSITION_REL_m,
     waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s
 )
 
@@ -347,20 +348,22 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
         return (route_points, m1_idx)
 
 
-def _apply_entry_pushback(route_points: list, launch_point, aircraft: Vehicle, design_wind_aloft_ms):
+def _apply_entry_pushback(route_points: list, arrival_origin, aircraft: Vehicle, design_wind_aloft_ms):
     """
     Strat 1 (camera rollout fast track, 2026-10): move line 1's first turn waypoint back
     along line 1, so the turn in from the transit has rolled out before the camera starts.
     The distance is aircraft_math.entry_pushback_m at the arrival angle, and it is 0 for a
-    turn of 90 deg or less. Returns (route_points, pushback_m, arrival_angle_deg), with only
-    the first point moved.
+    turn of 90 deg or less. arrival_origin is where the aircraft comes from: the climb point
+    when the request gives one, else the launch point, which the default climb point sits in
+    line with. Returns (route_points, pushback_m, arrival_angle_deg), with only the first
+    point moved.
     """
 
     first_turn = route_points[0]
     collect_start = route_points[1]
 
     # The turn at line 1's first waypoint: 0 deg flies straight on, 180 deg reverses.
-    inbound_bearing_deg = bearing_between(launch_point, first_turn)
+    inbound_bearing_deg = bearing_between(arrival_origin, first_turn)
     line_bearing_deg = bearing_between(first_turn, collect_start)
     arrival_angle_deg = _angular_distance(inbound_bearing_deg, line_bearing_deg)
 
@@ -377,6 +380,66 @@ def _apply_entry_pushback(route_points: list, launch_point, aircraft: Vehicle, d
     moved_first_turn = destination_point(collect_start, outward_bearing_deg, lead_in_m)
 
     return ([moved_first_turn] + route_points[1:], pushback_m, arrival_angle_deg)
+
+
+def _transition_height_agl_m(aircraft: Vehicle):
+    """
+    Height above home at which a VTOL transitions to forward flight: its own, or else the
+    one every VTOL uses, TRANSITION_REL_m. None for a vehicle that never transitions.
+    """
+
+    if not aircraft.is_VTOL:
+        return None
+
+    if aircraft.transition_height_agl_m is None:
+        return CONST.TRANSITION_REL_m
+
+    return aircraft.transition_height_agl_m
+
+
+def _default_climb_waypoint(launch_wp: Waypoint, first_waypoint: Waypoint, altitude_m, cruise_speed_ms):
+    """
+    The centre of the climb orbit when the request gives none: on the departure bearing, one
+    orbit radius plus the pad clearance out from the pad, so the whole climbing orbit stays
+    clear of it. It sits in line with line 1's first waypoint, so the transit through it is
+    no longer than the transit without it.
+    """
+
+    departure_bearing_deg = bearing_between(launch_wp, first_waypoint)
+    centre = destination_point(
+        launch_wp, departure_bearing_deg,
+        CONST.CLIMB_ORBIT_RADIUS_m + CONST.CLIMB_ORBIT_PAD_CLEARANCE_m
+    )
+
+    return Waypoint(
+        "WP_CLIMB",
+        centre.y,
+        centre.x,
+        altitude_m,
+        cruise_speed_ms,
+        CONST.WAYPOINT_ACTION_CLIMB_ORBIT,
+        "climb orbit centre",
+        "Climb-Orbit",
+    )
+
+
+def _check_minimum_legs(waypoints: list, capture_distance_m):
+    """
+    Raise if a leg between consecutive waypoints is shorter than the vehicle's capture
+    distance. The vehicle would move on before reaching the waypoint and skip it, camera
+    item and all. This is geometry, not weather: a sizing failure, like a grid too small
+    for three lines.
+    """
+
+    for leg_start, leg_end in zip(waypoints, waypoints[1:]):
+        leg_m = distance_between(leg_start, leg_end)
+
+        if leg_m < capture_distance_m:
+            raise ValueError(
+                f"The leg from {leg_start.waypoint_ID} to {leg_end.waypoint_ID} is "
+                f"{leg_m:.1f} m, shorter than the vehicle's {capture_distance_m:.1f} m "
+                f"capture distance, so the vehicle would skip {leg_end.waypoint_ID}"
+            )
 
 
 def _angular_distance(heading1_deg, heading2_deg):
@@ -493,13 +556,14 @@ def build_candidate_plan(
     a finished, scored CandidatePlan. In order:
 
       1. identify the two candidate orientations
-      2. size the collection inset from the design wind, and reserve the transit, so geo
-         sizes the grid against what is left
+      2. size the collection inset from the design wind, and reserve the transit and the
+         takeoff and landing phases, so geo sizes the grid against what is left
       3. pick the best orientation (which builds the lawnmower grid through M1)
       4. reorient the grid so the route starts at the corner closest to launch, then move
          line 1's first turn waypoint back for the turn in from the transit (Strat 1)
-      5. classify each waypoint now that the orientation is final
-      6. measure the real transit; if the flight does not fit, re-seed and repeat
+      5. classify each waypoint now that the orientation is final, and place the climb point
+      6. measure the real transit and the descent's overrun; if the flight does not fit,
+         re-seed and repeat
       7-10. build the CandidatePlan and set its metrics, duration, margin and score
     """
 
@@ -510,7 +574,38 @@ def build_candidate_plan(
     # the turn waypoint and the camera. It comes from the plan's own aircraft and the
     # request's design wind, a planning input the RPIC owns. The forecast never sets it
     # (constraint 4).
-    collection_inset_m = rollout_inset_m(mission_aircraft, mission_request.design_wind_aloft_ms)
+    # A vehicle that captures its waypoints early starts its camera early by the same
+    # distance, so its capture distance replaces PX4's measured early start.
+    capture_distance_m = waypoint_capture_distance_m(mission_aircraft)
+
+    if capture_distance_m is None:
+        collection_inset_m = rollout_inset_m(mission_aircraft, mission_request.design_wind_aloft_ms)
+    else:
+        collection_inset_m = rollout_inset_m(
+            mission_aircraft, mission_request.design_wind_aloft_ms,
+            camera_early_start_m=capture_distance_m
+        )
+
+    # Then size the TAKEOFF AND LANDING PHASES (K-4). The aircraft climbs in an orbit from
+    # its transition height (from the pad, if it never transitions) to cruise altitude, so
+    # the climb costs its whole duration. It descends the same height along the approach,
+    # which costs time only where the approach is too short to hold it. Each of the two
+    # operator hand-offs, after takeoff and after the last waypoint, gets a reserve.
+    #
+    # Heights are AMSL. F-1 gives each launch and land point its own elevation; until then
+    # every pad sits at Terrace Point's, the same residual outputs._qgc_home carries.
+    transition_height_agl_m = _transition_height_agl_m(mission_aircraft)
+    vertical_floor_amsl_m = CONST.TERRACE_POINT_AMSL_m + (transition_height_agl_m or 0)
+    vertical_height_m = mission_request.altitude - vertical_floor_amsl_m
+
+    climb_min = climb_duration_min(mission_aircraft, vertical_height_m)
+    descent_min = descent_duration_min(mission_aircraft, vertical_height_m)
+    descent_distance_m = cruise_distance_m(mission_aircraft, descent_min)
+    handoff_min = 2 * CONST.OPERATOR_HANDOFF_RESERVE_min
+
+    # The approach is not known until the route is, so the first pass assumes it holds the
+    # whole descent. The fit loop charges any overrun it measures.
+    phase_reserve_m = cruise_distance_m(mission_aircraft, climb_min + handoff_min)
 
     # Then RESERVE THE TRANSIT before geo is allowed to size anything.
     #
@@ -523,12 +618,13 @@ def build_candidate_plan(
         mission_request.launch_wp, mission_request.m1_wp
     )
 
-    grid_budget_m = mission_aircraft_endurance_m - predicted_transit_budget_m
+    grid_budget_m = mission_aircraft_endurance_m - predicted_transit_budget_m - phase_reserve_m
 
     # Steps 3-6 run inside the fit loop. A pass that does not fit re-seeds the budget with
-    # the transit it MEASURED rather than the one it estimated. That measured value is
-    # strictly larger than the estimate which just failed, so grid_budget_m strictly
-    # shrinks every pass and the loop cannot spin. If it shrinks below a 3-line grid, geo
+    # the transit and phases it MEASURED rather than the ones it estimated. The pass failed
+    # because grid + transit + phases exceeded the battery, so the new budget is smaller
+    # than the grid that just failed: grid_budget_m strictly shrinks every pass and the
+    # loop cannot spin. If it shrinks below a 3-line grid, geo
     # raises -- the honest answer that no grid fits this launch point, which is a sizing
     # failure and not a weather veto.
     for _fit_pass in range(CONST.TRANSIT_FIT_MAX_PASSES):
@@ -556,9 +652,14 @@ def build_candidate_plan(
 
         # Step 4 continued, Strat 1. It needs the final entry corner, so it runs after the
         # reorientation, and before Step 6 measures the transit and the bearings from it.
+        if mission_request.climb_wp is None:
+            arrival_origin = mission_request.launch_point
+        else:
+            arrival_origin = mission_request.climb_wp.point
+
         route_shapely_waypoints, line_one_pushback_m, entry_arrival_angle_deg = _apply_entry_pushback(
             route_shapely_waypoints,
-            mission_request.launch_point,
+            arrival_origin,
             mission_aircraft,
             mission_request.design_wind_aloft_ms
         )
@@ -574,26 +675,40 @@ def build_candidate_plan(
             mission_aircraft.vehicle_cruise_speed
         )
 
+        # Step 5 continued, the climb point: the request's, or by default one on the
+        # departure bearing, in line with line 1's first waypoint.
+        if mission_request.climb_wp is None:
+            climb_waypoint = _default_climb_waypoint(
+                mission_request.launch_wp,
+                mission_route_list_classified[1],
+                mission_request.altitude,
+                mission_aircraft.vehicle_cruise_speed
+            )
+        else:
+            climb_waypoint = mission_request.climb_wp
+
         # Step 6, measure the transit that was ACTUALLY planned, now that the route has
         # been reoriented and the pad waypoints are in it.
         # Launch Waypoint IDX = 0, Land Waypoint IDX = -1
         # First Grid Waypoint IDX = 1, Last Grid Waypoint IDX = -2
         #
-        # The outbound leg includes line 1's lead-in, the pushback flown on line 1's axis
-        # before the turn waypoint geo placed. geo's grid distance starts at that waypoint,
-        # so the lead-in is flown but outside the grid, and the launch point sets its
-        # length. Counting it here keeps grid + transit equal to the flight, and lets the
-        # re-seed below pay for it.
-        true_outbound_non_grid_transit_m = distance_between(
-            mission_request.launch_wp, mission_route_list_classified[1]
-        ) + line_one_pushback_m
+        # The outbound leg runs through the climb point, and includes line 1's lead-in, the
+        # pushback flown on line 1's axis before the turn waypoint geo placed. geo's grid
+        # distance starts at that waypoint, so the lead-in is flown but outside the grid,
+        # and the launch point sets its length. Counting it here keeps grid + transit equal
+        # to the flight, and lets the re-seed below pay for it. The orbit itself adds time,
+        # the climb, but no distance.
+        true_outbound_non_grid_transit_m = (
+            distance_between(mission_request.launch_wp, climb_waypoint)
+            + distance_between(climb_waypoint, mission_route_list_classified[1])
+            + line_one_pushback_m
+        )
         true_returning_non_grid_transit_m = distance_between(
             mission_route_list_classified[-2], mission_request.land_wp
         )
 
-        departure_bearing_deg = bearing_between(
-            mission_request.launch_wp, mission_route_list_classified[1]
-        )
+        # The aircraft leaves the pad for the climb point.
+        departure_bearing_deg = bearing_between(mission_request.launch_wp, climb_waypoint)
 
         approach_bearing_deg = bearing_between(
             mission_route_list_classified[-2], mission_request.land_wp
@@ -607,10 +722,21 @@ def build_candidate_plan(
             true_non_grid_transit_m + metrics["total_grid_distance_m"]
         )
 
-        if total_flight_distance_m <= mission_aircraft_endurance_m:
+        # The descent is flown along the approach, the leg home from the last waypoint.
+        # Whatever that leg is too short to hold is lost before the transition, on top of
+        # the route.
+        descent_overrun_time_min = descent_overrun_min(
+            mission_aircraft, vertical_height_m, true_returning_non_grid_transit_m
+        )
+
+        phase_reserve_m = cruise_distance_m(
+            mission_aircraft, climb_min + descent_overrun_time_min + handoff_min
+        )
+
+        if total_flight_distance_m + phase_reserve_m <= mission_aircraft_endurance_m:
             break
 
-        grid_budget_m = mission_aircraft_endurance_m - true_non_grid_transit_m
+        grid_budget_m = mission_aircraft_endurance_m - true_non_grid_transit_m - phase_reserve_m
 
     else:
         # Only reachable if the measured transit keeps growing faster than the budget
@@ -651,18 +777,31 @@ def build_candidate_plan(
 
     candidate_plan.set_entry_pushback(line_one_pushback_m, entry_arrival_angle_deg)
 
+    candidate_plan.set_climb_orbit(climb_waypoint, CONST.CLIMB_ORBIT_RADIUS_m, transition_height_agl_m)
+
+    candidate_plan.set_phase_durations(
+        climb_min, descent_min, descent_distance_m, descent_overrun_time_min, handoff_min
+    )
+
+    # A vehicle that captures its waypoints early must never be handed a leg it would skip.
+    if capture_distance_m is not None:
+        _check_minimum_legs(mission_route_list_classified, capture_distance_m)
+
     # Step 9, calculate the duration of the flight in minutes and then send it to the
     # candidate. This consumes the TOTAL flight distance, not the grid figure -- that
-    # substitution is the reporting half of the J-4 transit fix.
+    # substitution is the reporting half of the J-4 transit fix -- plus the phases flown on
+    # top of the route: the climb, the descent's overrun and the hand-offs (K-4).
+
+    phase_min = climb_min + descent_overrun_time_min + handoff_min
 
     candidate_plan_estimated_duration_min = route_duration_min(
         total_flight_distance_m, metrics["total_lines"], mission_aircraft
-    )
+    ) + phase_min
 
     # The grid is costed on its own; the transit is the REMAINDER. Every turn penalty is a
-    # grid turn, so the transit legs carry none. Anything Step G adds to route_duration_min
-    # (climb, descent) happens during transit, and the remainder picks it up without a
-    # second formula that could drift from the first.
+    # grid turn, so the transit legs carry none. The phases happen outside the grid, and
+    # the remainder picks them up without a second formula that could drift from the
+    # first.
     grid_duration_min = route_duration_min(
         metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
     )

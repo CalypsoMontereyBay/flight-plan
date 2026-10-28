@@ -818,6 +818,15 @@ class CandidatePlan:
         self._entry_pushback_m = None
         self._entry_arrival_angle_deg = None
 
+        self._climb_waypoint = None
+        self._climb_orbit_radius_m = None
+        self._transition_height_agl_m = None
+        self._climb_duration_min = None
+        self._descent_duration_min = None
+        self._descent_distance_m = None
+        self._descent_overrun_min = None
+        self._handoff_reserve_min = None
+
     # Properties:
 
     @property
@@ -931,6 +940,55 @@ class CandidatePlan:
     @property
     def entry_arrival_angle_deg(self):
         return self._entry_arrival_angle_deg
+
+    # Takeoff and landing phases (Step K-4). The climb point is the centre of the orbit the
+    # aircraft climbs in, between the pad and line 1; it is not one of the waypoints. The
+    # transition height is None for a vehicle that never transitions. The climb, the
+    # descent's overrun and the hand-offs are time spent on top of the route at cruise, and
+    # phase_duration_min is their sum. The descent itself is flown along the approach:
+    # descent_distance_m is the approach it needs, and descent_overrun_min is what the
+    # approach was too short to hold.
+
+    @property
+    def climb_waypoint(self):
+        return self._climb_waypoint
+
+    @property
+    def climb_orbit_radius_m(self):
+        return self._climb_orbit_radius_m
+
+    @property
+    def transition_height_agl_m(self):
+        return self._transition_height_agl_m
+
+    @property
+    def climb_duration_min(self):
+        return self._climb_duration_min
+
+    @property
+    def descent_duration_min(self):
+        return self._descent_duration_min
+
+    @property
+    def descent_distance_m(self):
+        return self._descent_distance_m
+
+    @property
+    def descent_overrun_min(self):
+        return self._descent_overrun_min
+
+    @property
+    def handoff_reserve_min(self):
+        return self._handoff_reserve_min
+
+    @property
+    def phase_duration_min(self):
+        climb_min = self._climb_duration_min
+        overrun_min = self._descent_overrun_min
+        handoff_min = self._handoff_reserve_min
+        if climb_min is None or overrun_min is None or handoff_min is None:
+            return None
+        return climb_min + overrun_min + handoff_min
 
     # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
     # the terminal summary read these. validator, when it is written, must NOT: it has to
@@ -1099,6 +1157,21 @@ class CandidatePlan:
     def set_entry_pushback(self, entry_pushback_m, entry_arrival_angle_deg):
         self._entry_pushback_m = entry_pushback_m
         self._entry_arrival_angle_deg = entry_arrival_angle_deg
+        return
+
+    def set_climb_orbit(self, climb_waypoint, climb_orbit_radius_m, transition_height_agl_m):
+        self._climb_waypoint = climb_waypoint
+        self._climb_orbit_radius_m = climb_orbit_radius_m
+        self._transition_height_agl_m = transition_height_agl_m
+        return
+
+    def set_phase_durations(self, climb_min, descent_min, descent_distance_m,
+                            descent_overrun_min, handoff_min):
+        self._climb_duration_min = climb_min
+        self._descent_duration_min = descent_min
+        self._descent_distance_m = descent_distance_m
+        self._descent_overrun_min = descent_overrun_min
+        self._handoff_reserve_min = handoff_min
         return
 
     # V2C-2 setters for the viewing geometry and RTH figures (reporting only):

@@ -44,7 +44,11 @@ needs after a turn before the camera may start. planner calls it to size every l
 inset and line 1's lead-in from the design wind.
 
 WAYPOINT CAPTURE (Step K-2, 2026-10): how early a vehicle with a waypoint lookahead moves
-on to its next waypoint. Nothing calls it until K-4.
+on to its next waypoint. planner sizes the early camera start and the shortest leg from it.
+
+FLIGHT PHASES (Step K-4, 2026-10): the climb and descent between the transition height and
+cruise altitude, and the cruise distance a stretch of time is worth. planner reserves them
+before geo sizes the grid.
 """
 
 import math
@@ -421,3 +425,54 @@ def waypoint_capture_distance_m(vehicle: Vehicle):
         return None
 
     return (2 * vehicle.vehicle_cruise_speed * vehicle.waypoint_lookahead_s)
+
+
+"""
+Flight phases (Step K-4, 2026-10) -- the vertical part of the flight. The climb is flown in
+an orbit and costs its whole duration. The descent is flown along the approach, so it costs
+time only where the approach is too short to hold it; planner works that out.
+=============================================================================================
+"""
+
+
+def climb_duration_min(aircraft: Aircraft, climb_height_m):
+    """
+    Minutes to climb climb_height_m at the aircraft's climb rate.
+    """
+
+    if climb_height_m < 0:
+        raise ValueError("climb_height_m cannot be negative")
+
+    return (climb_height_m / aircraft.vehicle_climb_rate / SECONDS_PER_MINUTE)
+
+
+def descent_duration_min(aircraft: Aircraft, descent_height_m):
+    """
+    Minutes to descend descent_height_m at the aircraft's descent rate.
+    """
+
+    if descent_height_m < 0:
+        raise ValueError("descent_height_m cannot be negative")
+
+    return (descent_height_m / aircraft.vehicle_descent_rate / SECONDS_PER_MINUTE)
+
+
+def cruise_distance_m(aircraft: Aircraft, duration_min):
+    """
+    Distance flown at cruise speed in duration_min, in meters. It turns a phase's time into
+    the distance budget it uses up, and a descent's time into the approach it needs.
+    """
+
+    return (duration_min * SECONDS_PER_MINUTE * aircraft.vehicle_cruise_speed)
+
+
+def descent_overrun_min(aircraft: Aircraft, descent_height_m, approach_m):
+    """
+    Minutes of descent the approach is too short to hold: the descent's duration less the
+    time the approach takes at cruise, never below 0. The aircraft loses the rest before
+    it transitions over the pad, and that time is spent on top of the route.
+    """
+
+    approach_min = approach_m / aircraft.vehicle_cruise_speed / SECONDS_PER_MINUTE
+
+    return max(0.0, descent_duration_min(aircraft, descent_height_m) - approach_min)

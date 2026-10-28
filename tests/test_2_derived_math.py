@@ -345,7 +345,7 @@ def test_s3_constants_build_the_s3():
         CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
         CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
         hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
-        transition_height_agl_m=CONST.BLACKSWIFT_S3_TRANSITION_AGL_m,
+        transition_height_agl_m=CONST.TRANSITION_REL_m,
         waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s,
     )
     assert s3.vehicle_type == MAV_TYPE_VTOL_TILTROTOR
@@ -375,3 +375,34 @@ def test_mission_request_climb_waypoint_is_optional():
 
     climb = waypoint("CLIMB", "transit")
     assert request(climb_waypoint=climb).climb_wp is climb
+
+
+# ---- Step K-4: takeoff and landing phases --------------------------------------------
+# Closed form on _test_aircraft(): climb 3.35 m/s, descent 1.80 m/s, cruise 18 m/s.
+
+
+def test_climb_and_descent_durations():
+    ac = _test_aircraft()
+    # 583.6 m: from a 10 m transition over a 16 m pad up to 609.6 m
+    assert A.climb_duration_min(ac, 583.6) == pytest.approx(583.6 / 3.35 / 60)
+    assert A.descent_duration_min(ac, 583.6) == pytest.approx(583.6 / 1.80 / 60)
+
+    with pytest.raises(ValueError):
+        A.climb_duration_min(ac, -1)
+    with pytest.raises(ValueError):
+        A.descent_duration_min(ac, -1)
+
+    # a minute at cruise is 60 * 18 m
+    assert A.cruise_distance_m(ac, 1) == pytest.approx(1080)
+
+
+def test_descent_overrun():
+    ac = _test_aircraft()
+    # 540 m at 1.80 m/s takes 5 min, which is 5 * 60 * 18 = 5400 m of approach at cruise.
+    # An approach that long or longer holds the whole descent, and costs nothing extra.
+    assert A.descent_overrun_min(ac, 540, 5400) == pytest.approx(0)
+    assert A.descent_overrun_min(ac, 540, 20000) == 0
+
+    # with no approach the whole descent is extra, and half the approach leaves half of it
+    assert A.descent_overrun_min(ac, 540, 0) == pytest.approx(5)
+    assert A.descent_overrun_min(ac, 540, 2700) == pytest.approx(2.5)

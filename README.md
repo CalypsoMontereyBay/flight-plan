@@ -1,7 +1,7 @@
 # Calypso Flight Planning Engine — V2
 
-A **sun-aware** flight-planning engine for a fixed-wing UAV (Currently the BlackSwift S2) that
-collects ocean-color and Sea Surface Temperature data. The aircraft can only
+A **sun-aware** flight-planning engine for an uncrewed aircraft (currently the BlackSwift S3,
+a tilt-rotor VTOL) that collects ocean-color and Sea Surface Temperature data. The aircraft can only
 collect valid science when its science legs are flown **90° in azimuth relative
 to the sun** (to avoid sun glint), so the engine builds a lawnmower data collection grid centered on the M1 Mooring Station in the Pacific Ocean, orients it for minimum glint, picks the launch-nearest corner as the start, and exports the route for review.
 
@@ -52,20 +52,31 @@ sun-oriented geometry this engine exists to compute. Camera control is **baked i
 file** using distance-based triggering, both to cut pilot workload and because constant
 ground spacing holds regardless of what wind does to ground speed.
 
-The mission ends with a plain **land item at the pad** — the S2 launches from a stand and
-belly-lands at a very low stall speed with steep descent capability, so no approach pattern
-is generated. The **approach direction is a recommendation to the RPIC**, not part of the
-flight plan, and the pilot can take manual control of the landing as with any QGC plan.
+The S3 takes off vertically, transitions to forward flight 10 m above the pad, and climbs
+in an orbit to mission altitude before it heads out. The engine places that **climb orbit**
+600 m out from the pad on the departure bearing, so the whole orbit stays clear of it. On
+the way home the aircraft **descends along the approach**, transitions back to hover 10 m
+over the pad, and lands vertically. Every VTOL transitions at 10 m. The `.plan` ends with a
+plain **land item at the pad**, and the **approach direction is a recommendation to the
+RPIC**, not part of the flight plan. The pilot can take manual control of the landing, as
+with any QGC plan.
+
+> **Writing the S3's own files is not built yet.** BlackSwift's flight management system
+> flies the S3 from three XML files (takeoff, mission and landing), and their format is
+> still being settled with BlackSwift. Until then the engine writes the `.plan` for every
+> aircraft. See Step K in [`CLAUDE.md`](CLAUDE.md).
 
 A fourth artifact — a **PDF pilot-notes document** carrying the wind/crab/return numbers — is
 planned, so that reporting stays out of the machine-readable outputs. Its
 first job is that landing recommendation, and **the engine already computes the input**:
-every plan carries the bearing it departs on (**174.8°** from Terrace Point) and the one it
-arrives home on (**344.6°**). The notes compare the arrival against the into-wind heading
-and state the component the pilot will actually meet — a wind from about **164.6°** is a
-pure tailwind on that approach, which is the case worth warning about on an airframe that
-lands on its belly. The notes will also carry the **final-frame note** the terminal summary
-prints today: disregard the last photograph of each science line (see below).
+every plan carries the bearing it departs on (**176.3°** from Terrace Point) and the one it
+arrives home on (**343.3°**). The notes compare the arrival against the into-wind heading
+and state the component the pilot will actually meet — a wind from about **163.3°** is a
+pure tailwind on that approach, which is the case worth warning about as the aircraft
+slows to transition. The notes will also carry the **final-frame note** the terminal
+summary prints today: disregard the last photograph of each science line (see below). An
+emergency belly landing is possible on the S3, but it may damage the front two motors and
+the props.
 
 > The arrival bearing is **recomputed for every plan, never assumed.** From shore it barely
 > moves, because the 22 km run to the mooring dominates a grid a few kilometres across. From
@@ -139,18 +150,18 @@ QGroundControl `.plan`, then prints a summary, e.g.:
 ```
 Mission : V2 Plan
 When    : 2026-01-01 10:00 local  (2026-01-01 18:00 UTC)
-Lines   : 7  |  Glint Score: 0.0
-Total Flight Duration: 67.3 min
-Transit Flight: 41.73 min, 45070.82 meters
-Grid Flight: 25.59 min, 26559.24 meters
-Margin: 22.7 min
-Departure Bearing: 174.88 deg | Approach Bearing: 344.58 deg
-Design Wind: 9.0 m/s at flight altitude (planning input) | Collection Inset: 470.62 m
-Line 1 Lead-in: 83.36 m, for a 117.56 deg turn in from the transit
+Lines   : 9  |  Glint Score: 0.0
+Total Flight Duration: 74.3 min
+Transit Flight: 40.79 min, 45218.87 meters
+Grid Flight: 33.53 min, 42241.59 meters
+Margin: 15.7 min
+Departure Bearing: 176.33 deg | Approach Bearing: 343.28 deg
+Design Wind: 9.0 m/s at flight altitude (planning input) | Collection Inset: 601.92 m
+Line 1 Lead-in: 110.26 m, for a 118.96 deg turn in from the transit
 Forecast Wind: none for this date and time (reported only, never applied)
-KML -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.kml
-PNG -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.png
-PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20261018-162642.plan
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.png
+PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.plan
 RPIC NOTE: Disregard the last photograph of each science line. The camera fires one final frame where triggering stops, at the end of the line as the aircraft heads into the turn, and that frame's glint and attitude have not been verified.
 ```
 
@@ -165,22 +176,21 @@ RPIC NOTE: Disregard the last photograph of each science line. The camera fires 
 >
 > The `Design Wind` line is the wind at flight altitude that the plan is sized for, which
 > you set with `--design-wind`. After every turn the aircraft needs a straight stretch to
-> level out before the camera starts, and that stretch grows with the wind: 470.62 m at the
+> level out before the camera starts, and that stretch grows with the wind: 601.92 m at the
 > default 9 m/s. `Line 1 Lead-in` is the extra straight before the first line, because the
 > turn in from the transit is sharper than the turns between lines. `Forecast Wind` is the
 > National Weather Service forecast, which is for 10 m above the sea. It is shown for
 > comparison only and never changes the plan. Don't read it as the wind at flight altitude:
 > on a Monterey Bay morning the wind at 2000 ft runs about 1.15 times the 10 m wind.
 >
-> ✅ **`Total Flight Duration` and `Margin` now cover the whole flight**, transit included — fixed
-> 2026-09-17. They used to measure the grid alone, which made a 106-minute flight look like
-> it had 11 minutes to spare on a 90-minute battery. The engine now reserves the round trip
-> to the mooring *before* deciding how many flight lines fit, which took the default
-> mission from 15 lines to **9**. The camera-rollout fix (2026-10-18) then took it to **7**
-> (see the warning box below).
->
-> ⚠️ One optimism remains: **climb and descent are still counted as zero time.** At 609.6 m
-> that is worth several minutes out of the 22.7 shown. Do not read the margin as slack.
+> ✅ **`Total Flight Duration` and `Margin` cover the whole flight**: transit since
+> 2026-09-17, and climb, descent and the operator hand-offs since 2026-10-27. They used to
+> measure the grid alone, which made a 106-minute flight look like it had 11 minutes to
+> spare on a 90-minute battery. The engine now reserves the round trip to the mooring, the
+> 2.9 min climb orbit and two 1 min operator hand-offs *before* deciding how many flight
+> lines fit. The descent is flown along the approach, so it costs extra time only when the
+> approach is too short to hold it. `Transit Flight` includes all of these. The rates are
+> provisional (see the warning box below).
 
 ### Options
 
@@ -243,7 +253,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 104 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 115 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -272,10 +282,13 @@ waypoint list with distance-triggered camera items, sized against a budget that 
 the transit. The summary reports the grid/transit split, both bearings and the RPIC note.
 The file has been round-tripped through QGC: QGC changed one camera value on load and
 save, the engine now writes that value too, and a fresh plan matches QGC's save exactly.
-Still open: how the S2 behaves with its takeoff waypoint on the launch point, a question
-now with BlackSwift. It blocks a flight test, not the file.
 
-**Remaining work, in execution order:** **F** — mission configurability (*next*); **G** —
+**Step K, adopting the BlackSwift S3, is in progress (2026-10-27).** BlackSwift retired the
+S2. The S3 is now the default aircraft, and its takeoff, climb orbit, descent and hand-offs
+are budgeted. Its three XML files wait on format questions with BlackSwift.
+
+**Remaining work, in execution order:** **K** — the S3's XML files and summary;
+**F** — mission configurability; **G** —
 aircraft configurability; **C-2** — wind/boresight reporting (half built, re-scoped from a
 safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — legality gating.
 
@@ -293,7 +306,7 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 >
 > **3. The camera-rollout fix is built, but its constants are provisional** (2026-10-18).
 > Each line now leaves a straight stretch after its turn, sized from the design wind, so
-> the aircraft is level before the camera starts (470.6 m at the default 9 m/s). The sizes
+> the aircraft is level before the camera starts (601.9 m for the S3 at the default 9 m/s). The sizes
 > come from a simulator calibration of PX4 flying a model of the BlackSwift S2. The S2 is
 > end of life, and the S3 that replaces it is flown by BlackSwift's own flight management
 > system, which is nothing like PX4. So the constants are provisional placeholders for the
@@ -301,6 +314,11 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 > BlackSwift has declined to share an S3 model or its numbers, so no S3 check is planned.
 > And on a day windier than the design wind, the first photograph of some lines may be
 > taken while the aircraft is still banked, so set `--design-wind` for the day.
+>
+> **4. Climb, descent and hand-offs use provisional rates** (2026-10-27). They are now
+> budgeted, but the climb and descent rates are the retired S2's, and BlackSwift can't share
+> the S3's. Every aircraft is charged the climb orbit and the hand-offs, which over-counts
+> one that climbs on its way out.
 >
 > #### ✅ Fixed on 2026-10-18
 >
@@ -319,9 +337,8 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 > reported as +11.4 min of margin. (From Terrace Point the same defect would have flown
 > 127,559 m.)
 > The engine now reserves the round trip *before* choosing how many flight lines fit. The
-> default mission became **9 lines / 77,296 m / 72.9 min / 17.1 min margin** (7 lines,
-> 67.3 min and 22.7 min since the 2026-10-18 rollout fix), and
-> `Total Flight Duration` and `Margin` describe the route that would actually be flown.
+> default mission became **9 lines / 77,296 m / 72.9 min / 17.1 min margin** on the S2,
+> and `Total Flight Duration` and `Margin` describe the route that would actually be flown.
 >
 > **The launch/land coordinates used to be stale**, holding a south-shore position while
 > their waypoint names said Seymour. They now hold **Terrace Point** (36.94840 N,
@@ -329,12 +346,11 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 
 Still assumed (V2 work in progress):
 
-- A fixed aircraft — the **BlackSwift S2, a pure fixed wing** (no VTOL) — with constant
-  endurance/speed/turn values, never hand-launched. Making this user-configurable, and
-  adding rotorcraft support for partner vehicles (PX4 + QGC), is step **G**. The tri-motor
-  VTOL S3 is not an option; its only airframe was destroyed in company testing.
-- **Level flight throughout.** Climb and descent rates are carried on the `Aircraft` object
-  but are not used — the whole route is timed at cruise, with zero vertical time.
+- A fixed aircraft — the **BlackSwift S3, a tilt-rotor VTOL** (90 min, 21 m/s cruise) —
+  never hand-launched. BlackSwift retired the S2 on 2026-10-13. Making the aircraft
+  user-configurable, and adding rotorcraft support for partner vehicles (PX4 + QGC), is
+  step **G**. The S3's turn radius (77.6 m) is derived, and its climb and descent rates are
+  the S2's until better numbers exist.
 - **Legal** to fly (no airspace / Part 107 checks yet — step **E**). ⚠️ The default
   altitude is **2000 ft**, five times the Part 107 ceiling of 400 ft. COA authorization is
   in progress with partner organizations and may permit **higher**, so the engine should
@@ -345,9 +361,9 @@ Still assumed (V2 work in progress):
   three become user-settable in step **F**, along with line length, grid width, launch and
   landing points, along- and cross-track overlap, and the camera viewing angle.
 - **Where you launch from is the biggest lever on how much science you get.** From Terrace
-  Point the round trip to the mooring consumes **54% of the battery** before a single
+  Point the round trip to the mooring consumes **47% of the usable battery** before a single
   science line is flown. Launching from a stationary boat 2 km off M1 takes the same
-  aircraft from 7 flight lines to 11. Making the launch point user-settable (step **F**) is
+  aircraft from 9 flight lines to 11. Making the launch point user-settable (step **F**) is
   therefore an efficiency feature, not just a convenience one.
 - **A design wind of 9 m/s at flight altitude**, unless you set another with
   `--design-wind`. It sizes the straight after every turn. The engine never takes it from

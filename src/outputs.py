@@ -547,9 +547,16 @@ def _plan_items(plan: CandidatePlan):
     for wp in plan.waypoints:
 
         if wp.action == CONST.WAYPOINT_ACTION_LAUNCH:
+            # A VTOL climbs vertically to its takeoff altitude and transitions there, so its
+            # takeoff altitude is the transition height the plan carries.
+            if plan.transition_height_agl_m is None:
+                takeoff_altitude_m = CONST.TAKEOFF_REL_m
+            else:
+                takeoff_altitude_m = plan.transition_height_agl_m
+
             items = [{"Keyword": "takeoff", "Alt_Frame_Ref": "RELATIVE",
                       "Latitude": wp.latitude, "Longitude": wp.longitude,
-                      "Altitude_m": CONST.TAKEOFF_REL_m}]
+                      "Altitude_m": takeoff_altitude_m}]
 
         elif wp.action == CONST.WAYPOINT_ACTION_LAND:
             items = [{"Keyword": "land", "Alt_Frame_Ref": "RELATIVE",

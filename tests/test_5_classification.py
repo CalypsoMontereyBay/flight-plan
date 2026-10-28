@@ -171,7 +171,13 @@ def test_camera_starts_an_inset_past_every_turn():
         assert inset is not None and pushback is not None
         assert plan.line_length_m is not None and plan.parallax_m is not None
 
-        assert inset == pytest.approx(A.rollout_inset_m(plan.aircraft, design_wind_ms))
+        # The S3 captures its waypoints early, so its camera starts early by its capture
+        # distance, not by PX4's measured figure (K-4).
+        capture_m = A.waypoint_capture_distance_m(plan.aircraft)
+        assert capture_m is not None
+        assert inset == pytest.approx(
+            A.rollout_inset_m(plan.aircraft, design_wind_ms, camera_early_start_m=capture_m)
+        )
 
         # the inset clears the turn itself, which the old 52 m against a 57 m radius did not
         assert inset > A.ground_turn_radius_m(plan.aircraft, design_wind_ms)

@@ -488,8 +488,13 @@ def test_summary_reports_the_design_wind_beside_the_forecast(capsys, monkeypatch
     plan = P.plan_default_mission("t5_wind", design_wind_aloft_ms=12)
     assert plan.collection_inset_m is not None
 
-    # sized for the design wind, never the forecast (constraint 4)
-    assert plan.collection_inset_m == pytest.approx(A.rollout_inset_m(plan.aircraft, 12))
+    # sized for the design wind, never the forecast (constraint 4), with the S3's own early
+    # camera start, its capture distance
+    capture_m = A.waypoint_capture_distance_m(plan.aircraft)
+    assert capture_m is not None
+    assert plan.collection_inset_m == pytest.approx(
+        A.rollout_inset_m(plan.aircraft, 12, camera_early_start_m=capture_m)
+    )
 
     flight_plan_maker._print_summary(plan, "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME)
     out = capsys.readouterr().out
@@ -615,6 +620,22 @@ def test_vtol_uses_the_vtol_commands():
         assert commands["land"] == {MAV_CMD_NAV_VTOL_LAND}
         assert commands["nav"] == {MAV_CMD_NAV_WAYPOINT}
         assert commands["cam_on"] == commands["cam_off"] == {MAV_CMD_DO_SET_CAM_TRIGG_DIST}
+
+
+def test_vtol_takeoff_climbs_to_the_transition_height():
+    # A VTOL climbs vertically to its takeoff altitude and transitions there. Since
+    # 2026-10-27 that is 10 m above home for every VTOL, the low end of BlackSwift's
+    # best-efficiency band: on the S3, which carries it, and on a VTOL that carries none and
+    # takes the standard.
+    fixed_rotor = _plan_built_with(aircraft=_vehicle(MAV_TYPE_VTOL_FIXEDROTOR, hover_speed_ms=5))
+    for plan in (_default_plan(), fixed_rotor):
+        _, doc = _serialized(plan)
+        takeoff = doc["mission"]["items"][0]
+        assert takeoff["command"] == MAV_CMD_NAV_VTOL_TAKEOFF
+        assert takeoff["Altitude"] == takeoff["params"][6] == 10
+
+    # a fixed wing never transitions, and keeps its climb-out altitude
+    assert _fixed_wing_plan().transition_height_agl_m is None
 
 
 def test_multirotor_uses_standard_commands_and_its_hover_speed():
