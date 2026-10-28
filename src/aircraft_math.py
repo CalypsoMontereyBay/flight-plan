@@ -369,7 +369,7 @@ def rollout_inset_m(aircraft: Aircraft, design_wind_aloft_ms,
     Distance from a line's turn waypoint to its camera-on point, in meters:
     radius_factor * R_g + settle_allowance_m + camera_early_start_m. It applies at both
     ends of every line, and it is sized on the line flown downwind, the worst case, because
-    lines alternate direction. 470.6 m at the 9 m/s default design wind.
+    lines alternate direction. 545.9 m for the S3 at the 9 m/s default design wind.
 
     camera_early_start_m defaults to PX4's measured figure. A vehicle with a waypoint
     lookahead starts early by its capture distance instead (waypoint_capture_distance_m).
@@ -384,7 +384,7 @@ def entry_pushback_m(aircraft: Aircraft, design_wind_aloft_ms, arrival_angle_deg
     """
     Strat 1: how far line 1's first turn waypoint moves back along the line, in meters, for
     a transit arriving at arrival_angle_deg. R_g * (tan(theta / 2) - 1) above 90 deg, and 0
-    at or below it. 83.9 m at the default plan's 117.7 deg entry and 9 m/s.
+    at or below it. 109.6 m for the S3 at the default plan's 118.8 deg entry and 9 m/s.
     """
 
     # tan(theta / 2) runs to infinity at 180 deg. Arrivals that steep are the Strat 2

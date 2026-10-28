@@ -164,7 +164,7 @@ def test_camera_starts_an_inset_past_every_turn():
     # before the camera starts. Line 1's first turn sits a further pushback out (Strat 1).
     # The inset is the plan's own, sized from its aircraft and design wind, and it is checked
     # at both ends of the wind range, so it holds for two different N.
-    for design_wind_ms in (0, P._Black_Swift.vehicle_wind_rating):
+    for design_wind_ms in (0, P._BlackSwift_S3.vehicle_wind_rating):
         plan = P.plan_default_mission("rollout", design_wind_aloft_ms=design_wind_ms)
         inset = plan.collection_inset_m
         pushback = plan.entry_pushback_m

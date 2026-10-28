@@ -122,42 +122,12 @@ V2_DEFAULT_ALONGTRACK_OVERLAP_PCT = 50  # Units = %. Forward-lap between consecu
 '''
 
 '''
-BlackSwift specific constants are below, and should only be used when making plans for
-the BlackSwift S2 as of 09/10/2026. The S2 is end of life (BlackSwift, 10/13/2026);
-planner still builds it until Step K-3 moves to the S3 block below and deletes this one.
-========================================================================================
-'''
-
-BLACKSWIFT_ENDURANCE_min = 90  # Units = minutes
-
-BLACKSWIFT_WIND_RATING_ms = 15  # Units = m/s
-
-BLACKSWIFT_CLIMB_RATE_ms = 3.35  # Units = m/s
-
-BLACKSWIFT_DESCENT_RATE_ms = 1.80  # Units = m/s
-
-BLACKSWIFT_TURN_RADIUS_m = 57  # Units = m
-
-BLACKSWIFT_TURN_PENALTY_s = 10  # Units = seconds
-
-BLACKSWIFT_MIN_GROUND_SPEED_ms = 12  # Units = m/s
-
-BLACKSWIFT_CRUISE_SPEED_ms = 18  # Units = m/s
-
-BLACKSWIFT_VEHICLE_TYPE = 1
-
-BLACKSWIFT_FIRMWARE_TYPE = 12
-
-'''
-========================================================================================
-'''
-
-'''
 BLACKSWIFT S3 CONSTANTS (Step K-1, 10/27/2026):
-The S3, a tri-motor VTOL, is the default and only non-copter aircraft. The given figures
-are the user's and BlackSwift's (10/18/2026). The derived ones are worked in their
-comments. The PROVISIONAL ones are the S2's: BlackSwift can't share the S3's limits, and
-has declined to share its JSBSim model. Nothing reads this block until K-3.
+The S3, a tri-motor VTOL, is the default and only non-copter aircraft; planner builds it
+(Step K-3). It replaced the BlackSwift S2, which is end of life (BlackSwift, 10/13/2026).
+The given figures are the user's and BlackSwift's (10/18/2026). The derived ones are worked
+in their comments. The PROVISIONAL ones are the S2's: BlackSwift can't share the S3's
+limits, and has declined to share its JSBSim model.
 ========================================================================================
 '''
 
@@ -181,8 +151,9 @@ BLACKSWIFT_S3_MIN_GROUND_SPEED_ms = 12  # Units = m/s. Given: the stall speed, t
 
 BLACKSWIFT_S3_CRUISE_SPEED_ms = 21  # Units = m/s. Given.
 
-# The S3 is not flown laterally in hover, and neither is any plan the engine writes.
-BLACKSWIFT_S3_MAX_HOVER_SPEED_ms = 3  # Units = m/s. PLACEHOLDER: "a few m/s", the user to set.
+# The S3 was not designed to travel laterally in hover and almost never does, and no plan
+# the engine writes asks it to.
+BLACKSWIFT_S3_MAX_HOVER_SPEED_ms = 1  # Units = m/s. Set by the user, 10/27/2026.
 
 # BlackSwift's best transition efficiency is at 10-15 m AGL. The low end over-counts the
 # climb slightly rather than under-counting it.

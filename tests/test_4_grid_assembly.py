@@ -16,6 +16,7 @@ import datetime
 import pytest
 from shapely.geometry import Point
 
+import aircraft_math as A
 import constants as CONST
 import geo as G
 import planner as P
@@ -95,6 +96,12 @@ def test_assembled_grid_invariants():
     assert total_flight > grid_distance
     assert plan.grid_budget_m < usable
 
+    # and the battery is the plan's own aircraft's. K-3 swapped the default aircraft; a
+    # budget left behind from the old one would pass every check above.
+    assert usable == pytest.approx(
+        A.max_planned_distance_m(plan.aircraft, CONST.RTH_SEED_RESERVE_FRACTION)
+    )
+
     # metric relationships. V2C: the along-track mount put both leg directions the
     # same angular distance off the sun, so EVERY line collects -- the old
     # science/transit split is gone and nothing is traverse-only.
@@ -112,12 +119,12 @@ def _mission_request_launching_from(launch_point_lat, launch_point_long,
 
     launch = objects.Waypoint(
         "WP000", launch_point_lat, launch_point_long,
-        CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m, CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
         CONST.WAYPOINT_ACTION_LAUNCH, "launch", "Test-Launch",
     )
     land = objects.Waypoint(
         "WP_END", launch_point_lat, launch_point_long,
-        CONST.V1_DEFAULT_LAND_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.V1_DEFAULT_LAND_ALTITUDE_m, CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
         CONST.WAYPOINT_ACTION_LAND, "land", "Test-Land",
     )
     return objects.MissionRequest(
@@ -146,15 +153,15 @@ def test_transit_seed_retry_converges():
     # probe plans for every design wind up to the aircraft's rating: at least one of them
     # must take the re-seed, and every one must converge on a grid that actually fits.
     sun_state, _, weather_state, sun_az = P._build_dated_objects(P.DEFAULT_MISSION_DATETIME)
-    usable = P._Black_Swift_usable_endurance_m
+    usable = P._BlackSwift_S3_usable_endurance_m
     retried = []
 
-    for design_wind_ms in range(P._Black_Swift.vehicle_wind_rating + 1):
+    for design_wind_ms in range(P._BlackSwift_S3.vehicle_wind_rating + 1):
         request = _mission_request_launching_from(
             CONST.M1_MOORING_LAT, CONST.M1_MOORING_LONG, design_wind_ms
         )
         plan = P.build_candidate_plan(
-            P._Black_Swift, usable, P._Calypso_payload, request,
+            P._BlackSwift_S3, usable, P._Calypso_payload, request,
             weather_state, sun_az, sun_state, "transit_retry",
         )
         assert plan.total_lines is not None              # a built plan always has its metrics populated
@@ -185,7 +192,7 @@ def test_closer_launch_buys_more_science():
         CONST.M1_MOORING_LAT + 0.018, CONST.M1_MOORING_LONG      # ~2 km north of M1
     )
     from_boat = P.build_candidate_plan(
-        P._Black_Swift, P._Black_Swift_usable_endurance_m, P._Calypso_payload,
+        P._BlackSwift_S3, P._BlackSwift_S3_usable_endurance_m, P._Calypso_payload,
         boat_request, weather_state, sun_az, sun_state, "boat",
     )
 
@@ -226,7 +233,7 @@ def test_flight_splits_into_grid_and_transit():
         CONST.M1_MOORING_LAT + 0.018, CONST.M1_MOORING_LONG      # ~2 km north of M1
     )
     from_boat = P.build_candidate_plan(
-        P._Black_Swift, P._Black_Swift_usable_endurance_m, P._Calypso_payload,
+        P._BlackSwift_S3, P._BlackSwift_S3_usable_endurance_m, P._Calypso_payload,
         boat_request, weather_state, sun_az, sun_state, "boat_split",
     )
 
@@ -277,7 +284,7 @@ def test_higher_design_wind_never_gives_more_lines():
     # fewer lines falls, not at one pinned wind.
     plans = [
         P.plan_default_mission("design_wind", design_wind_aloft_ms=design_wind_ms)
-        for design_wind_ms in range(P._Black_Swift.vehicle_wind_rating + 1)
+        for design_wind_ms in range(P._BlackSwift_S3.vehicle_wind_rating + 1)
     ]
 
     for calmer, windier in zip(plans, plans[1:]):

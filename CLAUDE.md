@@ -40,9 +40,10 @@ decisions are in (2026-10-09). The camera-rollout fast track was BUILT on 2026-1
 (R-3 to R-7, 104 tests green): every line now leaves 2.5·R_g + 150 m between its turn and
 the camera, sized from a design wind the RPIC sets. Its constants came from PX4 flying an
 S2 model, so they are provisional placeholders for the S3, and the S2 loop sweep that was
-to check them is cancelled (warning box item 4).** **K-1 and K-2 were built on 2026-10-27
-(108 tests green):** the S3's constants and what a `Vehicle` carries, with the default plan
-byte-identical. K-3 is next. The two
+to check them is cancelled (warning box item 4).** **K-1, K-2 and K-3 were built on 2026-10-27
+(108 tests green): the S3 is now the default aircraft** and the S2's constants are gone.
+The default plan is 9 lines until K-4 pays for climb, descent and hand-offs. Most
+default-plan figures below are still the S2's until K-8 (see Step K). K-4 is next. The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -258,7 +259,7 @@ launch, landing and climb points are chosen for legality and operational feasibi
     identity Step J needs — `vehicle_type`, `firmware_type`, `is_VTOL`, `hover_speed_ms` —
     and, since K-2, the optional `transition_height_agl_m` and `waypoint_lookahead_s`.
     `MissionRequest` carries an optional `climb_waypoint` (K-2).
-    ✅ `planner._Black_Swift` constructs one.
+    ✅ `planner._BlackSwift_S3` constructs one (the S3, since K-3).
   - `sun.py` — local→UTC datetime resolver (`resolve_mission_datetime`, `mission_datetime`) + pysolar sun azimuth/elevation (`create_sun_state`).
     The two pysolar calls run inside `_pysolar_without_leap_second_warning()`; see the J-6
     warning gate below.
@@ -306,8 +307,8 @@ launch, landing and climb points are chosen for legality and operational feasibi
 - Modules import flat (`import constants as CONST`, `from geo import ...`); the entry
   point and `conftest.py` put `src/` on `sys.path`.
 - **Functions work from their parameters, not from module-level singletons.** `planner`
-  declares `_Black_Swift`, `_Launch_Waypoint`, `_M1_Waypoint` and
-  `_Black_Swift_usable_endurance_m` at module scope, and `build_candidate_plan` also
+  declares `_BlackSwift_S3`, `_Launch_Waypoint`, `_M1_Waypoint` and
+  `_BlackSwift_S3_usable_endurance_m` at module scope, and `build_candidate_plan` also
   *receives* all of them. Reaching for the global inside the function is silently correct
   today — the singleton is what gets passed — and wrong the moment Step F makes the launch
   point user-settable or Step G deletes the aircraft singleton. It also makes the function
@@ -346,7 +347,7 @@ launch, landing and climb points are chosen for legality and operational feasibi
     and function names are an API; tests and CLAUDE.md reference them. Rename one only
     as its own change, never as style. The known holdouts are `is_VTOL`, `waypoint_ID`,
     `to_CSV_row`, `total_flight_distance` (no `_m`), `V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG`
-    (`_DEG`), and the capitalized `planner` singletons (`_Black_Swift`, ...).
+    (`_DEG`), and the capitalized `planner` singletons (`_BlackSwift_S3`, ...).
   - **Tests** reach objects through public getters, never `obj._private` attributes.
   - **Writing:** comments state what is true *now*. History stays, but dated and labeled
     as history (the `⚠️ 2026-09-08` notes). A claim about a module that does not exist yet
@@ -1049,7 +1050,7 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### K. S3 adoption (IN PROGRESS — K-1 and K-2 built 2026-10-27)
+### K. S3 adoption (IN PROGRESS — K-1, K-2 and K-3 built 2026-10-27)
 Decided 2026-10-18, from BlackSwift's answers (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)):
 retire the end-of-life S2 and make the S3 the default aircraft, before Step F, so F-1 builds
 on the aircraft that will fly. The planning artifact's §K has the step cards and the reason
@@ -1059,11 +1060,12 @@ for each change. In outline:
   - ✅ **K-1 built 2026-10-27.** The `BLACKSWIFT_S3_*` block sits **beside** the S2 block,
     with `BLACKSWIFT_FMS_LOOKAHEAD_s` = 3.0, `CLIMB_ORBIT_RADIUS_m` = 500,
     `CLIMB_ORBIT_PAD_CLEARANCE_m` = 100, `OPERATOR_HANDOFF_RESERVE_min` = 1 and
-    `EXTENSION_XML`. The S2 block is **deleted in K-3**, with its last reader (the R-3/R-4
-    pattern). The user's decisions: vehicle type **21 (`MAV_TYPE_VTOL_TILTROTOR`)** and
-    firmware **0 (`MAV_AUTOPILOT_GENERIC`)**. `BLACKSWIFT_S3_MAX_HOVER_SPEED_ms` = 3 is a
-    **placeholder** until the user sets it. The user renamed the 70 m allowance to
-    `PX4_CAMERA_EARLY_START_m`, and it is still `rollout_inset_m`'s default.
+    `EXTENSION_XML`. The S2 block was **deleted in K-3**, with its last reader (the R-3/R-4
+    pattern). The user's decisions: vehicle type **21 (`MAV_TYPE_VTOL_TILTROTOR`)**,
+    firmware **0 (`MAV_AUTOPILOT_GENERIC`)**, and `BLACKSWIFT_S3_MAX_HOVER_SPEED_ms` =
+    **1 m/s** (2026-10-27: the S3 was not designed to travel laterally in hover and almost
+    never does). The user renamed the 70 m allowance to `PX4_CAMERA_EARLY_START_m`, and it
+    is still `rollout_inset_m`'s default.
   - ✅ **K-2 built 2026-10-27.** `Vehicle` takes optional `transition_height_agl_m` (only a
     VTOL may have one; it raises otherwise) and `waypoint_lookahead_s`, with getters and no
     setters. `aircraft_math.waypoint_capture_distance_m(vehicle)` = 2 × cruise × lookahead,
@@ -1074,6 +1076,27 @@ for each change. In outline:
     Which files get written is an **output choice**, not a fact of the vehicle. DJI will
     mix XML and KML too, so tying output types to the flight controller would fight that.
     K-6 decides it as an explicit selection or as "write every format".
+  - ✅ **K-3 built 2026-10-27. The S3 is the default aircraft.** `planner._BlackSwift_S3`
+    and `_BlackSwift_S3_usable_endurance_m` replace `_Black_Swift` and its budget. The S2
+    block in `constants.py` is gone, and nothing reads a `BLACKSWIFT_*` S2 name. Tier 5's
+    checks of a fixed wing's commands fly `_fixed_wing_plan()`, a PX4 fixed wing built from
+    literals, and `_plan_built_with` sizes each plan from its own aircraft's battery. Tier 3
+    pins that the default plan's budget is its own aircraft's: handing it the S2's
+    82,620 m passed every other test.
+  - **Measured default plan after K-3** (2026-01-01, 9 m/s design wind):
+    - **9 lines**, usable 96,390 m, grid budget 51,617 m.
+    - Grid 41,234 m / 32.7 min, transit 45,206 m / 35.9 min, **68.6 min, 21.4 min margin**.
+    - Inset 545.9 m, line 1 lead-in 109.6 m at a 118.8° entry.
+    - Departure 176.2°, approach 343.4°.
+    - **65 `.plan` items, commands 16×45, 206×18, 84×1, 85×1**: VTOL takeoff and land, so
+      the QGC `TRANSITION_*` constants are in play. Header: vehicle 21, firmware 0,
+      cruise 21, hover 1.
+  - ⚠️ **K-3 is an intermediate state.** Climb, descent and hand-offs are still zero time.
+    Counting them (2.9 + 5.4 + 2 min) makes this route 78.9 min against a 76.5 min budget,
+    so **K-4 takes the default back to 7 lines**. And at 77.6 m, 2·R_g = 316.7 m at 9 m/s,
+    more than the 313.4 m line spacing: the two turns between lines no longer fit (W* =
+    8.84 m/s). **Every other default-plan figure in this file (7 lines, 67.3 min, 470.6 m,
+    83.4 m, 117.56°) is the S2's**, and K-8 rewrites them at K's close.
 - **Takeoff and landing phases:** a hover takeoff, a transition at ~10–15 m AGL, an orbit
   climb to a takeoff waypoint, and the landing file's descent. Climb is no longer zero time.
 - **A BlackSwift writer:** three XML files (takeoff, mission, landing), a sibling to the QGC
@@ -1163,7 +1186,7 @@ overlap %, and camera off-nadir viewing angle.
 Per constraint 3. Fixed-wing, quadcopter, or hexacopter, with every fixed-wing performance
 constant user-settable rather than hard-coded to the BlackSwift S2.
 - `objects.Aircraft` is already a general constructor — the hard-coding lives in
-  `planner._Black_Swift`, a module-level singleton built from `BLACKSWIFT_*` constants.
+  `planner._BlackSwift_S3`, a module-level singleton built from `BLACKSWIFT_S3_*` constants (the S2's `_Black_Swift` until K-3).
   That singleton is what has to go. J-4 already removed the *reach-ins* to it from inside
   `build_candidate_plan`, so the function now works from its parameters — deleting the
   singleton is a smaller job than it was.

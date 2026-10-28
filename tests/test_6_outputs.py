@@ -9,8 +9,10 @@ Top of the cake: depends on everything below. Two halves:
   2. QGC .plan (J-7), the file the aircraft would actually fly. Every expected MAVLink value
      is a literal from the MAVLink spec or is read out of one of the repo's three files that
      QGC wrote: exp2.plan and exp..plan, QGC's own exports, and roundtrip_qgc.plan, our
-     default plan after a QGC load and save. None comes from constants.py: a test that read
-     the QGC constants back would pass on the very typo it exists to catch.
+     default plan (then flown by the S2) after a QGC load and save. None comes from
+     constants.py: a test that read the QGC constants back would pass on the very typo it
+     exists to catch. Since K-3 the default aircraft is the S3, a VTOL, so the checks that
+     depend on a fixed wing's commands fly a PX4 fixed wing built from literals.
 """
 
 import argparse
@@ -120,8 +122,13 @@ MAV_CMD_NAV_VTOL_LAND = 85
 MAV_CMD_DO_CHANGE_SPEED = 178
 MAV_CMD_DO_SET_CAM_TRIGG_DIST = 206
 
+MAV_TYPE_FIXED_WING = 1
 MAV_TYPE_QUADROTOR = 2
+MAV_TYPE_VTOL_TILTROTOR = 21
 MAV_TYPE_VTOL_FIXEDROTOR = 22
+
+MAV_AUTOPILOT_GENERIC = 0
+MAV_AUTOPILOT_PX4 = 12
 
 CAMERA_KEYWORDS = ("cam_on", "cam_off")
 
@@ -146,32 +153,25 @@ def _default_plan():
 
 
 def _vehicle(vehicle_type, hover_speed_ms=0):
-    # The S2's performance under a different MAVLink identity. The planner never branches on
-    # vehicle class, so only the writer's output should change.
-    return OBJ.Vehicle(
-        CONST.BLACKSWIFT_ENDURANCE_min,
-        CONST.BLACKSWIFT_WIND_RATING_ms,
-        CONST.BLACKSWIFT_CLIMB_RATE_ms,
-        CONST.BLACKSWIFT_DESCENT_RATE_ms,
-        CONST.BLACKSWIFT_TURN_RADIUS_m,
-        CONST.BLACKSWIFT_TURN_PENALTY_s,
-        CONST.BLACKSWIFT_MIN_GROUND_SPEED_ms,
-        CONST.BLACKSWIFT_CRUISE_SPEED_ms,
-        vehicle_type,
-        CONST.BLACKSWIFT_FIRMWARE_TYPE,
-        hover_speed_ms=hover_speed_ms
-    )
+    # A QGC-flown PX4 vehicle under any MAVLink identity, with the retired S2's performance as
+    # literals. The planner never branches on vehicle class, so only the writer's output
+    # should change.
+    return OBJ.Vehicle(90, 15, 3.35, 1.80, 57, 10, 12, 18, vehicle_type, MAV_AUTOPILOT_PX4,
+                       hover_speed_ms=hover_speed_ms)
 
 
 def _plan_built_with(aircraft=None, mission_request=None):
     # The default mission with the aircraft or the mission request swapped out, through the
-    # same build_candidate_plan the entry point uses.
+    # same build_candidate_plan the entry point uses. The budget is the aircraft's own.
     sun_state, default_request, weather_state, sun_az = P._build_dated_objects(
         P.DEFAULT_MISSION_DATETIME
     )
+    aircraft = aircraft or P._BlackSwift_S3
     return P.build_candidate_plan(
-        mission_aircraft=aircraft or P._Black_Swift,
-        mission_aircraft_endurance_m=P._Black_Swift_usable_endurance_m,
+        mission_aircraft=aircraft,
+        mission_aircraft_endurance_m=A.max_planned_distance_m(
+            aircraft, CONST.RTH_SEED_RESERVE_FRACTION
+        ),
         payload=P._Calypso_payload,
         mission_request=mission_request or default_request,
         mission_weather=weather_state,
@@ -188,12 +188,12 @@ def _boat_plan():
 
     launch = OBJ.Waypoint(
         "WP000", pad_lat, pad_long,
-        CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m, CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
         CONST.WAYPOINT_ACTION_LAUNCH, "launch", "Test-Boat-Launch",
     )
     land = OBJ.Waypoint(
         "WP_END", pad_lat, pad_long,
-        CONST.V1_DEFAULT_LAND_ALTITUDE_m, CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+        CONST.V1_DEFAULT_LAND_ALTITUDE_m, CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
         CONST.WAYPOINT_ACTION_LAND, "land", "Test-Boat-Land",
     )
     boat_request = OBJ.MissionRequest(
@@ -210,6 +210,12 @@ def _boat_plan():
         included_target_waypoints=[P._M1_Waypoint],
     )
     return _plan_built_with(mission_request=boat_request)
+
+
+def _fixed_wing_plan():
+    # The default mission flown by a PX4 fixed wing, the vehicle class QGC's exports were
+    # made for. The default aircraft, the S3, is a VTOL.
+    return _plan_built_with(aircraft=_vehicle(MAV_TYPE_FIXED_WING))
 
 
 def _serialized(plan):
@@ -246,7 +252,17 @@ def _camera_item_shape(qgc_item):
 def test_plan_aircraft_is_a_vehicle():
     # The writer branches on four Vehicle fields. J-2 built the class and it went unused for
     # three steps, because no test looked. This one looks.
-    assert isinstance(_default_plan().aircraft, OBJ.Vehicle)
+    aircraft = _default_plan().aircraft
+    assert isinstance(aircraft, OBJ.Vehicle)
+
+    # Since K-3 the default aircraft is the S3: a tilt-rotor VTOL on generic firmware,
+    # built with the facts K-2 added. BlackSwift's figure: it captures waypoints 126 m early.
+    assert aircraft.vehicle_type == MAV_TYPE_VTOL_TILTROTOR
+    assert aircraft.firmware_type == MAV_AUTOPILOT_GENERIC
+    assert aircraft.is_VTOL
+    assert aircraft.hover_speed_ms > 0
+    assert aircraft.transition_height_agl_m is not None
+    assert A.waypoint_capture_distance_m(aircraft) == pytest.approx(126)
 
 
 def test_item_count_and_order():
@@ -279,7 +295,8 @@ def test_do_jump_ids_are_contiguous_from_one():
 
 def test_commands_follow_the_mavlink_spec():
     # A misplaced bracket in the _QGC_COMMAND lookup once crashed on the first item; a wrong
-    # integer in the QGC constants would write silently. Both fail here.
+    # integer in the QGC constants would write silently. Both fail here. A fixed wing's
+    # takeoff and land; the VTOL column is pinned in test_vtol_uses_the_vtol_commands.
     expected = {
         "takeoff": MAV_CMD_NAV_TAKEOFF,
         "nav": MAV_CMD_NAV_WAYPOINT,
@@ -287,7 +304,7 @@ def test_commands_follow_the_mavlink_spec():
         "cam_off": MAV_CMD_DO_SET_CAM_TRIGG_DIST,
         "land": MAV_CMD_NAV_LAND,
     }
-    items, doc = _serialized(_default_plan())
+    items, doc = _serialized(_fixed_wing_plan())
     for item, qgc_item in zip(items, doc["mission"]["items"]):
         assert qgc_item["command"] == expected[item["Keyword"]]
 
@@ -586,16 +603,18 @@ def test_home_follows_the_takeoff():
 
 def test_vtol_uses_the_vtol_commands():
     # The takeoff and land columns switch on is_VTOL; cruise and camera items do not change.
-    plan = _plan_built_with(aircraft=_vehicle(MAV_TYPE_VTOL_FIXEDROTOR, hover_speed_ms=5))
-    items, doc = _serialized(plan)
-    commands = {}
-    for item, qgc_item in zip(items, doc["mission"]["items"]):
-        commands.setdefault(item["Keyword"], set()).add(qgc_item["command"])
+    # Checked on a fixed-rotor VTOL and on the default S3, a tilt-rotor.
+    fixed_rotor = _plan_built_with(aircraft=_vehicle(MAV_TYPE_VTOL_FIXEDROTOR, hover_speed_ms=5))
+    for plan in (fixed_rotor, _default_plan()):
+        items, doc = _serialized(plan)
+        commands = {}
+        for item, qgc_item in zip(items, doc["mission"]["items"]):
+            commands.setdefault(item["Keyword"], set()).add(qgc_item["command"])
 
-    assert commands["takeoff"] == {MAV_CMD_NAV_VTOL_TAKEOFF}
-    assert commands["land"] == {MAV_CMD_NAV_VTOL_LAND}
-    assert commands["nav"] == {MAV_CMD_NAV_WAYPOINT}
-    assert commands["cam_on"] == commands["cam_off"] == {MAV_CMD_DO_SET_CAM_TRIGG_DIST}
+        assert commands["takeoff"] == {MAV_CMD_NAV_VTOL_TAKEOFF}
+        assert commands["land"] == {MAV_CMD_NAV_VTOL_LAND}
+        assert commands["nav"] == {MAV_CMD_NAV_WAYPOINT}
+        assert commands["cam_on"] == commands["cam_off"] == {MAV_CMD_DO_SET_CAM_TRIGG_DIST}
 
 
 def test_multirotor_uses_standard_commands_and_its_hover_speed():
@@ -610,7 +629,7 @@ def test_multirotor_uses_standard_commands_and_its_hover_speed():
     assert mission["vehicleType"] == MAV_TYPE_QUADROTOR
     assert mission["hoverSpeed"] == 5
 
-    _, fixed_wing_doc = _serialized(_default_plan())
+    _, fixed_wing_doc = _serialized(_fixed_wing_plan())
     assert fixed_wing_doc["mission"]["hoverSpeed"] == 0
 
 

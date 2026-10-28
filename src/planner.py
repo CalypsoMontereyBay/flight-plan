@@ -26,27 +26,31 @@ from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
 # Step 1: Build the components of a candidate plan by assembling the
 # objects I need.
 
-# Step 1.1: Assemble the aircraft and get its constraints from aircraft math.
+# Step 1.1: Assemble the aircraft and get its constraints from aircraft math. The BlackSwift
+# S3, a tilt-rotor VTOL, is the default aircraft since Step K-3 (the S2 is end of life).
 
-_Black_Swift = Vehicle(
-    CONST.BLACKSWIFT_ENDURANCE_min,
-    CONST.BLACKSWIFT_WIND_RATING_ms,
-    CONST.BLACKSWIFT_CLIMB_RATE_ms,
-    CONST.BLACKSWIFT_DESCENT_RATE_ms,
-    CONST.BLACKSWIFT_TURN_RADIUS_m,
-    CONST.BLACKSWIFT_TURN_PENALTY_s,
-    CONST.BLACKSWIFT_MIN_GROUND_SPEED_ms,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
-    CONST.BLACKSWIFT_VEHICLE_TYPE,
-    CONST.BLACKSWIFT_FIRMWARE_TYPE
+_BlackSwift_S3 = Vehicle(
+    CONST.BLACKSWIFT_S3_ENDURANCE_min,
+    CONST.BLACKSWIFT_S3_WIND_RATING_ms,
+    CONST.BLACKSWIFT_S3_CLIMB_RATE_ms,
+    CONST.BLACKSWIFT_S3_DESCENT_RATE_ms,
+    CONST.BLACKSWIFT_S3_TURN_RADIUS_m,
+    CONST.BLACKSWIFT_S3_TURN_PENALTY_s,
+    CONST.BLACKSWIFT_S3_MIN_GROUND_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
+    CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
+    hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
+    transition_height_agl_m=CONST.BLACKSWIFT_S3_TRANSITION_AGL_m,
+    waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
 # The reserve is the fixed RTH_SEED_RESERVE_FRACTION (15%). The wind-derived reserve that was
 # meant to replace it (_rth_safe_budget, C-2 step 5) was CANCELLED on 2026-09-08, so this
 # budget is not RTH-cleared and is not meant to be -- see CLAUDE.md, constraint 4.
-_Black_Swift_usable_endurance_m = max_planned_distance_m(
-    _Black_Swift, CONST.RTH_SEED_RESERVE_FRACTION
+_BlackSwift_S3_usable_endurance_m = max_planned_distance_m(
+    _BlackSwift_S3, CONST.RTH_SEED_RESERVE_FRACTION
 )
 
 # Step 1.2: Assemble the Sensor object
@@ -68,7 +72,7 @@ _Launch_Waypoint = Waypoint(
     CONST.V1_LAUNCH_POINT_LAT,
     CONST.V1_LAUNCH_POINT_LONG,
     CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAUNCH,
     "Launch point",
     "Terrace-Point-Launch",
@@ -79,7 +83,7 @@ _Land_Waypoint = Waypoint(
     CONST.V1_LAND_POINT_LAT,
     CONST.V1_LAND_POINT_LONG,
     CONST.V1_DEFAULT_LAND_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAND,
     "land waypoint",
     "Terrace-Point-Land",
@@ -90,7 +94,7 @@ _M1_Waypoint = Waypoint(
     CONST.M1_MOORING_LAT,
     CONST.M1_MOORING_LONG,
     CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_M1_OVERFLIGHT,
     "M1 waypoint for overflight req",
     "M1-Mooring-Station",
@@ -704,8 +708,8 @@ def plan_default_mission(candidate_name, mission_datetime=None,
     )
 
     return build_candidate_plan(
-        mission_aircraft=_Black_Swift,
-        mission_aircraft_endurance_m=_Black_Swift_usable_endurance_m,
+        mission_aircraft=_BlackSwift_S3,
+        mission_aircraft_endurance_m=_BlackSwift_S3_usable_endurance_m,
         payload=_Calypso_payload,
         mission_request=mission_request,
         mission_weather=weather_state,
