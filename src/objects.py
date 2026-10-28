@@ -160,6 +160,12 @@ class Vehicle(Aircraft):
     """
     An Aircraft plus the MAVLink identity the .plan writer branches on. An invalid vehicle
     type raises; an invalid firmware type warns and defaults to PX4 (12).
+
+    Two optional facts, recorded here rather than inside a formula (Step K-2):
+    transition_height_agl_m is where a VTOL transitions to forward flight, and only a VTOL
+    may have one. waypoint_lookahead_s is the lookahead of a flight controller that
+    captures a waypoint 2 * cruise * lookahead before it (BlackSwift's). A vehicle without
+    one, such as a PX4 vehicle, carries None.
     """
 
     def __init__(self,
@@ -173,7 +179,9 @@ class Vehicle(Aircraft):
                  cruise_speed_ms,
                  vehicle_type,
                  firmware_type,
-                 hover_speed_ms=0
+                 hover_speed_ms=0,
+                 transition_height_agl_m=None,
+                 waypoint_lookahead_s=None
                  ):
 
         super().__init__(endurance_min,
@@ -217,15 +225,38 @@ class Vehicle(Aircraft):
             # Fixed wings cannot have a non-zero hover speed.
             self._hover_speed_ms = 0
 
+        # Only a VTOL transitions. A fixed wing or a multirotor with a transition height is a
+        # mistake in the vehicle's definition, so it raises rather than being dropped.
+        if transition_height_agl_m is not None:
+            if not self._is_vtol:
+                raise ValueError("Only a VTOL can have a transition height.")
+            if transition_height_agl_m <= 0:
+                raise ValueError("transition_height_agl_m must be positive.")
+        self._transition_height_agl_m = transition_height_agl_m
+
+        if waypoint_lookahead_s is not None and waypoint_lookahead_s <= 0:
+            raise ValueError("waypoint_lookahead_s must be positive.")
+        self._waypoint_lookahead_s = waypoint_lookahead_s
+
     # Getters and setters for the hover speed, hover capability, and the vehicle and firmware
     # types are below.
-    # NOTE: there are no setters for hover speed or hover capability, on purpose. The vehicle
-    # type and hover capability directly decide the kind of plan sent to QGC, so they are set
-    # once, by the constructor that validates them, and never patched afterwards.
+    # NOTE: there are no setters for hover speed, hover capability, transition height or
+    # lookahead, on purpose. The vehicle type and hover capability directly decide the kind
+    # of plan sent to QGC, and the other two are facts of the airframe and its flight
+    # controller, so all are set once, by the constructor that validates them, and never
+    # patched afterwards.
 
     @property
     def hover_speed_ms(self):
         return self._hover_speed_ms
+
+    @property
+    def transition_height_agl_m(self):
+        return self._transition_height_agl_m
+
+    @property
+    def waypoint_lookahead_s(self):
+        return self._waypoint_lookahead_s
 
     @property
     def can_hover(self):
@@ -620,6 +651,10 @@ class MissionRequest:
     design_wind_aloft_ms is the wind at flight altitude the RPIC plans for. It sizes the
     straight each line needs after a turn before the camera starts. It is a planning input,
     never the forecast (constraint 4), and it is never a 10 m wind.
+
+    climb_waypoint is where a vehicle that climbs in an orbit, such as the S3, circles up to
+    mission altitude. None means planner places the default (Step K-4); nothing reads it
+    yet.
     """
 
     def __init__(
@@ -635,6 +670,7 @@ class MissionRequest:
         grid_orientation_deg=None,
         notes=None,
         included_target_waypoints=None,
+        climb_waypoint=None,
     ):
 
         if not isinstance(valid_time, datetime):
@@ -653,6 +689,7 @@ class MissionRequest:
         self._grid_orientation_deg = grid_orientation_deg
         self._notes = notes
         self._included_target_waypoints = included_target_waypoints
+        self._climb_waypoint = climb_waypoint
 
     @property
     def day_of_year(self):
@@ -701,6 +738,10 @@ class MissionRequest:
     @property
     def m1_wp(self):
         return self._m1_waypoint
+
+    @property
+    def climb_wp(self):
+        return self._climb_waypoint
 
 
 class CandidatePlan:

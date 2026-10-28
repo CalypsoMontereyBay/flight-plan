@@ -291,14 +291,16 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 >
 > **2. No output has ever been flown.**
 >
-> **3. The camera-rollout fix has not been checked in simulation yet** (2026-10-18). Each
-> line now leaves a straight stretch after its turn, sized from the design wind, so the
-> aircraft is level before the camera starts (470.6 m at the default 9 m/s). The sizes come
-> from a simulator calibration, but the finished geometry has not been flown in the
-> simulator yet. Two limits remain after that check. The simulator flies PX4, and the S2's
-> own autopilot may behave differently. And on a day windier than the design wind, the
-> first photograph of some lines may be taken while the aircraft is still banked, so set
-> `--design-wind` for the day.
+> **3. The camera-rollout fix is built, but its constants are provisional** (2026-10-18).
+> Each line now leaves a straight stretch after its turn, sized from the design wind, so
+> the aircraft is level before the camera starts (470.6 m at the default 9 m/s). The sizes
+> come from a simulator calibration of PX4 flying a model of the BlackSwift S2. The S2 is
+> end of life, and the S3 that replaces it is flown by BlackSwift's own flight management
+> system, which is nothing like PX4. So the constants are provisional placeholders for the
+> S3. The S2 simulation that was to check the finished geometry was cancelled, and
+> BlackSwift has declined to share an S3 model or its numbers, so no S3 check is planned.
+> And on a day windier than the design wind, the first photograph of some lines may be
+> taken while the aircraft is still banked, so set `--design-wind` for the day.
 >
 > #### ✅ Fixed on 2026-10-18
 >

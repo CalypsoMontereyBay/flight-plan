@@ -42,12 +42,15 @@ point of V2C-2; the moment a variable name blurs them the module is lying.
 CAMERA ROLLOUT (fast track, 2026-10): the last section sizes the straight the aircraft
 needs after a turn before the camera may start. planner calls it to size every line's
 inset and line 1's lead-in from the design wind.
+
+WAYPOINT CAPTURE (Step K-2, 2026-10): how early a vehicle with a waypoint lookahead moves
+on to its next waypoint. Nothing calls it until K-4.
 """
 
 import math
 
 import constants as CONST
-from objects import Aircraft
+from objects import Aircraft, Vehicle
 
 
 SECONDS_PER_MINUTE = 60
@@ -361,12 +364,15 @@ def ground_turn_radius_m(aircraft: Aircraft, wind_aloft_ms):
 def rollout_inset_m(aircraft: Aircraft, design_wind_aloft_ms,
                     radius_factor=CONST.ROLLOUT_RADIUS_FACTOR,
                     settle_allowance_m=CONST.ROLLOUT_SETTLE_ALLOWANCE_m,
-                    camera_early_start_m=CONST.CAMERA_EARLY_START_ALLOWANCE_m):
+                    camera_early_start_m=CONST.PX4_CAMERA_EARLY_START_m):
     """
     Distance from a line's turn waypoint to its camera-on point, in meters:
     radius_factor * R_g + settle_allowance_m + camera_early_start_m. It applies at both
     ends of every line, and it is sized on the line flown downwind, the worst case, because
     lines alternate direction. 470.6 m at the 9 m/s default design wind.
+
+    camera_early_start_m defaults to PX4's measured figure. A vehicle with a waypoint
+    lookahead starts early by its capture distance instead (waypoint_capture_distance_m).
     """
 
     ground_radius_m = ground_turn_radius_m(aircraft, design_wind_aloft_ms)
@@ -395,3 +401,23 @@ def entry_pushback_m(aircraft: Aircraft, design_wind_aloft_ms, arrival_angle_deg
     half_angle_rads = math.radians(arrival_angle_deg / 2)
 
     return (ground_radius_m * (math.tan(half_angle_rads) - 1))
+
+
+"""
+Waypoint capture (Step K-2, 2026-10) -- how far before a waypoint a vehicle switches to
+the next one. BlackSwift's flight management system captures at 2 * cruise * lookahead.
+=============================================================================================
+"""
+
+
+def waypoint_capture_distance_m(vehicle: Vehicle):
+    """
+    Distance before a waypoint at which the vehicle moves on to the next one, in meters:
+    2 * cruise * lookahead, BlackSwift's formula. 126 m for the S3 at 21 m/s. None for a
+    vehicle with no lookahead, such as a PX4 vehicle.
+    """
+
+    if vehicle.waypoint_lookahead_s is None:
+        return None
+
+    return (2 * vehicle.vehicle_cruise_speed * vehicle.waypoint_lookahead_s)

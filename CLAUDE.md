@@ -40,7 +40,9 @@ decisions are in (2026-10-09). The camera-rollout fast track was BUILT on 2026-1
 (R-3 to R-7, 104 tests green): every line now leaves 2.5·R_g + 150 m between its turn and
 the camera, sized from a design wind the RPIC sets. Its constants came from PX4 flying an
 S2 model, so they are provisional placeholders for the S3, and the S2 loop sweep that was
-to check them is cancelled (warning box item 4).** The two
+to check them is cancelled (warning box item 4).** **K-1 and K-2 were built on 2026-10-27
+(108 tests green):** the S3's constants and what a `Vehicle` carries, with the default plan
+byte-identical. K-3 is next. The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -132,7 +134,13 @@ the full list of changes, with the reason for each, is in the planning artifact'
 **Decided 2026-10-18:** S3 adoption is its own step, **Step K**, built before Step F. Which
 camera flies Calypso science on the S3 is **not decided**, so our payload model stays,
 marked provisional. The rollout constants stay as provisional S2/PX4 placeholders, and the
-S2 Strat 2 loop sweep is **cancelled**.
+S2 Strat 2 loop sweep is **cancelled**. Its prompt was never sent to the sim agent, so there
+is nothing to call back.
+
+**Declined (reported 2026-10-27):** BlackSwift will not share its JSBSim S3 model or the
+numbers behind it, on IP grounds. No S3 data is coming from BlackSwift to replace the
+provisional rollout constants (2.5, 80) or the S2 climb and descent rates, and no S3
+simulation of Strat 1 or the Strat 2 loop is planned.
 
 **S3 numbers (2026-10-18, from the user):**
 - **Given:** endurance 90 min; cruise **21 m/s**; stall speed and wind rating as the S2's;
@@ -144,6 +152,9 @@ S2 Strat 2 loop sweep is **cancelled**.
 - **Placeholders:** climb and descent are the S2's 3.35 and 1.80 m/s, labelled provisional.
   BlackSwift's limits can't be shared.
 - **The user sets** a max hover speed of a few m/s; the S3 isn't flown laterally in hover.
+  (A 3 m/s placeholder holds the place in `constants.py` until then.)
+- **MAVLink identity (2026-10-27, the user):** vehicle type 21, tilt-rotor VTOL, the more
+  precise term for the kind of VTOL the S3 is; firmware 0, generic, because it isn't PX4.
 
 **How the engine treats BlackSwift's example plans (`BS_EXAMPLES/`):** as the file format,
 not as a template. The engine serves many vehicles that BlackSwift doesn't make, and
@@ -244,13 +255,16 @@ launch, landing and climb points are chosen for legality and operational feasibi
   - `constants.py` — engine constants (aircraft, M1, sensor, date/time defaults + timezone, weather, actions).
   - `objects.py` — core classes (Aircraft, **Vehicle**, Sensor, Weather, CurrentSunState,
     Waypoint, MissionRequest, CandidatePlan). `Vehicle(Aircraft)` adds the MAVLink protocol
-    identity Step J needs — `vehicle_type`, `firmware_type`, `is_VTOL`, `hover_speed_ms`.
+    identity Step J needs — `vehicle_type`, `firmware_type`, `is_VTOL`, `hover_speed_ms` —
+    and, since K-2, the optional `transition_height_agl_m` and `waypoint_lookahead_s`.
+    `MissionRequest` carries an optional `climb_waypoint` (K-2).
     ✅ `planner._Black_Swift` constructs one.
   - `sun.py` — local→UTC datetime resolver (`resolve_mission_datetime`, `mission_datetime`) + pysolar sun azimuth/elevation (`create_sun_state`).
     The two pysolar calls run inside `_pysolar_without_leap_second_warning()`; see the J-6
     warning gate below.
   - `aircraft_math.py` — endurance → distance budget, duration, battery margin, plus the
-    V2C wind triangle (**reporting only** as of 2026-09-08 — see constraint 4).
+    V2C wind triangle (**reporting only** as of 2026-09-08 — see constraint 4), the
+    camera-rollout math, and `waypoint_capture_distance_m` (K-2).
   - `geo.py` — geodesic math + M1-centered lawnmower grid geometry (the M1-centering
     becomes a *default* rather than an invariant under Step F).
   - `weather.py` — **leaf**: live NWS weather for a lat/lon/datetime → populated `Weather`, or `None` (planner falls back to the stub).
@@ -262,7 +276,7 @@ launch, landing and climb points are chosen for legality and operational feasibi
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
-- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 104 tests); see [Setup & run](#setup--run).
+- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 108 tests); see [Setup & run](#setup--run).
 - `exp2.plan`, `exp..plan` — **real QGroundControl exports for this site**, and until
   2026-09-30 the only ground truth the repo had for the `.plan` format. Several format
   questions that docs left ambiguous are settled by reading them, and the J-7 tests read
@@ -646,7 +660,8 @@ Read this before touching the grid, classification, or output code.
   under the J-5 writer bullet above). The 2026-09-30 round trip added two more: the camera
   items against `roundtrip_qgc.plan`, and the RPIC note in the summary. The camera rollout
   fast track added five Tier 2 tests (R-2) and five more across Tiers 3–5 (R-7), listed
-  under the camera rollout bullet above: 104 in all.
+  under the camera rollout bullet above: 104 in all. K-2 added four Tier 2 tests (the
+  capture distance, `Vehicle`'s new fields, the S3 constants, `climb_waypoint`): 108.
 - **Known defects and deferred items:**
   - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
   - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1**, and the waypoint names followed
@@ -706,8 +721,9 @@ Read this before touching the grid, classification, or output code.
       suite to 104. How it works is in the camera rollout bullet under Current state.
     - **What still stands:**
       - The S2 loop sweep that was to check the geometry as built is cancelled (2026-10-18),
-        because the S2 is end of life. The constants 2.5, 80 and 70 are provisional S2/PX4
-        placeholders until S3 data exists.
+        because the S2 is end of life. Its prompt was never sent. The constants 2.5, 80 and
+        70 are provisional S2/PX4 placeholders, and BlackSwift has declined to share S3
+        model data (2026-10-27), so no source for S3 values is in sight.
       - The 70 m early-camera allowance is PX4's. BlackSwift is sending the minimum
         acceptance radius of the S3's flight management system.
       - A design wind below the day's real wind brings back banked first images on the
@@ -1033,21 +1049,39 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### K. S3 adoption (NEXT, NOT STARTED)
+### K. S3 adoption (IN PROGRESS — K-1 and K-2 built 2026-10-27)
 Decided 2026-10-18, from BlackSwift's answers (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)):
 retire the end-of-life S2 and make the S3 the default aircraft, before Step F, so F-1 builds
 on the aircraft that will fly. The planning artifact's §K has the step cards and the reason
 for each change. In outline:
 - **S3 constants and identity** replace the S2's, under new names (split, don't redefine):
   the numbers in [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts).
+  - ✅ **K-1 built 2026-10-27.** The `BLACKSWIFT_S3_*` block sits **beside** the S2 block,
+    with `BLACKSWIFT_FMS_LOOKAHEAD_s` = 3.0, `CLIMB_ORBIT_RADIUS_m` = 500,
+    `CLIMB_ORBIT_PAD_CLEARANCE_m` = 100, `OPERATOR_HANDOFF_RESERVE_min` = 1 and
+    `EXTENSION_XML`. The S2 block is **deleted in K-3**, with its last reader (the R-3/R-4
+    pattern). The user's decisions: vehicle type **21 (`MAV_TYPE_VTOL_TILTROTOR`)** and
+    firmware **0 (`MAV_AUTOPILOT_GENERIC`)**. `BLACKSWIFT_S3_MAX_HOVER_SPEED_ms` = 3 is a
+    **placeholder** until the user sets it. The user renamed the 70 m allowance to
+    `PX4_CAMERA_EARLY_START_m`, and it is still `rollout_inset_m`'s default.
+  - ✅ **K-2 built 2026-10-27.** `Vehicle` takes optional `transition_height_agl_m` (only a
+    VTOL may have one; it raises otherwise) and `waypoint_lookahead_s`, with getters and no
+    setters. `aircraft_math.waypoint_capture_distance_m(vehicle)` = 2 × cruise × lookahead,
+    or `None` without one. `MissionRequest` takes an optional `climb_waypoint` (`climb_wp`).
+    Nothing reads any of it until K-3/K-4, and the default plan is byte-identical.
+  - **No "who flies it" field (decided 2026-10-27).** The planning difference between
+    BlackSwift's flight management system and PX4 is already carried by the lookahead.
+    Which files get written is an **output choice**, not a fact of the vehicle. DJI will
+    mix XML and KML too, so tying output types to the flight controller would fight that.
+    K-6 decides it as an explicit selection or as "write every format".
 - **Takeoff and landing phases:** a hover takeoff, a transition at ~10–15 m AGL, an orbit
   climb to a takeoff waypoint, and the landing file's descent. Climb is no longer zero time.
 - **A BlackSwift writer:** three XML files (takeoff, mission, landing), a sibling to the QGC
   writer that consumes the same neutral item list. The format comes from `BS_EXAMPLES/`;
   units, datum, waypoint numbering, camera control and the S3's vertical landing are open
   questions for BlackSwift.
-- **Which writer runs** follows who flies the vehicle: BlackSwift's flight management
-  system gets XML, and QGC-driven partner vehicles keep the `.plan`.
+- **Which writers run** is an output selection (K-6), never inferred from the vehicle: see
+  the K-2 decision above.
 - **Tests** that read the S2 as the default aircraft are rebased.
 
 ### F. Mission configurability (AFTER K, NOT STARTED)
@@ -1113,8 +1147,9 @@ overlap %, and camera off-nadir viewing angle.
     parallel with building Strat 1). It also validates Strat 1 at the 9 m/s default, tests
     turns flown through waypoints on an arc, and compares the loop with Strat 1 onto line 1
     at a 160° arrival. Results go to `~/Desktop/S2 Strat 2 Loop Sweep Results.md`.
-    **Cancelled 2026-10-18, never flown.** It was written for the S2, which is end of life.
-    A loop sweep for the S3 needs an S3 model, and BlackSwift simulates in JSBSim.
+    **Cancelled 2026-10-18; the prompt was never sent, so it was never flown.** It was
+    written for the S2, which is end of life. A loop sweep for the S3 needs an S3 model, and
+    BlackSwift declined to share theirs or its numbers on IP grounds (2026-10-27).
   - The turn onto line 1 depends on the launch point, so its loop lives in `planner`, and
     `geo` still never learns where launch is. The loop between lines is grid geometry and can
     live in `geo`, with R_g passed in as a parameter.

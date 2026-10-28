@@ -123,7 +123,8 @@ V2_DEFAULT_ALONGTRACK_OVERLAP_PCT = 50  # Units = %. Forward-lap between consecu
 
 '''
 BlackSwift specific constants are below, and should only be used when making plans for
-the BlackSwift S2 as of 09/10/2026.
+the BlackSwift S2 as of 09/10/2026. The S2 is end of life (BlackSwift, 10/13/2026);
+planner still builds it until Step K-3 moves to the S3 block below and deletes this one.
 ========================================================================================
 '''
 
@@ -152,12 +153,62 @@ BLACKSWIFT_FIRMWARE_TYPE = 12
 '''
 
 '''
+BLACKSWIFT S3 CONSTANTS (Step K-1, 10/27/2026):
+The S3, a tri-motor VTOL, is the default and only non-copter aircraft. The given figures
+are the user's and BlackSwift's (10/18/2026). The derived ones are worked in their
+comments. The PROVISIONAL ones are the S2's: BlackSwift can't share the S3's limits, and
+has declined to share its JSBSim model. Nothing reads this block until K-3.
+========================================================================================
+'''
+
+BLACKSWIFT_S3_ENDURANCE_min = 90  # Units = minutes. Given.
+
+BLACKSWIFT_S3_WIND_RATING_ms = 15  # Units = m/s. Given, the same as the S2's.
+
+BLACKSWIFT_S3_CLIMB_RATE_ms = 3.35  # Units = m/s. PROVISIONAL: the S2's rate.
+
+BLACKSWIFT_S3_DESCENT_RATE_ms = 1.80  # Units = m/s. PROVISIONAL: the S2's rate.
+
+# The S2's 57 m at 18 m/s is a 30.1 deg bank. The same bank at 21 m/s gives
+# V^2 / (g * tan(bank)) = 77.6 m. To be confirmed with BlackSwift.
+BLACKSWIFT_S3_TURN_RADIUS_m = 77.6  # Units = m. Derived.
+
+# A fly-by turn's arc is shorter than the corner the route already counts, by
+# (2 - pi/2) * R per 90 deg turn, so the turns cost no extra time.
+BLACKSWIFT_S3_TURN_PENALTY_s = 0  # Units = seconds. Derived.
+
+BLACKSWIFT_S3_MIN_GROUND_SPEED_ms = 12  # Units = m/s. Given: the stall speed, the same as the S2's.
+
+BLACKSWIFT_S3_CRUISE_SPEED_ms = 21  # Units = m/s. Given.
+
+# The S3 is not flown laterally in hover, and neither is any plan the engine writes.
+BLACKSWIFT_S3_MAX_HOVER_SPEED_ms = 3  # Units = m/s. PLACEHOLDER: "a few m/s", the user to set.
+
+# BlackSwift's best transition efficiency is at 10-15 m AGL. The low end over-counts the
+# climb slightly rather than under-counting it.
+BLACKSWIFT_S3_TRANSITION_AGL_m = 10  # Units = m, above the launch point.
+
+BLACKSWIFT_S3_VEHICLE_TYPE = 21  # MAVLink MAV_TYPE_VTOL_TILTROTOR, the kind of VTOL the S3 is.
+
+BLACKSWIFT_S3_FIRMWARE_TYPE = 0  # MAVLink MAV_AUTOPILOT_GENERIC. The S3's firmware is not PX4.
+
+# A constant of BlackSwift's flight management system, not of the S3. It captures a
+# waypoint 2 * cruise * lookahead before reaching it, 126 m at 21 m/s, so the unit is
+# seconds. aircraft_math derives the distance from the vehicle's own cruise speed; it is
+# never stored.
+BLACKSWIFT_FMS_LOOKAHEAD_s = 3.0  # Units = s. Given by BlackSwift.
+
+'''
+========================================================================================
+'''
+
+'''
 ROLLOUT HOTFIX CONSTANTS (10/08/2026):
 The first three come from the uas_sim calibration sweep of 10/08/2026, flown in PX4 SITL on
 a Gazebo model of the BlackSwift S2, not on the airframe itself. Further in-depth
-explanations for each are in S2 Rollout Calibration Results.md. They describe PX4 on the
-S2, so Step G decides where they finally live. aircraft_math's rollout section reads them,
-and planner and the entry point default to the design wind below.
+explanations for each are in S2 Rollout Calibration Results.md. These constants are S2/PX4 placeholders
+for the S3, but the S2 sweep was cancelled and BlackSwift has declined to share an S3 model.
+The rollout section in aircraft_math reads them, and planner and the entry point default to the design wind below.
 ========================================================================================
 '''
 
@@ -167,7 +218,7 @@ ROLLOUT_SETTLE_ALLOWANCE_m = 80  # Units = m. With the factor, clears every flig
 
 # Kept apart from the settle allowance on purpose: this one is how early PX4 switches
 # waypoints, and BlackSwift's own autopilot may differ.
-CAMERA_EARLY_START_ALLOWANCE_m = 70  # Units = m. PX4 turned the camera on up to 71 m early.
+PX4_CAMERA_EARLY_START_m = 70  # Units = m. PX4 turned the camera on up to 71 m early.
 
 # The 90th percentile of the 10:00-local wind at 609.6 m over M1, 2022-2025: Open-Meteo's
 # archived model winds, interpolated between 950 and 925 hPa, computed 10/09/2026. The mean
@@ -175,6 +226,29 @@ CAMERA_EARLY_START_ALLOWANCE_m = 70  # Units = m. PX4 turned the camera on up to
 # is ~1.15x the 10 m wind, not the 1/7 power law's 1.79x, so never derive this from a 10 m
 # value that way. The RPIC overrides it per plan with --design-wind; the forecast never does.
 DEFAULT_DESIGN_WIND_ALOFT_ms = 9  # Units = m/s, at flight altitude, NOT at 10 m.
+
+'''
+========================================================================================
+'''
+
+'''
+CLIMB ORBIT AND HAND-OFF CONSTANTS (Step K-1, 10/27/2026):
+For any vehicle that climbs in an orbit to a takeoff waypoint, as the S3 does. They
+describe the site and the operation, not BlackSwift. F-1's config overrides them, and
+Step E checks what's legal at each site. Nothing reads them until K-4.
+========================================================================================
+'''
+
+# BlackSwift recommends 300-500 m, or as large as is legal. Decided 10/18/2026.
+CLIMB_ORBIT_RADIUS_m = 500  # Units = m.
+
+# Keeps the whole climbing orbit off the pad: the orbit's centre sits one radius plus
+# this clearance out along the departure bearing.
+CLIMB_ORBIT_PAD_CLEARANCE_m = 100  # Units = m.
+
+# The S3 orbits after the takeoff file and after the last mission waypoint until the
+# operator moves it on. Each of those two hand-offs is budgeted this much.
+OPERATOR_HANDOFF_RESERVE_min = 1  # Units = minutes, per hand-off.
 
 '''
 ========================================================================================
@@ -327,6 +401,8 @@ PNG_PLOTTING_MARGIN = 0.05  # Units = degrees. Allows for axis plotting with a 5
 EXTENSION_JSON = "json"
 
 EXTENSION_PLAN = "plan"
+
+EXTENSION_XML = "xml"  # BlackSwift's flight plans (Step K-5).
 
 # Printed with every terminal summary, and owed to the pilot-notes document once it exists.
 # Every stop item fires one final frame, as QGC writes it (see roundtrip_qgc.plan). Nobody

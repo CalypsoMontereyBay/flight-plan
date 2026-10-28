@@ -10,6 +10,8 @@ Test vectors are hard literals (independent of production constants) so they pin
 math itself, not whatever CONST happens to hold today.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 import aircraft_math as A
@@ -274,3 +276,102 @@ def test_entry_pushback():
     for bad_angle_deg in (-1, 180, 200):
         with pytest.raises(ValueError):
             A.entry_pushback_m(ac, 0, bad_angle_deg)
+
+
+# ---- Step K: what the vehicle carries ------------------------------------------------
+# MAVLink and BlackSwift literals, never read from CONST, except where the S3's own
+# constants are the thing under test.
+
+MAV_TYPE_FIXED_WING = 1
+MAV_TYPE_QUADROTOR = 2
+MAV_TYPE_VTOL_TILTROTOR = 21
+MAV_AUTOPILOT_GENERIC = 0
+
+
+def _test_vehicle(vehicle_type, cruise_ms=21, **identity):
+    return OBJ.Vehicle(90, 15, 3.35, 1.80, 77.6, 0, 12, cruise_ms,
+                       vehicle_type, MAV_AUTOPILOT_GENERIC, **identity)
+
+
+def test_waypoint_capture_distance():
+    # BlackSwift's formula, 2 * cruise * lookahead: 2 * 21 * 3.0.
+    s3_like = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, waypoint_lookahead_s=3.0)
+    assert A.waypoint_capture_distance_m(s3_like) == pytest.approx(126)
+
+    # It follows the cruise speed, so it is derived and never stored.
+    slower = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, cruise_ms=18, waypoint_lookahead_s=3.0)
+    assert A.waypoint_capture_distance_m(slower) == pytest.approx(108)
+
+    # A vehicle with no lookahead, such as a PX4 vehicle, has no capture distance.
+    assert A.waypoint_capture_distance_m(_test_vehicle(MAV_TYPE_FIXED_WING)) is None
+
+
+def test_vehicle_validates_its_transition_and_lookahead():
+    vtol = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, transition_height_agl_m=10,
+                         waypoint_lookahead_s=3.0)
+    assert vtol.transition_height_agl_m == 10
+    assert vtol.waypoint_lookahead_s == 3.0
+
+    # Both are optional, so every existing Vehicle keeps working.
+    plain = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR)
+    assert plain.transition_height_agl_m is None
+    assert plain.waypoint_lookahead_s is None
+
+    # Only a VTOL transitions: not a fixed wing, and not a multirotor that hovers.
+    for never_transitions in (MAV_TYPE_FIXED_WING, MAV_TYPE_QUADROTOR):
+        with pytest.raises(ValueError):
+            _test_vehicle(never_transitions, transition_height_agl_m=10)
+
+    for bad_height_m in (0, -5):
+        with pytest.raises(ValueError):
+            _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, transition_height_agl_m=bad_height_m)
+
+    for bad_lookahead_s in (0, -1):
+        with pytest.raises(ValueError):
+            _test_vehicle(MAV_TYPE_FIXED_WING, waypoint_lookahead_s=bad_lookahead_s)
+
+
+def test_s3_constants_build_the_s3():
+    # K-1's block as K-3 will use it. A typo in any constant below changes a literal here.
+    s3 = OBJ.Vehicle(
+        CONST.BLACKSWIFT_S3_ENDURANCE_min,
+        CONST.BLACKSWIFT_S3_WIND_RATING_ms,
+        CONST.BLACKSWIFT_S3_CLIMB_RATE_ms,
+        CONST.BLACKSWIFT_S3_DESCENT_RATE_ms,
+        CONST.BLACKSWIFT_S3_TURN_RADIUS_m,
+        CONST.BLACKSWIFT_S3_TURN_PENALTY_s,
+        CONST.BLACKSWIFT_S3_MIN_GROUND_SPEED_ms,
+        CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
+        CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
+        CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
+        hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
+        transition_height_agl_m=CONST.BLACKSWIFT_S3_TRANSITION_AGL_m,
+        waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s,
+    )
+    assert s3.vehicle_type == MAV_TYPE_VTOL_TILTROTOR
+    assert s3.firmware_type == MAV_AUTOPILOT_GENERIC
+    assert s3.is_VTOL
+
+    # BlackSwift's figure for the S3: it captures waypoints 126 m early.
+    assert A.waypoint_capture_distance_m(s3) == pytest.approx(126)
+
+    # The S2's bank (57 m at 18 m/s) flown at 21 m/s: the radius goes with speed squared.
+    assert s3.vehicle_turn_radius == pytest.approx(57 * (21 / 18) ** 2, abs=0.05)
+
+
+def test_mission_request_climb_waypoint_is_optional():
+    def waypoint(waypoint_id, action):
+        return OBJ.Waypoint(waypoint_id, 36.9, -122.0, 609.6, 21, action, action, waypoint_id)
+
+    def request(**climb):
+        return OBJ.MissionRequest(
+            "climb probe", waypoint("WP000", "launch"), waypoint("WP_END", "land"),
+            waypoint("M1", "m1_overflight"), 609.6,
+            datetime(2026, 10, 27, 17, tzinfo=timezone.utc), 9, **climb,
+        )
+
+    # None means planner places the default orbit (K-4).
+    assert request().climb_wp is None
+
+    climb = waypoint("CLIMB", "transit")
+    assert request(climb_waypoint=climb).climb_wp is climb
