@@ -19,6 +19,12 @@ This file will be used to generate pull requests for the Calypso Monterey Bay fl
 
 ### Report
 
+> **⚠️ Current environment (as of 2026-08-13):** this machine is **macOS** (not Linux as
+> noted in the dated write-up below — on macOS use `brew install gh`, not `apt`). The active
+> branch is **`second_flight_engine_build`** (V2); the "one open PR #1 (V1)" referenced below
+> is historical. V2 Steps A (date/time) and B (live NWS weather) are complete. The `gh` /
+> `/review` workflow and the division-of-labor guidance below remain accurate.
+
 #### TL;DR
 
 Once the GitHub CLI (`gh`) is installed and authenticated, you just tell Claude
@@ -197,3 +203,151 @@ Other findings:
 
 Suggested the science-tagging fix as the one blocking change before merge; the
 rest are follow-ups. Did not run any git state-changing commands (per CLAUDE.md).
+### 2026-10-13 (Reviewed PR #2 "Second flight engine build")
+
+Reviewed the open PR #2 by Robert Wandel (`second_flight_engine_build` -> `main`, head
+`ae74fe9`, +7617 / -1160, 33 files, 40 commits). Read `planner.py`, `weather.py`, the
+`.plan` half of `outputs.py` and the grid half of `geo.py`. Ran the suite and the entry point
+from a clean `git archive` export of `ae74fe9`: **94 tests pass**, and the default run gives
+N=9, 72.9 min, 17.1 min margin, with the RPIC note printed. `gh` is installed and
+authenticated as `sub250Rob`. I did not run any git commands that change state.
+
+**Blocking, and it is not code.** `profxj` submitted CHANGES_REQUESTED on 2026-10-11:
+*add the prompts you issued to Claude as a separate Markdown doc in the repo, and I'll
+approve.* Nothing on the branch does that yet. `claude_prompts/start_up.md` and
+`pull_requests.md` hold the two bootstrap prompts and Claude's logs, not the prompts issued
+across V2 A, B, C-1 and J. Add one doc (for example `claude_prompts/v2_prompts.md`), dated and
+grouped by step, then push and re-request review. Source for the prompts: the session
+transcripts in `~/.claude/projects/` for this repo.
+
+**No correctness bug found in the reviewed paths.** The J-4 transit loop is sound (a pass that
+fails to fit has a measured transit strictly above the seed, so the budget shrinks and the
+loop cannot spin), and the `.plan` writer matches its documented rules.
+
+Follow-ups, none blocking:
+- **Unflown, and the PR body should say so.** The body says "complete". The file is still
+  unverified for flight: BlackSwift's takeoff-on-the-pad reply is pending, and the camera
+  rollout defect (first image of each line is taken banked) is open. Both are in CLAUDE.md;
+  put one line of each in the PR description, since the reviewer reads that first.
+- **Climb and descent are counted as zero time**, against a 17.1 min margin. The body asks
+  that changes "consider real world flight physics", and this is the largest optimism left.
+- **ArduPilot is named in the body but the file is PX4-only.** `firmwareType` is hard-coded
+  to 12, and the takeoff, land and nav params follow PX4/QGC semantics. If ArduPilot sims
+  consume this file, say how, or note that they do not yet.
+- **`weather.get_weather` can still crash a plan.** Its docstring promises a plan is always
+  produced, but it catches only `RequestException`, `KeyError` and `ValueError`. A naive
+  `when` datetime reaches `_value_at_time`, where comparing with NWS's aware datetimes raises
+  `TypeError`. The planner always passes an aware datetime today, so this is latent.
+- **Home altitude is the Terrace Point constant for every plan** (`_qgc_home`), so a boat
+  launch gets the pad's 16 m. Already documented as a residual that Step F fixes.
+- **History noise:** 40 commits including "Test commit" and "reverted test commit". Squash-merge
+  would keep `main` readable.
+
+Environment note: this session began on `rollout_hotfix`, whose CLAUDE.md describes R-2 work
+(99 tests) that is not on this branch. The review above is of `second_flight_engine_build`.
+
+### 2026-11-03 (Reviewed PR #3 "Rollout hotfix is complete, along with the additional steps needed for wiring")
+
+**Scope.** Reviewed open PR #3 by Robert Wandel: `rollout_hotfix` → `main`, head `d07201a`,
+52 commits, 38 files, +10,838 / −1,195. It contains all of PR #2 (`second_flight_engine_build`
+merged into `rollout_hotfix` at `b2ed3f6`), plus the camera-rollout fast track and Step K
+(10 commits, 19 files).
+- PR #2's half was reviewed on 2026-10-13 (above), so this review covers the 10 new commits.
+- I built most of that code myself, so a separate reviewer agent read the code diff
+  independently. I confirmed each of its findings by probe or by reading the code.
+
+**Verification.** From a clean `git archive` of `d07201a`:
+- **120 tests pass.**
+- The entry point runs with no warnings under `-W error` (default plan: 9 lines, 74.3 min,
+  15.7 min margin).
+- GitHub reports the PR as mergeable. `main` and `second_flight_engine_build` are both
+  ancestors of the head, so the merge cannot conflict.
+
+I ran no git command that changes state.
+
+**What this PR merges.** The PR body is one sentence; this entry is its description.
+- **Step J:** the QGC `.plan` writer, transit-aware sizing, transit bearings, and the
+  grid/transit split in the summary.
+- **The camera-rollout fix:** a collection inset sized from a design wind the RPIC sets
+  (`--design-wind`), and Strat 1's pushback of line 1's first waypoint.
+- **Step K:** the BlackSwift S3 as the default aircraft; its climb orbit, descent and
+  operator hand-offs paid for in the budget; a 10 m transition for every VTOL; and pilot
+  notes on every plan (winds above the aircraft's rating, weather that isn't a forecast,
+  the hand-offs and the final frame).
+- **Not built:** the BlackSwift XML writer (K-5), left out on purpose by the user on
+  2026-11-03 because the default aircraft may change.
+- **Unflown and provisional:**
+  - No output has been flown.
+  - The rollout constants (2.5, 80) come from PX4 SITL flying the retired S2.
+  - The S3's climb and descent rates are the S2's.
+
+**The reviewer's request from PR #2 is met.** The user clarified (2026-11-03) that "a
+separate Markdown doc" meant Claude's review of the PR, added to this file, so that any
+agent reviewing the PR independently can read it. `c6bb8ee` did that for PR #2, and this
+entry does it for PR #3.
+
+**Blocking: none in the code.**
+
+**Before merge:**
+- **BlackSwift's material comes out of the repo and its history** (the user's decision,
+  2026-11-03). The repo is PUBLIC, and BlackSwift declined to share its S3 model on IP
+  grounds. Both removals rewrite only `rollout_hotfix`; `main`, other branches and forks
+  (there are none) are unaffected. The files stay on the user's disk, ignored by
+  `.gitignore`, and no code reads them.
+  - **The three example plans (`BS_EXAMPLES/`): removed.** They were added in `a902cc2`. The
+    rewrite of the 7 commits from there to the head was dry-run on a throwaway clone, then
+    run by the user and pushed. I verified the pushed result: no reachable commit carries
+    the files, `main` is still an ancestor, and the 120 tests pass.
+  - **The meeting write-up (`BlackSwift Response Writeup.txt`): removed the same way.** It
+    was added in `ccacf9a`, so that rewrite covers the commits from there to the head.
+  - Each rewrite changes the head SHA, so `d07201a` above names the original head.
+  - GitHub keeps the old commits reachable by SHA from PR #3's history until GitHub
+    Support purges them. A complete removal needs that request.
+- **A stray `test` line is still in `src/constants.py`'s module docstring (line 19)**, from
+  commit `88cd726 test`. Delete it.
+- **The re-seed test proves nothing since K-4** (`tests/test_4_grid_assembly.py:174`).
+  - `retried.append(plan.grid_budget_m < usable)` assumed that a launch at M1 hands `geo`
+    the full budget on pass 1. Since K-4, pass 1 also subtracts the climb and hand-off
+    reserve, so the condition is true at every design wind.
+  - Probe: winds 0–11 m/s fit on one pass and still count as "retried"; only 12–15 m/s
+    actually re-seed. The code is correct; the test would not notice if the re-seed broke.
+  - Line 177 is weak in the same way: it checks `flight <= usable`, but the loop's real fit
+    condition is `flight + phases <= usable`.
+  - Fix: compare against the budget with the phases subtracted, and check the phases in the
+    fit assertion.
+- **A gust in an unknown unit reads as a 0 m/s forecast** (`src/weather.py:268-271`).
+  - Unit failures mark only `windSpeed` and `windDirection` stale. A `windGust` that fails
+    conversion becomes 0 m/s and is not marked stale.
+  - The K-6 pilot notes trust any gust that isn't stale, so a gust above the rating would go
+    unreported, with no "not checked" note.
+  - It triggers only if NWS changes the gust unit. The fix is one line, plus a test beside
+    `test_get_weather_bad_unit_is_stale`.
+
+**Follow-ups for F-1 / F-1.5. Not reachable from the CLI today:** both need a custom
+`MissionRequest`, which F-1 makes a user input.
+- **The default climb point can land past line 1's first waypoint**
+  (`planner._default_climb_waypoint`). It is always 600 m from the pad toward WP001, but
+  Strat 1 measures the turn from the pad.
+  - Probed with pads within 600 m of WP001: the recorded arrival differs from the one flown
+    from the climb point by 5°–180°.
+    - Pad 250 m behind WP001: recorded 0°, flown 180°.
+    - Pad 400 m off at 135°: recorded 114°, flown 53°, with an 86 m pushback that isn't
+      needed.
+  - The transit runs 400–860 m past the direct route, against the docstring's "no longer
+    than the transit without it".
+  - The 500 m orbit is then centred 32–431 m from WP001, so it overlaps line 1.
+  - Fix with F-1: place the climb point using the pad-to-line-1 distance, and measure
+    Strat 1's arrival from the climb point.
+- **`_check_minimum_legs` checks a leg that isn't flown** (`planner.py:426`). It walks
+  `plan.waypoints`, so it checks pad→WP001 and never climb point→WP001.
+  - A pad 100 m from WP001 is wrongly rejected, although the leg flown is 500 m.
+  - A climb point 32 m from WP001 passes, although that is below the 126 m capture distance.
+- **`--design-wind nan` or `inf` passes the argument check.** The run then fails in `geo` with
+  a grid-too-small message that blames the wrong input. Reject non-finite values in
+  `_design_wind_ms`.
+
+**Merge method:** squash, or a rebase that drops the "test" commits (`88cd726`, the
+`3b43c8f`, `37d2c86` and its revert `65439d1`). 52 commits would make `main` hard to read.
+
+Everything verified also checked out: the duration/transit split, the fit loop's use of
+values across passes, units, Optional paths and the VTOL takeoff altitude.

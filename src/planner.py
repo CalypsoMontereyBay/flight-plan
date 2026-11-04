@@ -1,45 +1,57 @@
 """
-Planner.py is the "Hub" for the engine. This program puts all of the pieces together.
+planner.py is the "Hub" for the engine. This program puts all of the pieces together.
 
-It is knowledgable of the other files while each module is not.
+It is knowledgeable of the other files while each module is not.
 
-Planner.py pulls the sun state (sun.py) and grid geometry (geo.py), then converts waypoints from
+planner.py pulls the sun state (sun.py) and grid geometry (geo.py), then converts waypoints from
 their geometric form into Waypoint objects so they can be placed into a Mission
 Request object. The best corner is picked for the start of the mission route within the grid.
 Then, this file returns a candidate plan that is scored.
 
-Planner.py stitches the engine's calculations together and presents a candidate.
+planner.py stitches the engine's calculations together and presents a candidate.
 """
 
-# File Imports:
-
-from objects import Aircraft, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
-import constants as CONST
-from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between
-from sun import create_sun_state, mission_date
-from aircraft_math import max_planned_distance_m, route_duration_min, battery_margin_min
 import itertools
 
-# Main Functions and logic:
+import constants as CONST
+import weather
+from aircraft_math import (
+    max_planned_distance_m, route_duration_min, battery_margin_min, rollout_inset_m,
+    entry_pushback_m, waypoint_capture_distance_m, climb_duration_min, descent_duration_min,
+    descent_overrun_min, cruise_distance_m,
+)
+from geo import make_lawnmower_grid_through_m1, distance_between, bearing_between, destination_point
+from objects import Vehicle, Sensor, Waypoint, MissionRequest, Weather, CandidatePlan
+from sun import create_sun_state, mission_datetime as DEFAULT_MISSION_DATETIME
+
 # Step 1: Build the components of a candidate plan by assembling the
 # objects I need.
 
-# Step 1.1: Assemble the aircraft and get its constraints from aircraft math.
+# Step 1.1: Assemble the aircraft and get its constraints from aircraft math. The BlackSwift
+# S3, a tilt-rotor VTOL, is the default aircraft since Step K-3 (the S2 is end of life).
 
-_Black_Swift = Aircraft(
-    CONST.BLACKSWIFT_ENDURANCE_min,
-    CONST.BLACKSWIFT_WIND_RATING_ms,
-    CONST.BLACKSWIFT_CLIMB_RATE_ms,
-    CONST.BLACKSWIFT_DESCENT_RATE_ms,
-    CONST.BLACKSWIFT_TURN_RADIUS_m,
-    CONST.BLACKSWIFT_TURN_PENALTY_s,
-    CONST.BLACKSWIFT_MIN_GROUND_SPEED_ms,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+_BlackSwift_S3 = Vehicle(
+    CONST.BLACKSWIFT_S3_ENDURANCE_min,
+    CONST.BLACKSWIFT_S3_WIND_RATING_ms,
+    CONST.BLACKSWIFT_S3_CLIMB_RATE_ms,
+    CONST.BLACKSWIFT_S3_DESCENT_RATE_ms,
+    CONST.BLACKSWIFT_S3_TURN_RADIUS_m,
+    CONST.BLACKSWIFT_S3_TURN_PENALTY_s,
+    CONST.BLACKSWIFT_S3_MIN_GROUND_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
+    CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
+    hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
+    transition_height_agl_m=CONST.TRANSITION_REL_m,
+    waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s
 )
 
 # Amount of distance the aircraft can use for its mission (Using the alias function, further docs in aircraft_math.py)
-_Black_Swift_usable_endurance_m = max_planned_distance_m(
-    _Black_Swift, CONST.V1_EMERGENCY_RESERVE_FRACTION
+# The reserve is the fixed RTH_SEED_RESERVE_FRACTION (15%). The wind-derived reserve that was
+# meant to replace it (_rth_safe_budget, C-2 step 5) was CANCELLED on 2026-09-08, so this
+# budget is not RTH-cleared and is not meant to be -- see CLAUDE.md, constraint 4.
+_BlackSwift_S3_usable_endurance_m = max_planned_distance_m(
+    _BlackSwift_S3, CONST.RTH_SEED_RESERVE_FRACTION
 )
 
 # Step 1.2: Assemble the Sensor object
@@ -47,177 +59,177 @@ _Black_Swift_usable_endurance_m = max_planned_distance_m(
 _Calypso_payload = Sensor(
     CONST.V1_DEFAULT_SENSOR_CROSS_TRACK_FOV_deg,
     CONST.V1_DEFAULT_SENSOR_ALONG_TRACK_FOV_DEG,
-    CONST.V1_DEFAULT_OVERLAP_PCT,
+    CONST.V1_DEFAULT_CROSSTRACK_OVERLAP_PCT,
+    CONST.V2_DEFAULT_ALONGTRACK_OVERLAP_PCT,
     CONST.V1_DEFAULT_SENSOR_OFF_NADIR_deg,
-    "Micasense from Grey Paper",
+    mounting=CONST.V2_SENSOR_MOUNTING,
+    sensor_name=CONST.V2_SENSOR_NAME
 )
 
 # Step 1.3: Mission Request object for launch, land, and M1, then route assembly:
 
-_V1_Launch_Waypoint = Waypoint(
+_Launch_Waypoint = Waypoint(
     "WP000",
     CONST.V1_LAUNCH_POINT_LAT,
     CONST.V1_LAUNCH_POINT_LONG,
     CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAUNCH,
     "Launch point",
-    "Seymour-Beach-Launch",
+    "Terrace-Point-Launch",
 )
 
-_V1_Land_Waypoint = Waypoint(
+_Land_Waypoint = Waypoint(
     "WP_END",
     CONST.V1_LAND_POINT_LAT,
     CONST.V1_LAND_POINT_LONG,
     CONST.V1_DEFAULT_LAND_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_LAND,
     "land waypoint",
-    "Seymour-Road-Land",
+    "Terrace-Point-Land",
 )
 
-_V1_M1_Waypoint = Waypoint(
+_M1_Waypoint = Waypoint(
     "WP_M1",
     CONST.M1_MOORING_LAT,
     CONST.M1_MOORING_LONG,
     CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    CONST.BLACKSWIFT_CRUISE_SPEED_ms,
+    CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
     CONST.WAYPOINT_ACTION_M1_OVERFLIGHT,
     "M1 waypoint for overflight req",
     "M1-Mooring-Station",
 )
 
-_V1_Mission_Request = MissionRequest(
-    mission_name="V1 First Example Mission",
-    launch_waypoint=_V1_Launch_Waypoint,
-    land_waypoint=_V1_Land_Waypoint,
-    m1_waypoint=_V1_M1_Waypoint,
-    altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
-    valid_time=mission_date,
-    require_m1_overflight=True,
-    grid_orientation_deg=None,
-    notes="First Mission",
-    included_target_waypoints=[_V1_M1_Waypoint],
-)
+# Step 1.4: the date/time dependent objects are built per run by a builder function.
 
 
-# Step 1.4: Weather Stub, no API source yet, using conditions at launch point:
+def _build_dated_objects(mission_datetime, design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
+    """
+    Build the objects that depend on the mission datetime -- sun state, mission request
+    and weather -- and return them with the sun azimuth. The mission request also carries
+    the design wind, the RPIC's planning input at flight altitude.
+    """
 
-_V1_assumed_weather = Weather(
-    CONST.V1_LAUNCH_POINT_LAT,
-    CONST.V1_LAUNCH_POINT_LONG,
-    mission_date,
-    CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
-    CONST.DEFAULT_ZERO_WIND,
-    CONST.DEFAULT_WIND_DIRECTION_deg,
-    CONST.DEFAULT_WIND_GUST_ms,
-    CONST.DEFAULT_VISIBILITY_m,
-    CONST.DEFAULT_WEATHER_CONDITION,
-)
+    sun_state = create_sun_state(
+        CONST.V1_LAUNCH_POINT_LAT,
+        CONST.V1_LAUNCH_POINT_LONG,
+        mission_datetime
+    )
 
+    mission_request = MissionRequest(
+        mission_name="V2 Generated Mission",
+        launch_waypoint=_Launch_Waypoint,
+        land_waypoint=_Land_Waypoint,
+        m1_waypoint=_M1_Waypoint,
+        altitude_m=CONST.V1_DEFAULT_AIRCRAFT_ALTITUDE_m,
+        valid_time=mission_datetime,
+        design_wind_aloft_ms=design_wind_aloft_ms,
+        require_m1_overflight=True,
+        grid_orientation_deg=None,
+        notes="V2 Grid",
+        included_target_waypoints=[_M1_Waypoint]
+    )
 
-# Step 2: Assemble the current sun state and grab the azimuth.
+    # Ask the weather leaf for live NWS data; it returns None when weather cannot be
+    # produced (out of forecast horizon, or any fetch/parse failure).
+    mission_weather = weather.get_weather(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_datetime
+    )
 
-_V1_mission_sun_state = create_sun_state(
-    CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, mission_date
-)
+    # Fallback: the V1-style clear-sky / zero-wind stub, so a plan is always produced.
+    if mission_weather is None:
+        mission_weather = Weather(
+            CONST.V1_LAUNCH_POINT_LAT,
+            CONST.V1_LAUNCH_POINT_LONG,
+            mission_datetime,
+            CONST.V1_DEFAULT_MISSION_CLOUD_COVER,
+            CONST.DEFAULT_ZERO_WIND,
+            CONST.DEFAULT_WIND_DIRECTION_deg,
+            CONST.DEFAULT_WIND_GUST_ms,
+            CONST.DEFAULT_VISIBILITY_m,
+            CONST.DEFAULT_WEATHER_CONDITION,
+        )
 
-# Setting the mission azimuth
-_V1_mission_sun_azimuth = _V1_mission_sun_state.azimuth
+    mission_az = sun_state.azimuth
 
-"""
-HELPER FUNCTIONS FOR POPULATING THE CANDIDATE PLAN BELOW
-In Order:
-
-
-1. _candidate_orientation(): takes an azimuth angle and returns two heading "orientations"
-Both orientations are valid for "science" lines, but depending on all the other factors, one will score
-better than the other. returns both in a tuple for passing around and proper security.
-These values are then passed as potential_orientation_deg params in other helpers.
-
-2. _score_glint(): Returns how far off one leg of a candidate orientation is
-off from the 135 standard. Scores follow a golf paradigm (lower = better). A score of 0 means
-135 degrees exactly. No candidate orientation can earn lower than zero. If scores are equal, including for
-two candidates that earn a score of zero, a tiebreaker (which orientation's corner is closest to the launch),
-is used. This is the tiebreaker because if the corner is closer, it is more likely that the grid is also larger.
-
-3. _score_candidate(): scores a candidate based on the
-deviation from the 135 degree ideal based on their science leg. 
-
-4. _passes_glint_gate(): checks if the score of a candidate is within a certain margin, plans are rejected if this
-function returns False, used in function #6.
-
-5. _build_grid_for_orientation(): takes an orientation and uses the lawnmower route
-building function to construct a grid
-
-6. _pick_best_orientation(): takes the two candidates and picks the best grid for the mission, also handles
-tie breaking
-
-7. _reorient_to_launch(): checks if the normal orientation of the grid or the reverse orientation (H + 180)
-is more efficient by checking the distance of the launch point to both the first and last waypoints of the grid.
-The grid is then either left alone or reversed accordingly
-
-8. _angular_distance(heading1_deg, heading2_deg): returns the angular distance between two angles
-
-9. _classify_waypoints(): Walks the route and tags each one according to the waypoint actions found in constants.py. Does final checks (prepend & append) the launch and land waypoints in their
-final positions. Returns a list of waypoint objects that is "the route."
-"""
+    return (sun_state, mission_request, mission_weather, mission_az)
 
 
 def _candidate_orientation(sun_az):
+    """
+    Return the two candidate grid orientations for a sun azimuth, as a tuple: the headings
+    SCIENCE_RELATIVE_AZIMUTH_deg either side of the sun. Both are valid for science lines;
+    _pick_best_orientation scores them and breaks the tie.
+    """
 
-    # Two possible heading orientations for minimizing glint, they will
-    # be used as "paths" and then the score for V1 is based off of glint minimization.
+    # NOTE (V2C): with the along-track mount the target is 90 deg of relative
+    # azimuth, so these two candidates come out 180 deg apart -- the SAME grid
+    # axis flown in opposite directions, not two distinct grids. The pair is kept
+    # because _pick_best_orientation still uses it to resolve the entry corner,
+    # and because a future target != 90 would separate them again.
 
     potential_orientation_one = (
-        sun_az + CONST.AZIMUTH_ONE_THIRTY_FIVE
+        sun_az + CONST.SCIENCE_RELATIVE_AZIMUTH_deg
     ) % CONST.AZIMUTH_THREE_SIXTY
 
     potential_orientation_two = (
-        sun_az - CONST.AZIMUTH_ONE_THIRTY_FIVE
+        sun_az - CONST.SCIENCE_RELATIVE_AZIMUTH_deg
     ) % CONST.AZIMUTH_THREE_SIXTY
 
     return (potential_orientation_one, potential_orientation_two)
 
 
-# Glint scoring function used to rank plans for V1.
-# THE ONLY RANKING FUNCTION FOR V1, OTHERS WILL FOLLOW
-# track heading is an az candidate from the function above
 def _score_glint(potential_orientation_deg, sun_az_deg):
     """
-    Golf-style glint penalty: 0 = perfect (track is exactly 135 off sun-azimuth),
-    higher = worse. Symmetric is +- 135 since the camera does not care which way it is tilted.
-    (The aircraft is what maintains the azimuth, not the cam).
+    The engine's ONLY ranking function so far (Step D adds cloud cover). Golf-style glint
+    penalty: 0 = perfect (the leg sits exactly SCIENCE_RELATIVE_AZIMUTH_deg off the sun
+    azimuth), higher = worse. No orientation can score below zero.
 
-    track_heading: heading flown on the leg: (0..360)
-    sun_az: sun azimuth at the mission time: (0..360)
+    Scored against the target AND its mirror (360 - target) because glint
+    geometry is symmetric about the solar principal plane -- sun off the left
+    shoulder is as good as sun off the right.
+
+    potential_orientation_deg: heading flown on the leg (0..360)
+    sun_az_deg: sun azimuth at the mission time (0..360)
     """
 
     # finds how far off each azimuth candidate heading is from the desired 0 score.
     azimuth_delta = (potential_orientation_deg - sun_az_deg) % CONST.AZIMUTH_THREE_SIXTY
 
-    # the lower of the values is the winner and is returned
+    mirror_azimuth_deg = CONST.FULL_CIRCLE_DEG - CONST.SCIENCE_RELATIVE_AZIMUTH_deg
+
+    # _angular_distance wraps correctly for ANY target; a raw abs() difference
+    # only happened to work for the old 135/225 pair.
     return min(
-        (abs(azimuth_delta - CONST.AZIMUTH_ONE_THIRTY_FIVE)),
-        (abs(azimuth_delta - CONST.AZIMUTH_TWO_TWENTY_FIVE)),
+        _angular_distance(azimuth_delta, CONST.SCIENCE_RELATIVE_AZIMUTH_deg),
+        _angular_distance(azimuth_delta, mirror_azimuth_deg),
     )
 
 
 def _score_candidate(potential_orientation_candidate_deg, sun_az):
+    """
+    Score a candidate orientation by its science leg's deviation from the target relative
+    azimuth.
+    """
 
-    # Calculates the science leg score of an orientation
     science_leg_score = _score_glint(potential_orientation_candidate_deg, sun_az)
 
     return science_leg_score
 
 
 def _passes_glint_gate(score):
+    """
+    Whether a candidate's score is within V1_GLINT_TOLERANCE_DEG. Candidates that fail are
+    dropped by _pick_best_orientation.
+    """
 
     return score <= CONST.V1_GLINT_TOLERANCE_DEG
 
 
 def _build_grid_for_orientation(
-    orientation_deg, mission_request: MissionRequest, payload: Sensor, usable_distance_m
+    orientation_deg, mission_request: MissionRequest, payload: Sensor, usable_distance_m,
+    collection_inset_m
 ):
     """
     Thin wrapper around geo.make_lawnmower_grid_through_m1 that pulls the grid
@@ -225,14 +237,21 @@ def _build_grid_for_orientation(
 
     Returns geo's (flight_lines, route_points, metrics) tuple unchanged.
     """
+
+    if payload.mounting != CONST.SENSOR_MOUNT_ALONG_TRACK:
+        raise ValueError(f"V2 only allows for along track payload mounting in accordance with geo.py math; Sensor declares: {payload.mounting}")
+
     return make_lawnmower_grid_through_m1(
         mission_request.m1_wp,
         orientation_deg,
         usable_distance_m,
         mission_request.altitude,
         payload.cross_track_fov,
-        payload.desired_overlap,
+        payload.cross_track_overlap,
         off_nadir_deg=payload.off_nadir,
+        along_track_fov_deg=payload.along_track_fov,
+        along_track_overlap_pct=payload.along_track_overlap,
+        collection_inset_m=collection_inset_m,
     )
 
 
@@ -241,7 +260,8 @@ def _pick_best_orientation(
     sun_az_deg,
     mission_request: MissionRequest,
     payload: Sensor,
-    usable_distance_m,
+    predicted_grid_distance_m,
+    collection_inset_m,
 ):
     """
     Score both candidate science headings (glint, science-leg only), keep the
@@ -277,7 +297,8 @@ def _pick_best_orientation(
 
     for orientation_deg, orientation_score in gate_passers:
         flight_lines, route_points, metrics = _build_grid_for_orientation(
-            orientation_deg, mission_request, payload, usable_distance_m
+            orientation_deg, mission_request, payload, predicted_grid_distance_m,
+            collection_inset_m
         )
         nearest_corner_dist_m = min(
             distance_between(launch_point, route_points[0]),
@@ -294,6 +315,12 @@ def _pick_best_orientation(
                 metrics,
             )
 
+    # Cannot trigger today: gate_passers is non-empty (checked above), so the loop always sets
+    # best_entry. Stated in code so a future edit that breaks the invariant fails here, by
+    # name, rather than as "cannot unpack None" on the next line.
+    if best_entry is None:
+        raise ValueError("No grid was built for any gate-passing orientation!")
+
     _, winning_orientation, winning_score, flight_lines, route_points, metrics = (
         best_entry
     )
@@ -302,6 +329,10 @@ def _pick_best_orientation(
 
 
 def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
+    """
+    Fly the grid forwards or reversed (H + 180), whichever starts at the corner closer to
+    the launch point. Returns the route and the M1 index, both adjusted if reversed.
+    """
 
     last_wp_dist_to_launch = distance_between(launch_point, route_points[-1])
 
@@ -317,7 +348,194 @@ def _reorient_to_launch(route_points: list, m1_idx, launch_point: Waypoint):
         return (route_points, m1_idx)
 
 
+def _apply_entry_pushback(route_points: list, arrival_origin, aircraft: Vehicle, design_wind_aloft_ms):
+    """
+    Strat 1 (camera rollout fast track, 2026-10): move line 1's first turn waypoint back
+    along line 1, so the turn in from the transit has rolled out before the camera starts.
+    The distance is aircraft_math.entry_pushback_m at the arrival angle, and it is 0 for a
+    turn of 90 deg or less. arrival_origin is where the aircraft comes from: the climb point
+    when the request gives one, else the launch point, which the default climb point sits in
+    line with. Returns (route_points, pushback_m, arrival_angle_deg), with only the first
+    point moved.
+    """
+
+    first_turn = route_points[0]
+    collect_start = route_points[1]
+
+    # The turn at line 1's first waypoint: 0 deg flies straight on, 180 deg reverses.
+    inbound_bearing_deg = bearing_between(arrival_origin, first_turn)
+    line_bearing_deg = bearing_between(first_turn, collect_start)
+    arrival_angle_deg = _angular_distance(inbound_bearing_deg, line_bearing_deg)
+
+    pushback_m = entry_pushback_m(aircraft, design_wind_aloft_ms, arrival_angle_deg)
+
+    if pushback_m == 0:
+        return (route_points, pushback_m, arrival_angle_deg)
+
+    # Measured from collect_start, so the moved waypoint stays on line 1's own geodesic and
+    # sits exactly inset + pushback before the camera starts. Moving it back widens the
+    # arrival angle slightly. The formula's margin covers that, so it is not iterated.
+    outward_bearing_deg = bearing_between(collect_start, first_turn)
+    lead_in_m = distance_between(collect_start, first_turn) + pushback_m
+    moved_first_turn = destination_point(collect_start, outward_bearing_deg, lead_in_m)
+
+    return ([moved_first_turn] + route_points[1:], pushback_m, arrival_angle_deg)
+
+
+def _transition_height_agl_m(aircraft: Vehicle):
+    """
+    Height above home at which a VTOL transitions to forward flight: its own, or else the
+    one every VTOL uses, TRANSITION_REL_m. None for a vehicle that never transitions.
+    """
+
+    if not aircraft.is_VTOL:
+        return None
+
+    if aircraft.transition_height_agl_m is None:
+        return CONST.TRANSITION_REL_m
+
+    return aircraft.transition_height_agl_m
+
+
+def _default_climb_waypoint(launch_wp: Waypoint, first_waypoint: Waypoint, altitude_m, cruise_speed_ms):
+    """
+    The centre of the climb orbit when the request gives none: on the departure bearing, one
+    orbit radius plus the pad clearance out from the pad, so the whole climbing orbit stays
+    clear of it. It sits in line with line 1's first waypoint, so the transit through it is
+    no longer than the transit without it.
+    """
+
+    departure_bearing_deg = bearing_between(launch_wp, first_waypoint)
+    centre = destination_point(
+        launch_wp, departure_bearing_deg,
+        CONST.CLIMB_ORBIT_RADIUS_m + CONST.CLIMB_ORBIT_PAD_CLEARANCE_m
+    )
+
+    return Waypoint(
+        "WP_CLIMB",
+        centre.y,
+        centre.x,
+        altitude_m,
+        cruise_speed_ms,
+        CONST.WAYPOINT_ACTION_CLIMB_ORBIT,
+        "climb orbit centre",
+        "Climb-Orbit",
+    )
+
+
+def _check_minimum_legs(waypoints: list, capture_distance_m):
+    """
+    Raise if a leg between consecutive waypoints is shorter than the vehicle's capture
+    distance. The vehicle would move on before reaching the waypoint and skip it, camera
+    item and all. This is geometry, not weather: a sizing failure, like a grid too small
+    for three lines.
+    """
+
+    for leg_start, leg_end in zip(waypoints, waypoints[1:]):
+        leg_m = distance_between(leg_start, leg_end)
+
+        if leg_m < capture_distance_m:
+            raise ValueError(
+                f"The leg from {leg_start.waypoint_ID} to {leg_end.waypoint_ID} is "
+                f"{leg_m:.1f} m, shorter than the vehicle's {capture_distance_m:.1f} m "
+                f"capture distance, so the vehicle would skip {leg_end.waypoint_ID}"
+            )
+
+
+def _join_words(words: list):
+    """
+    "a", "a and b", "a, b and c": a list as a note reads it.
+    """
+
+    if len(words) <= 1:
+        return "".join(words)
+
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def _forecast_wind_figure(sustained_ms, gust_ms):
+    """
+    The forecast wind as a pilot note quotes it, from whichever halves are real forecasts.
+    """
+
+    if sustained_ms is None:
+        return f"gusts of {gust_ms:.1f} m/s"
+
+    if gust_ms is None:
+        return f"{sustained_ms:.1f} m/s"
+
+    return f"{sustained_ms:.1f} m/s gusting {gust_ms:.1f} m/s"
+
+
+def _pilot_notes(aircraft: Vehicle, mission_weather: Weather, design_wind_aloft_ms,
+                 handoff_reserve_min):
+    """
+    The notes the RPIC reads with this plan, most urgent first. They report and never
+    reject or reshape the plan (constraint 4):
+
+      1. a wind above the aircraft's wind rating: the design wind aloft, or the forecast's
+         sustained wind or gust at 10 m, compared as NWS gives it and never scaled aloft
+      2. weather that is not a forecast: no live forecast at all, or the fields NWS has no
+         forecast for at the mission time, which weather.py filled with defaults
+      3. the operator hand-offs the plan budgets for
+      4. the final frame of each science line
+
+    A default never stands in for a forecast here. A wind that weather.py defaulted is not
+    compared with the rating, and the note says it was not checked, because a defaulted
+    wind reads as dead calm.
+    """
+
+    notes = []
+
+    rating_ms = aircraft.vehicle_wind_rating
+    is_forecast = mission_weather.source == CONST.WEATHER_SOURCE_NWS
+
+    if design_wind_aloft_ms > rating_ms:
+        notes.append(CONST.PILOT_NOTE_DESIGN_WIND_OVER_RATING.format(
+            design_ms=design_wind_aloft_ms, rating_ms=rating_ms
+        ))
+
+    if is_forecast:
+        sustained_ms = None if mission_weather.is_stale("windSpeed") else mission_weather.wind_speed
+        gust_ms = None if mission_weather.is_stale("windGust") else mission_weather.wind_gusts
+
+        if any(wind_ms is not None and wind_ms > rating_ms for wind_ms in (sustained_ms, gust_ms)):
+            notes.append(CONST.PILOT_NOTE_FORECAST_WIND_OVER_RATING.format(
+                height_m=CONST.NWS_WIND_HEIGHT_m,
+                forecast=_forecast_wind_figure(sustained_ms, gust_ms),
+                rating_ms=rating_ms,
+            ))
+
+    if not is_forecast:
+        notes.append(CONST.PILOT_NOTE_NO_FORECAST.format(
+            horizon_days=CONST.NWS_FORECAST_HORIZON_days
+        ))
+
+    elif mission_weather.stale_fields:
+        # Known fields in the order the labels list them, then any other name as NWS spells it.
+        stale = mission_weather.stale_fields
+        labels = [label for field, label in CONST.NWS_FIELD_LABELS.items() if field in stale]
+        labels += sorted(field for field in stale if field not in CONST.NWS_FIELD_LABELS)
+
+        note = CONST.PILOT_NOTE_DEFAULTED_FIELDS.format(
+            fields=_join_words(labels), pronoun="it" if len(labels) == 1 else "them"
+        )
+        if mission_weather.is_stale("windSpeed"):
+            note += CONST.PILOT_NOTE_WIND_UNCHECKED
+        notes.append(note)
+
+    if handoff_reserve_min > 0:
+        notes.append(CONST.PILOT_NOTE_HANDOFF.format(reserve_min=handoff_reserve_min))
+
+    notes.append(CONST.RPIC_NOTE_FINAL_FRAME)
+
+    return tuple(notes)
+
+
 def _angular_distance(heading1_deg, heading2_deg):
+    """
+    Smallest angle between two headings, in degrees (0..180).
+    """
 
     return abs(
         (
@@ -334,9 +552,13 @@ def _classify_waypoints(
     launch_wp: Waypoint,
     land_wp: Waypoint,
     altitude_m,
-    cruise_speed_ms,
-    winning_orientation,
+    cruise_speed_ms
 ):
+    """
+    Walk the route and tag each point with its waypoint action from constants.py, then put
+    the launch and land waypoints at either end. Returns the list of Waypoint objects that
+    is "the route".
+    """
 
     # Establish a new route list that has each waypoint tagged, as well as a global index
     tagged_route_list = []
@@ -349,58 +571,47 @@ def _classify_waypoints(
 
     if land_wp.action != CONST.WAYPOINT_ACTION_LAND:
         land_wp.set_action(CONST.WAYPOINT_ACTION_LAND)
-        
+
     leg_number = 0
 
     for leg in itertools.batched(route_points, CONST.V1_POINTS_PER_LINE):
 
-        leg_heading = bearing_between(leg[0], leg[-1])
-
-        # A leg is a science leg if the current heading is the mission orientation that minimizes glint (H)
-
-        if _angular_distance(leg_heading, winning_orientation) < CONST.DEGREE_NINETY:
-
-            is_science = True
-
-        else:
-
-            is_science = False
-            
         leg_start = leg_number * CONST.V1_POINTS_PER_LINE
-            
+
         for local_idx, point in enumerate(leg):
-            
+
             global_index = leg_start + local_idx
-            
+
             if global_index == m1_route_idx:
-                
+
                 action = CONST.WAYPOINT_ACTION_M1_OVERFLIGHT
                 target_name = "M1"
-                
-            elif local_idx in (0, (CONST.V1_POINTS_PER_LINE -1)):
-                
+
+            elif local_idx in (0, (CONST.V1_POINTS_PER_LINE - 1)):
+
                 action = CONST.WAYPOINT_ACTION_TURN
                 target_name = None
-                
+
             elif local_idx == (CONST.V1_POINTS_PER_LINE // 2):
-                
+
                 action = CONST.WAYPOINT_ACTION_LINE_LABEL
                 target_name = None
-                
-            elif is_science and local_idx == 1:
-                    action = CONST.WAYPOINT_ACTION_COLLECT_START
-                    target_name = "Camera On"
-                    
-            elif is_science and local_idx == 3:
-                    action = CONST.WAYPOINT_ACTION_COLLECT_STOP
-                    target_name = "Camera Off"
-                    
+
+            elif local_idx == 1:
+
+                action = CONST.WAYPOINT_ACTION_COLLECT_START
+                target_name = "Camera On"
+
+            elif local_idx == (CONST.V1_POINTS_PER_LINE - 2):
+
+                action = CONST.WAYPOINT_ACTION_COLLECT_STOP
+                target_name = "Camera Off"
+
             else:
-                
+
                 action = CONST.WAYPOINT_ACTION_TRANSIT
                 target_name = None
-                
-        
+
             tagged_route_list.append(
                 Waypoint(
                     f"WP{global_index + 1:03d}",
@@ -412,81 +623,223 @@ def _classify_waypoints(
                     target_name=target_name,
                 )
             )
-            
-        leg_number += 1    
+
+        leg_number += 1
 
     tagged_route_list.append(land_wp)
 
     return tagged_route_list
 
 
-"""
-Putting it all together, build_candidate_plan() uses all of the pre-established
-objects and sends their data through the helpers as needed. Below is what happens in
-order:
-
-1. Identify candidates then pick the best orientation
-
-2. make a lawnmower grid through m1.
-
-3. reorient to the launch to get the shortest traversal to the grid possible.
-
-4. classify each waypoint now that proper orientation has been established.
-
-5. construct the candidate plan object with helpers and getters/setters.
-
-6. return a fully finished candidate plan.
-
-"""
-
-
 def build_candidate_plan(
-    mission_aircraft: Aircraft,
+    mission_aircraft: Vehicle,
     mission_aircraft_endurance_m,
     payload: Sensor,
     mission_request: MissionRequest,
     mission_weather: Weather,
     mission_azimuth,
     mission_sun_state,
-    candidate_name,
+    candidate_name
 ):
+    """
+    Put it all together: send the pre-established objects through the helpers and return
+    a finished, scored CandidatePlan. In order:
+
+      1. identify the two candidate orientations
+      2. size the collection inset from the design wind, and reserve the transit and the
+         takeoff and landing phases, so geo sizes the grid against what is left
+      3. pick the best orientation (which builds the lawnmower grid through M1)
+      4. reorient the grid so the route starts at the corner closest to launch, then move
+         line 1's first turn waypoint back for the turn in from the transit (Strat 1)
+      5. classify each waypoint now that the orientation is final, and place the climb point
+      6. measure the real transit and the descent's overrun; if the flight does not fit,
+         re-seed and repeat
+      7-10. build the CandidatePlan and set its metrics, pilot notes, duration, margin
+            and score
+    """
 
     # Step 1, generate the potential orientation candidates
     mission_potential_orientations = _candidate_orientation(mission_azimuth)
 
-    # Step 2, pick the winning orientation AND reuse the grid the picker built
-    (
-        mission_orientation,
-        mission_orientation_score,
-        flight_lines,
-        route_points,
-        metrics,
-    ) = _pick_best_orientation(
-        mission_potential_orientations,
-        mission_azimuth,
-        mission_request,
-        payload,
-        mission_aircraft_endurance_m,
+    # Step 2, size the collection inset, the straight at both ends of every line between
+    # the turn waypoint and the camera. It comes from the plan's own aircraft and the
+    # request's design wind, a planning input the RPIC owns. The forecast never sets it
+    # (constraint 4).
+    # A vehicle that captures its waypoints early starts its camera early by the same
+    # distance, so its capture distance replaces PX4's measured early start.
+    capture_distance_m = waypoint_capture_distance_m(mission_aircraft)
+
+    if capture_distance_m is None:
+        collection_inset_m = rollout_inset_m(mission_aircraft, mission_request.design_wind_aloft_ms)
+    else:
+        collection_inset_m = rollout_inset_m(
+            mission_aircraft, mission_request.design_wind_aloft_ms,
+            camera_early_start_m=capture_distance_m
+        )
+
+    # Then size the TAKEOFF AND LANDING PHASES (K-4). The aircraft climbs in an orbit from
+    # its transition height (from the pad, if it never transitions) to cruise altitude, so
+    # the climb costs its whole duration. It descends the same height along the approach,
+    # which costs time only where the approach is too short to hold it. Each of the two
+    # operator hand-offs, after takeoff and after the last waypoint, gets a reserve.
+    #
+    # Heights are AMSL. F-1 gives each launch and land point its own elevation; until then
+    # every pad sits at Terrace Point's, the same residual outputs._qgc_home carries.
+    transition_height_agl_m = _transition_height_agl_m(mission_aircraft)
+    vertical_floor_amsl_m = CONST.TERRACE_POINT_AMSL_m + (transition_height_agl_m or 0)
+    vertical_height_m = mission_request.altitude - vertical_floor_amsl_m
+
+    climb_min = climb_duration_min(mission_aircraft, vertical_height_m)
+    descent_min = descent_duration_min(mission_aircraft, vertical_height_m)
+    descent_distance_m = cruise_distance_m(mission_aircraft, descent_min)
+    handoff_min = 2 * CONST.OPERATOR_HANDOFF_RESERVE_min
+
+    # The approach is not known until the route is, so the first pass assumes it holds the
+    # whole descent. The fit loop charges any overrun it measures.
+    phase_reserve_m = cruise_distance_m(mission_aircraft, climb_min + handoff_min)
+
+    # Then RESERVE THE TRANSIT before geo is allowed to size anything.
+    #
+    # geo.make_lawnmower_grid_through_m1 takes a centre, an orientation and a distance --
+    # it does not know where launch is and must not learn, so this subtraction belongs to
+    # the hub. The seed is 2 * d(launch, M1); measured against the real entry/exit corners
+    # it comes out accurate to ~0.40% at the Terrace Point geometry, so one pass is
+    # normally enough and no fixed-point loop is warranted.
+    predicted_transit_budget_m = 2 * distance_between(
+        mission_request.launch_wp, mission_request.m1_wp
     )
 
-    # Step 3, reorient the grid so the route starts at the corner closest to launch
-    route_shapely_waypoints, m1_index = _reorient_to_launch(
-        route_points, metrics["m1_route_index"], mission_request.launch_point
-    )
+    grid_budget_m = mission_aircraft_endurance_m - predicted_transit_budget_m - phase_reserve_m
 
-    # Step 4, walk the route and classify each waypoint and assign it an index:
+    # Steps 3-6 run inside the fit loop. A pass that does not fit re-seeds the budget with
+    # the transit and phases it MEASURED rather than the ones it estimated. The pass failed
+    # because grid + transit + phases exceeded the battery, so the new budget is smaller
+    # than the grid that just failed: grid_budget_m strictly shrinks every pass and the
+    # loop cannot spin. If it shrinks below a 3-line grid, geo
+    # raises -- the honest answer that no grid fits this launch point, which is a sizing
+    # failure and not a weather veto.
+    for _fit_pass in range(CONST.TRANSIT_FIT_MAX_PASSES):
 
-    mission_route_list_classified = _classify_waypoints(
-        route_shapely_waypoints,
-        m1_index,
-        mission_request.launch_wp,
-        mission_request.land_wp,
-        mission_request.altitude,
-        mission_aircraft.vehicle_cruise_speed,
-        mission_orientation,
-    )
+        # Step 3, pick the winning orientation AND reuse the grid the picker built
+        (
+            mission_orientation,
+            mission_orientation_score,
+            flight_lines,
+            route_points,
+            metrics,
+        ) = _pick_best_orientation(
+            mission_potential_orientations,
+            mission_azimuth,
+            mission_request,
+            payload,
+            grid_budget_m,
+            collection_inset_m,
+        )
 
-    # Step 5, build the candidate plan
+        # Step 4, reorient the grid so the route starts at the corner closest to launch
+        route_shapely_waypoints, m1_index = _reorient_to_launch(
+            route_points, metrics["m1_route_index"], mission_request.launch_point
+        )
+
+        # Step 4 continued, Strat 1. It needs the final entry corner, so it runs after the
+        # reorientation, and before Step 6 measures the transit and the bearings from it.
+        if mission_request.climb_wp is None:
+            arrival_origin = mission_request.launch_point
+        else:
+            arrival_origin = mission_request.climb_wp.point
+
+        route_shapely_waypoints, line_one_pushback_m, entry_arrival_angle_deg = _apply_entry_pushback(
+            route_shapely_waypoints,
+            arrival_origin,
+            mission_aircraft,
+            mission_request.design_wind_aloft_ms
+        )
+
+        # Step 5, walk the route and classify each waypoint and assign it an index:
+
+        mission_route_list_classified = _classify_waypoints(
+            route_shapely_waypoints,
+            m1_index,
+            mission_request.launch_wp,
+            mission_request.land_wp,
+            mission_request.altitude,
+            mission_aircraft.vehicle_cruise_speed
+        )
+
+        # Step 5 continued, the climb point: the request's, or by default one on the
+        # departure bearing, in line with line 1's first waypoint.
+        if mission_request.climb_wp is None:
+            climb_waypoint = _default_climb_waypoint(
+                mission_request.launch_wp,
+                mission_route_list_classified[1],
+                mission_request.altitude,
+                mission_aircraft.vehicle_cruise_speed
+            )
+        else:
+            climb_waypoint = mission_request.climb_wp
+
+        # Step 6, measure the transit that was ACTUALLY planned, now that the route has
+        # been reoriented and the pad waypoints are in it.
+        # Launch Waypoint IDX = 0, Land Waypoint IDX = -1
+        # First Grid Waypoint IDX = 1, Last Grid Waypoint IDX = -2
+        #
+        # The outbound leg runs through the climb point, and includes line 1's lead-in, the
+        # pushback flown on line 1's axis before the turn waypoint geo placed. geo's grid
+        # distance starts at that waypoint, so the lead-in is flown but outside the grid,
+        # and the launch point sets its length. Counting it here keeps grid + transit equal
+        # to the flight, and lets the re-seed below pay for it. The orbit itself adds time,
+        # the climb, but no distance.
+        true_outbound_non_grid_transit_m = (
+            distance_between(mission_request.launch_wp, climb_waypoint)
+            + distance_between(climb_waypoint, mission_route_list_classified[1])
+            + line_one_pushback_m
+        )
+        true_returning_non_grid_transit_m = distance_between(
+            mission_route_list_classified[-2], mission_request.land_wp
+        )
+
+        # The aircraft leaves the pad for the climb point.
+        departure_bearing_deg = bearing_between(mission_request.launch_wp, climb_waypoint)
+
+        approach_bearing_deg = bearing_between(
+            mission_route_list_classified[-2], mission_request.land_wp
+        )
+
+        true_non_grid_transit_m = (
+            true_outbound_non_grid_transit_m + true_returning_non_grid_transit_m
+        )
+
+        total_flight_distance_m = (
+            true_non_grid_transit_m + metrics["total_grid_distance_m"]
+        )
+
+        # The descent is flown along the approach, the leg home from the last waypoint.
+        # Whatever that leg is too short to hold is lost before the transition, on top of
+        # the route.
+        descent_overrun_time_min = descent_overrun_min(
+            mission_aircraft, vertical_height_m, true_returning_non_grid_transit_m
+        )
+
+        phase_reserve_m = cruise_distance_m(
+            mission_aircraft, climb_min + descent_overrun_time_min + handoff_min
+        )
+
+        if total_flight_distance_m + phase_reserve_m <= mission_aircraft_endurance_m:
+            break
+
+        grid_budget_m = mission_aircraft_endurance_m - true_non_grid_transit_m - phase_reserve_m
+
+    else:
+        # Only reachable if the measured transit keeps growing faster than the budget
+        # shrinks, which the geometry does not permit. Fail loudly rather than return a
+        # plan the aircraft cannot fly.
+        raise ValueError(
+            f"Transit-aware grid sizing did not converge in "
+            f"{CONST.TRANSIT_FIT_MAX_PASSES} passes against "
+            f"{mission_aircraft_endurance_m:.0f} m of usable distance"
+        )
+
+    # Step 7, build the candidate plan
 
     candidate_plan = CandidatePlan(
         candidate_name,
@@ -496,18 +849,60 @@ def build_candidate_plan(
         mission_weather,
         mission_orientation,
         payload,
-        mission_route_list_classified,
+        mission_route_list_classified
     )
 
-    # Step 6, set the plan metrics using the object's setter
+    # Step 8, set the plan metrics using the object's setter.
+    # set_grid_metrics carries geo's grid_budget_m (endurance MINUS transit). The full
+    # battery figure is a different number and only the hub knows it, so it is set here.
 
     candidate_plan.set_grid_metrics(metrics)
 
-    # Step 7, calculate the duration of the flight in minutes and then send it to the candidate
+    candidate_plan.set_usable_endurance_distance_m(mission_aircraft_endurance_m)
+
+    candidate_plan.set_total_flight_distance_m(total_flight_distance_m)
+
+    candidate_plan.set_transit_distance_m(true_non_grid_transit_m)
+
+    candidate_plan.set_transit_bearings(departure_bearing_deg, approach_bearing_deg)
+
+    candidate_plan.set_entry_pushback(line_one_pushback_m, entry_arrival_angle_deg)
+
+    candidate_plan.set_climb_orbit(climb_waypoint, CONST.CLIMB_ORBIT_RADIUS_m, transition_height_agl_m)
+
+    candidate_plan.set_phase_durations(
+        climb_min, descent_min, descent_distance_m, descent_overrun_time_min, handoff_min
+    )
+
+    candidate_plan.set_pilot_notes(_pilot_notes(
+        mission_aircraft, mission_weather, mission_request.design_wind_aloft_ms,
+        CONST.OPERATOR_HANDOFF_RESERVE_min
+    ))
+
+    # A vehicle that captures its waypoints early must never be handed a leg it would skip.
+    if capture_distance_m is not None:
+        _check_minimum_legs(mission_route_list_classified, capture_distance_m)
+
+    # Step 9, calculate the duration of the flight in minutes and then send it to the
+    # candidate. This consumes the TOTAL flight distance, not the grid figure -- that
+    # substitution is the reporting half of the J-4 transit fix -- plus the phases flown on
+    # top of the route: the climb, the descent's overrun and the hand-offs (K-4).
+
+    phase_min = climb_min + descent_overrun_time_min + handoff_min
 
     candidate_plan_estimated_duration_min = route_duration_min(
-        metrics["total_route_distance_m"], metrics["total_lines"], mission_aircraft
+        total_flight_distance_m, metrics["total_lines"], mission_aircraft
+    ) + phase_min
+
+    # The grid is costed on its own; the transit is the REMAINDER. Every turn penalty is a
+    # grid turn, so the transit legs carry none. The phases happen outside the grid, and
+    # the remainder picks them up without a second formula that could drift from the
+    # first.
+    grid_duration_min = route_duration_min(
+        metrics["total_grid_distance_m"], metrics["total_lines"], mission_aircraft
     )
+
+    transit_duration_min = candidate_plan_estimated_duration_min - grid_duration_min
 
     candidate_plan_estimated_battery_margin_min = battery_margin_min(
         mission_aircraft, candidate_plan_estimated_duration_min
@@ -515,26 +910,45 @@ def build_candidate_plan(
 
     candidate_plan.set_duration_min(candidate_plan_estimated_duration_min)
 
+    candidate_plan.set_grid_duration_min(grid_duration_min)
+
+    candidate_plan.set_transit_duration_min(transit_duration_min)
+
     candidate_plan.set_battery_margin_min(candidate_plan_estimated_battery_margin_min)
 
-    # Step 8, retrieve the orientation score and send it to the candidate
+    # Step 10, retrieve the orientation score and send it to the candidate
     candidate_plan.set_score(mission_orientation_score)
 
     return candidate_plan
 
 
-# Public wrapper function for flight_plan_maker.py in order to prevent reaching into internals
+def plan_default_mission(candidate_name, mission_datetime=None,
+                         design_wind_aloft_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
+    """
+    Public wrapper for flight_plan_maker.py, so the entry point never reaches into internals.
+    Builds the default mission for mission_datetime (or the module default), planned for
+    design_wind_aloft_ms, the wind at flight altitude in m/s.
+    """
 
+    # With no datetime, fall back to the module-level V2 default so a plan can be
+    # built from just a name (keeps the V1-era one-arg call sites working). The
+    # sun resolver only defaults the STRING inputs; a None datetime object must be
+    # caught here.
+    if mission_datetime is None:
+        mission_datetime = DEFAULT_MISSION_DATETIME
 
-def plan_default_mission(candidate_name):
+    # unpacking dated objects:
+    sun_state, mission_request, weather_state, sun_az = _build_dated_objects(
+        mission_datetime, design_wind_aloft_ms
+    )
 
     return build_candidate_plan(
-        _Black_Swift,
-        _Black_Swift_usable_endurance_m,
-        _Calypso_payload,
-        _V1_Mission_Request,
-        _V1_assumed_weather,
-        _V1_mission_sun_azimuth,
-        _V1_mission_sun_state,
-        candidate_name=candidate_name,
+        mission_aircraft=_BlackSwift_S3,
+        mission_aircraft_endurance_m=_BlackSwift_S3_usable_endurance_m,
+        payload=_Calypso_payload,
+        mission_request=mission_request,
+        mission_weather=weather_state,
+        mission_azimuth=sun_az,
+        mission_sun_state=sun_state,
+        candidate_name=candidate_name
     )

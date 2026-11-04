@@ -1,0 +1,408 @@
+"""
+Tier 2 -- derived sizing + aircraft math.
+
+Builds directly on the Tier 0 primitives. These are still pure, closed-form math
+(endurance/distance/duration conversions, grid sizing, orientation candidates), so
+like Tier 0 they must NEVER fail. If an assert here breaks, the -x gate stops the
+run before any grid/classification/rendering tier is even attempted.
+
+Test vectors are hard literals (independent of production constants) so they pin the
+math itself, not whatever CONST happens to hold today.
+"""
+
+from datetime import datetime, timezone
+
+import pytest
+
+import aircraft_math as A
+import constants as CONST
+import geo as G
+import objects as OBJ
+import planner as P
+
+
+# One deterministic vehicle: endurance 90 min, turn penalty 10 s, cruise 18 m/s are
+# the three values the aircraft-math functions actually consume.
+def _test_aircraft():
+    return OBJ.Aircraft(90, 15, 3.35, 1.80, 57, 10, 12, 18)
+
+
+def test_total_endurance_distance():
+    ac = _test_aircraft()
+    # 90 min * 60 s/min * 18 m/s
+    assert A.total_endurance_distance_m(ac) == pytest.approx(97_200)
+
+
+def test_reserve_and_usable_distance():
+    ac = _test_aircraft()
+    assert A.reserve_distance_m(ac, 0.15) == pytest.approx(14_580)         # 97_200 * 0.15
+    assert A.usable_endurance_distance_m(ac, 0.15) == pytest.approx(82_620)  # 97_200 - 14_580
+    # max_planned_distance_m is a documented alias for usable_endurance_distance_m
+    assert A.max_planned_distance_m(ac, 0.15) == pytest.approx(82_620)
+
+
+def test_route_duration_min():
+    ac = _test_aircraft()
+    # 1800 m / 18 m/s = 100 s cruise; (11 - 1) turns * 10 s = 100 s; total 200 s -> 3.333 min
+    assert A.route_duration_min(1800, 11, ac) == pytest.approx(3.3333, abs=1e-3)
+
+
+def test_battery_margin_min_sign():
+    ac = _test_aircraft()
+    assert A.battery_margin_min(ac, 3.3333) == pytest.approx(86.6667, abs=1e-3)
+    # negative margin flags an infeasible route (duration > endurance)
+    assert A.battery_margin_min(ac, 100) == pytest.approx(-10)
+
+
+def test_calculate_line_length():
+    assert G.calculate_line_length_m(140, 11) == pytest.approx(1400)  # offset * (N - 1)
+    with pytest.raises(ValueError):
+        G.calculate_line_length_m(140, 1)   # N < 2
+    with pytest.raises(ValueError):
+        G.calculate_line_length_m(0, 11)    # offset <= 0
+
+
+def test_calculate_grid_area():
+    assert G.calculate_grid_area_m2(140, 11) == pytest.approx(1_960_000)  # 1400 ** 2
+
+
+# NOTE: the ODD result here is load-bearing, not cosmetic. An odd total_lines is what puts
+# the center line through M1, which is what makes the M1 overflight free (no detour) and
+# what geo's m1_route_index assumes. An even count silently moves M1 off every flight line.
+def test_initial_total_lines_from_budget():
+    # 4*10000/100 = 400 -> (1 + sqrt(401)) / 2 = 10.51 -> floor 10 -> even, -1 -> 9
+    assert G._initial_total_lines_from_budget(10000, 100) == 9
+    # tiny budget floors at the enforced minimum of 3
+    assert G._initial_total_lines_from_budget(100, 100) == 3
+    # invariant: result is always odd (so the center line passes through M1)
+    for budget in (500, 2500, 9000, 50_000):
+        assert G._initial_total_lines_from_budget(budget, 137) % 2 == 1
+    with pytest.raises(ValueError):
+        G._initial_total_lines_from_budget(0, 100)
+    with pytest.raises(ValueError):
+        G._initial_total_lines_from_budget(10000, 0)
+
+
+# ---- V2C-2 wind triangle -------------------------------------------------------------
+# Every vector below is closed-form at TAS 18 m/s. NWS (and aviation) report wind by the
+# direction it blows FROM, and all of these assume that: 045 means blowing toward 225.
+
+
+def test_wind_components_are_relative_to_the_track():
+    # THE core property. Wind's effect depends on the angle BETWEEN it and the direction
+    # of travel, so the track is not optional. Dropping it silently pins the track to
+    # due north, which happens to be right only for track 000.
+    assert A.cross_wind_component_ms(90, 5, 0) == pytest.approx(5.0)    # from the right
+    assert A.head_wind_component_ms(0, 5, 0) == pytest.approx(5.0)      # dead ahead
+    assert A.head_wind_component_ms(180, 5, 0) == pytest.approx(-5.0)   # tailwind is negative
+
+    # same wind, a real mission track -> completely different components
+    assert A.cross_wind_component_ms(45, 5, 237.18) == pytest.approx(1.054918, abs=1e-5)
+    assert A.head_wind_component_ms(45, 5, 237.18) == pytest.approx(-4.887448, abs=1e-5)
+
+    # stub weather reports no direction at all -> unresolvable vector, treated as calm
+    assert A.cross_wind_component_ms(None, 5, 0) == pytest.approx(0.0)
+    assert A.head_wind_component_ms(None, 5, 0) == pytest.approx(0.0)
+    assert A.cross_wind_component_ms(90, 0, 0) == pytest.approx(0.0)
+
+
+def test_wind_correction_angle():
+    V = 18
+    assert A.wind_correction_angle_deg(90, 5, 0, V) == pytest.approx(16.127620, abs=1e-5)
+    assert A.wind_correction_angle_deg(90, 4, 0, V) == pytest.approx(12.839588, abs=1e-5)
+    assert A.wind_correction_angle_deg(0, 5, 0, V) == pytest.approx(0.0)     # pure headwind, no crab
+    assert A.wind_correction_angle_deg(45, 5, 0, V) == pytest.approx(11.327603, abs=1e-5)
+
+    # crosswind at or beyond airspeed: no heading makes that track at all
+    assert A.wind_correction_angle_deg(90, 20, 0, V) is None
+    assert A.wind_correction_angle_deg(90, 18, 0, V) is None   # exactly V -> nose square to track
+
+
+def test_wind_correction_angle_flips_on_the_reciprocal():
+    # STRUCTURAL, and the reason all of V2C-2 exists: crab reverses sign when you turn
+    # around, so the outbound heading is track+d while the return is track-d. The two
+    # headings are therefore NOT reciprocal, and both legs sit |d| off the target
+    # relative azimuth -- which is what makes the tolerance a pure crosswind gate.
+    out = A.wind_correction_angle_deg(90, 5, 0, 18)
+    back = A.wind_correction_angle_deg(90, 5, 180, 18)
+    assert out is not None and back is not None      # both tracks are flyable at 5 m/s
+    assert out == pytest.approx(-back)
+    assert out == pytest.approx(16.127620, abs=1e-5)
+
+
+def test_ground_speed_ms():
+    V = 18
+    assert A.ground_speed_ms(90, 5, 0, V) == pytest.approx(17.291616, abs=1e-5)   # crosswind
+    assert A.ground_speed_ms(0, 5, 0, V) == pytest.approx(13.0)                   # headwind
+    assert A.ground_speed_ms(180, 5, 0, V) == pytest.approx(23.0)                 # tailwind
+    assert A.ground_speed_ms(45, 5, 0, V) == pytest.approx(14.113829, abs=1e-5)
+
+    # A headwind stronger than the crabbed airspeed leaves the aircraft going backwards
+    # over the ground. Returning that unguarded would give callers a NEGATIVE return
+    # time, which reads as an unusually fast and safe trip home.
+    assert A.ground_speed_ms(0, 25, 0, V) is None
+
+
+def test_effective_lawnmower_speed_is_harmonic():
+    V = 18
+    # 5 m/s along the axis -> legs of 13 and 23. The ARITHMETIC mean is exactly 18, which
+    # would make wind look free; the harmonic mean is 16.611, because equal DISTANCES at
+    # unequal speeds spend more time slow.
+    assert A.effective_lawnmower_speed_ms(0, 5, 0, V) == pytest.approx(16.611111, abs=1e-5)
+    assert A.effective_lawnmower_speed_ms(0, 8, 0, V) == pytest.approx(14.444444, abs=1e-5)
+    assert A.effective_lawnmower_speed_ms(0, 0, 0, V) == pytest.approx(18.0)   # calm
+
+    # A pure crosswind penalises BOTH directions equally, so harmonic == arithmetic here
+    # -- but still below airspeed, because crabbing spends part of the airspeed sideways.
+    assert A.effective_lawnmower_speed_ms(90, 5, 0, V) == pytest.approx(17.291616, abs=1e-5)
+
+    # INVARIANT: wind is never free. No wind direction, at any strength, beats still air.
+    for direction in range(0, 360, 15):
+        for speed in (1, 3, 5, 8, 12):
+            effective = A.effective_lawnmower_speed_ms(direction, speed, 42.0, V)
+            if effective is not None:
+                assert effective <= V + 1e-9
+
+
+def test_max_crosswind_tolerance():
+    # Inverts the crab formula: the largest crosswind whose crab stays inside tolerance.
+    assert A.max_crosswind_tolerance_ms(18, 15) == pytest.approx(4.658743, abs=1e-5)
+    assert A.max_crosswind_tolerance_ms(18, 30) == pytest.approx(9.0)
+    assert A.max_crosswind_tolerance_ms(18, 0) == pytest.approx(0.0)
+
+
+def test_return_time_min_and_reserve():
+    ac = _test_aircraft()
+    # 18 km at 18 m/s = 1000 s = 16.6667 MINUTES. The function is named _min and must
+    # return minutes -- returning seconds here would inflate the derived reserve by 60x
+    # and the fixed-point loop could never converge.
+    assert A.return_time_min(None, 0, 0, ac, 18000.0, 609.6) == pytest.approx(16.666667, abs=1e-5)
+
+    # DESCENT FLOOR: close in, the trip home is limited by how fast you can get down
+    # (609.6 m at 1.80 m/s = 338.67 s = 5.6444 min), not by distance.
+    assert A.return_time_min(None, 0, 0, ac, 1000.0, 609.6) == pytest.approx(5.644444, abs=1e-5)
+
+    # an unflyable return propagates None rather than a nonsense number
+    assert A.return_time_min(0, 25, 0, ac, 18000.0, 609.6) is None
+
+    # reserve = return * safety factor + terminal allowance
+    assert A.required_reserve_time_min(16.666667) == pytest.approx(23.833333, abs=1e-5)
+
+
+def test_wind_aware_usable_distance():
+    ac = _test_aircraft()
+    # (90 - 20) min * 60 s * 18 m/s
+    assert A.wind_aware_usable_distance_m(None, 0, 0, ac, 20) == pytest.approx(75_600)
+
+    # ONE sentinel, None, for every "cannot fly" case -- because planner branches on it.
+    # Returning 0.0 for the exhausted-reserve case would flow into geo's
+    # _initial_total_lines_from_budget, which RAISES on a non-positive budget, turning a
+    # legitimate "too windy today" verdict into an exception in the plan path.
+    assert A.wind_aware_usable_distance_m(None, 0, 0, ac, 95) is None    # reserve > endurance
+    assert A.wind_aware_usable_distance_m(0, 25, 0, ac, 20) is None      # wind unflyable
+
+
+def test_candidate_orientation():
+    assert P._candidate_orientation(0) == (90, 270)       # sun +/- 90
+    assert P._candidate_orientation(300) == (30, 210)     # wraps mod 360
+    # tie-back to Tier 0: both candidates are exactly 90 off the sun -> perfect glint
+    sun = 42
+    first, second = P._candidate_orientation(sun)
+    assert P._score_glint(first, sun) == pytest.approx(0)
+    assert P._score_glint(second, sun) == pytest.approx(0)
+    # V2C: at a 90 deg target the pair comes out 180 deg apart -- the SAME grid axis
+    # flown in opposite directions. This is the structural reason both leg directions
+    # collect science under the along-track mount.
+    assert P._angular_distance(first, second) == pytest.approx(180)
+
+
+# ---- Camera rollout (fast track) -----------------------------------------------------
+# Closed form on _test_aircraft(): turn radius 57 m, cruise 18 m/s. Wherever a number is
+# asserted, the calibration values are passed in explicitly, so these pin the formulas and
+# not whatever CONST holds after the next sweep. Wind is always at flight altitude.
+
+
+def test_ground_turn_radius_in_still_air_is_the_air_radius():
+    ac = _test_aircraft()
+    assert A.ground_turn_radius_m(ac, 0) == pytest.approx(ac.vehicle_turn_radius)
+
+
+def test_ground_turn_radius_grows_with_wind():
+    ac = _test_aircraft()
+    radii_m = [A.ground_turn_radius_m(ac, wind_ms) for wind_ms in (0, 5, 10, 15)]
+    assert all(lower < higher for lower, higher in zip(radii_m, radii_m[1:]))
+
+    # A wind equal to cruise speed doubles the downwind ground speed, and the radius goes
+    # with its square: 57 * (1 + 18/18)^2.
+    assert A.ground_turn_radius_m(ac, 18) == pytest.approx(4 * 57)
+
+    with pytest.raises(ValueError):
+        A.ground_turn_radius_m(ac, -1)
+
+
+def test_rollout_inset_is_factor_radius_plus_allowances():
+    ac = _test_aircraft()
+    # 2.5 * 57 + 80 + 70
+    assert A.rollout_inset_m(
+        ac, 0, radius_factor=2.5, settle_allowance_m=80, camera_early_start_m=70
+    ) == pytest.approx(292.5)
+    # 2.5 * 228 + 80 + 70, at a wind equal to cruise speed
+    assert A.rollout_inset_m(
+        ac, 18, radius_factor=2.5, settle_allowance_m=80, camera_early_start_m=70
+    ) == pytest.approx(720)
+
+
+def test_rollout_inset_always_clears_the_turn():
+    # The defect's own invariant, on the constants as shipped: the camera may never start
+    # inside the turn. The old 52 m inset against a 57 m radius fails this at every wind.
+    ac = _test_aircraft()
+    for wind_ms in range(ac.vehicle_wind_rating + 1):
+        assert A.rollout_inset_m(ac, wind_ms) > A.ground_turn_radius_m(ac, wind_ms)
+
+
+def test_entry_pushback():
+    ac = _test_aircraft()
+    # At 90 deg or less, the fly-by turn ends within one radius of its waypoint, which the
+    # inset already pays for, so line 1 doesn't move.
+    assert A.entry_pushback_m(ac, 0, 45) == 0
+    assert A.entry_pushback_m(ac, 0, 90) == 0
+
+    # 57 * (tan 60 - 1)
+    assert A.entry_pushback_m(ac, 0, 120) == pytest.approx(41.7269, abs=1e-3)
+    # It scales with the ground radius: 4x at a wind equal to cruise speed.
+    assert A.entry_pushback_m(ac, 18, 120) == pytest.approx(4 * 41.7269, abs=1e-3)
+
+    # tan(theta/2) runs to infinity at 180 deg, and an arrival angle is never negative.
+    for bad_angle_deg in (-1, 180, 200):
+        with pytest.raises(ValueError):
+            A.entry_pushback_m(ac, 0, bad_angle_deg)
+
+
+# ---- Step K: what the vehicle carries ------------------------------------------------
+# MAVLink and BlackSwift literals, never read from CONST, except where the S3's own
+# constants are the thing under test.
+
+MAV_TYPE_FIXED_WING = 1
+MAV_TYPE_QUADROTOR = 2
+MAV_TYPE_VTOL_TILTROTOR = 21
+MAV_AUTOPILOT_GENERIC = 0
+
+
+def _test_vehicle(vehicle_type, cruise_ms=21, **identity):
+    return OBJ.Vehicle(90, 15, 3.35, 1.80, 77.6, 0, 12, cruise_ms,
+                       vehicle_type, MAV_AUTOPILOT_GENERIC, **identity)
+
+
+def test_waypoint_capture_distance():
+    # BlackSwift's formula, 2 * cruise * lookahead: 2 * 21 * 3.0.
+    s3_like = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, waypoint_lookahead_s=3.0)
+    assert A.waypoint_capture_distance_m(s3_like) == pytest.approx(126)
+
+    # It follows the cruise speed, so it is derived and never stored.
+    slower = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, cruise_ms=18, waypoint_lookahead_s=3.0)
+    assert A.waypoint_capture_distance_m(slower) == pytest.approx(108)
+
+    # A vehicle with no lookahead, such as a PX4 vehicle, has no capture distance.
+    assert A.waypoint_capture_distance_m(_test_vehicle(MAV_TYPE_FIXED_WING)) is None
+
+
+def test_vehicle_validates_its_transition_and_lookahead():
+    vtol = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, transition_height_agl_m=10,
+                         waypoint_lookahead_s=3.0)
+    assert vtol.transition_height_agl_m == 10
+    assert vtol.waypoint_lookahead_s == 3.0
+
+    # Both are optional, so every existing Vehicle keeps working.
+    plain = _test_vehicle(MAV_TYPE_VTOL_TILTROTOR)
+    assert plain.transition_height_agl_m is None
+    assert plain.waypoint_lookahead_s is None
+
+    # Only a VTOL transitions: not a fixed wing, and not a multirotor that hovers.
+    for never_transitions in (MAV_TYPE_FIXED_WING, MAV_TYPE_QUADROTOR):
+        with pytest.raises(ValueError):
+            _test_vehicle(never_transitions, transition_height_agl_m=10)
+
+    for bad_height_m in (0, -5):
+        with pytest.raises(ValueError):
+            _test_vehicle(MAV_TYPE_VTOL_TILTROTOR, transition_height_agl_m=bad_height_m)
+
+    for bad_lookahead_s in (0, -1):
+        with pytest.raises(ValueError):
+            _test_vehicle(MAV_TYPE_FIXED_WING, waypoint_lookahead_s=bad_lookahead_s)
+
+
+def test_s3_constants_build_the_s3():
+    # K-1's block as K-3 will use it. A typo in any constant below changes a literal here.
+    s3 = OBJ.Vehicle(
+        CONST.BLACKSWIFT_S3_ENDURANCE_min,
+        CONST.BLACKSWIFT_S3_WIND_RATING_ms,
+        CONST.BLACKSWIFT_S3_CLIMB_RATE_ms,
+        CONST.BLACKSWIFT_S3_DESCENT_RATE_ms,
+        CONST.BLACKSWIFT_S3_TURN_RADIUS_m,
+        CONST.BLACKSWIFT_S3_TURN_PENALTY_s,
+        CONST.BLACKSWIFT_S3_MIN_GROUND_SPEED_ms,
+        CONST.BLACKSWIFT_S3_CRUISE_SPEED_ms,
+        CONST.BLACKSWIFT_S3_VEHICLE_TYPE,
+        CONST.BLACKSWIFT_S3_FIRMWARE_TYPE,
+        hover_speed_ms=CONST.BLACKSWIFT_S3_MAX_HOVER_SPEED_ms,
+        transition_height_agl_m=CONST.TRANSITION_REL_m,
+        waypoint_lookahead_s=CONST.BLACKSWIFT_FMS_LOOKAHEAD_s,
+    )
+    assert s3.vehicle_type == MAV_TYPE_VTOL_TILTROTOR
+    assert s3.firmware_type == MAV_AUTOPILOT_GENERIC
+    assert s3.is_VTOL
+
+    # BlackSwift's figure for the S3: it captures waypoints 126 m early.
+    assert A.waypoint_capture_distance_m(s3) == pytest.approx(126)
+
+    # The S2's bank (57 m at 18 m/s) flown at 21 m/s: the radius goes with speed squared.
+    assert s3.vehicle_turn_radius == pytest.approx(57 * (21 / 18) ** 2, abs=0.05)
+
+
+def test_mission_request_climb_waypoint_is_optional():
+    def waypoint(waypoint_id, action):
+        return OBJ.Waypoint(waypoint_id, 36.9, -122.0, 609.6, 21, action, action, waypoint_id)
+
+    def request(**climb):
+        return OBJ.MissionRequest(
+            "climb probe", waypoint("WP000", "launch"), waypoint("WP_END", "land"),
+            waypoint("M1", "m1_overflight"), 609.6,
+            datetime(2026, 10, 27, 17, tzinfo=timezone.utc), 9, **climb,
+        )
+
+    # None means planner places the default orbit (K-4).
+    assert request().climb_wp is None
+
+    climb = waypoint("CLIMB", "transit")
+    assert request(climb_waypoint=climb).climb_wp is climb
+
+
+# ---- Step K-4: takeoff and landing phases --------------------------------------------
+# Closed form on _test_aircraft(): climb 3.35 m/s, descent 1.80 m/s, cruise 18 m/s.
+
+
+def test_climb_and_descent_durations():
+    ac = _test_aircraft()
+    # 583.6 m: from a 10 m transition over a 16 m pad up to 609.6 m
+    assert A.climb_duration_min(ac, 583.6) == pytest.approx(583.6 / 3.35 / 60)
+    assert A.descent_duration_min(ac, 583.6) == pytest.approx(583.6 / 1.80 / 60)
+
+    with pytest.raises(ValueError):
+        A.climb_duration_min(ac, -1)
+    with pytest.raises(ValueError):
+        A.descent_duration_min(ac, -1)
+
+    # a minute at cruise is 60 * 18 m
+    assert A.cruise_distance_m(ac, 1) == pytest.approx(1080)
+
+
+def test_descent_overrun():
+    ac = _test_aircraft()
+    # 540 m at 1.80 m/s takes 5 min, which is 5 * 60 * 18 = 5400 m of approach at cruise.
+    # An approach that long or longer holds the whole descent, and costs nothing extra.
+    assert A.descent_overrun_min(ac, 540, 5400) == pytest.approx(0)
+    assert A.descent_overrun_min(ac, 540, 20000) == 0
+
+    # with no approach the whole descent is extra, and half the approach leaves half of it
+    assert A.descent_overrun_min(ac, 540, 0) == pytest.approx(5)
+    assert A.descent_overrun_min(ac, 540, 2700) == pytest.approx(2.5)
