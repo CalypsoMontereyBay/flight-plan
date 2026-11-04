@@ -245,3 +245,111 @@ Follow-ups, none blocking:
 
 Environment note: this session began on `rollout_hotfix`, whose CLAUDE.md describes R-2 work
 (99 tests) that is not on this branch. The review above is of `second_flight_engine_build`.
+
+### 2026-11-03 (Reviewed PR #3 "Rollout hotfix is complete, along with the additional steps needed for wiring")
+
+**Scope.** Reviewed open PR #3 by Robert Wandel: `rollout_hotfix` → `main`, head `d07201a`,
+52 commits, 38 files, +10,838 / −1,195. It contains all of PR #2 (`second_flight_engine_build`
+merged into `rollout_hotfix` at `b2ed3f6`), plus the camera-rollout fast track and Step K
+(10 commits, 19 files).
+- PR #2's half was reviewed on 2026-10-13 (above), so this review covers the 10 new commits.
+- I built most of that code myself, so a separate reviewer agent read the code diff
+  independently. I confirmed each of its findings by probe or by reading the code.
+
+**Verification.** From a clean `git archive` of `d07201a`:
+- **120 tests pass.**
+- The entry point runs with no warnings under `-W error` (default plan: 9 lines, 74.3 min,
+  15.7 min margin).
+- GitHub reports the PR as mergeable. `main` and `second_flight_engine_build` are both
+  ancestors of the head, so the merge cannot conflict.
+
+I ran no git command that changes state.
+
+**What this PR merges.** The PR body is one sentence; this entry is its description.
+- **Step J:** the QGC `.plan` writer, transit-aware sizing, transit bearings, and the
+  grid/transit split in the summary.
+- **The camera-rollout fix:** a collection inset sized from a design wind the RPIC sets
+  (`--design-wind`), and Strat 1's pushback of line 1's first waypoint.
+- **Step K:** the BlackSwift S3 as the default aircraft; its climb orbit, descent and
+  operator hand-offs paid for in the budget; a 10 m transition for every VTOL; and pilot
+  notes on every plan (winds above the aircraft's rating, weather that isn't a forecast,
+  the hand-offs and the final frame).
+- **Not built:** the BlackSwift XML writer (K-5), left out on purpose by the user on
+  2026-11-03 because the default aircraft may change.
+- **Unflown and provisional:**
+  - No output has been flown.
+  - The rollout constants (2.5, 80) come from PX4 SITL flying the retired S2.
+  - The S3's climb and descent rates are the S2's.
+
+**The reviewer's request from PR #2 is met.** The user clarified (2026-11-03) that "a
+separate Markdown doc" meant Claude's review of the PR, added to this file, so that any
+agent reviewing the PR independently can read it. `c6bb8ee` did that for PR #2, and this
+entry does it for PR #3.
+
+**Blocking: none in the code.**
+
+**Before merge:**
+- **BlackSwift's example plans come out of the repo and its history** (the user's decision,
+  2026-11-03). The repo is PUBLIC, BlackSwift declined to share its S3 model on IP grounds,
+  and the files are BlackSwift's.
+  - All three were added in one commit, `a902cc2`. Only `rollout_hotfix` contains it, so the
+    rewrite touches the 7 commits from `a902cc2` to the head. `main`, other branches and
+    forks (there are none) are unaffected.
+  - The rewrite was dry-run on a throwaway clone:
+    - no commit on the branch carries the files;
+    - the new head differs from the old only by the three deleted files;
+    - all 52 commits and the 120 tests survive.
+  - The head SHA changes, so `d07201a` above names the pre-rewrite head.
+  - The files stay on the user's disk, ignored by `.gitignore`. No code reads them.
+  - GitHub keeps the old commits reachable by SHA from PR #3's history until GitHub
+    Support purges them. A complete removal needs that request.
+  - `BlackSwift Response Writeup.txt`, the user's notes of the BlackSwift meeting, is also
+    public on the branch. Whether it stays is the user's call.
+- **A stray `test` line is still in `src/constants.py`'s module docstring (line 19)**, from
+  commit `88cd726 test`. Delete it.
+- **The re-seed test proves nothing since K-4** (`tests/test_4_grid_assembly.py:174`).
+  - `retried.append(plan.grid_budget_m < usable)` assumed that a launch at M1 hands `geo`
+    the full budget on pass 1. Since K-4, pass 1 also subtracts the climb and hand-off
+    reserve, so the condition is true at every design wind.
+  - Probe: winds 0–11 m/s fit on one pass and still count as "retried"; only 12–15 m/s
+    actually re-seed. The code is correct; the test would not notice if the re-seed broke.
+  - Line 177 is weak in the same way: it checks `flight <= usable`, but the loop's real fit
+    condition is `flight + phases <= usable`.
+  - Fix: compare against the budget with the phases subtracted, and check the phases in the
+    fit assertion.
+- **A gust in an unknown unit reads as a 0 m/s forecast** (`src/weather.py:268-271`).
+  - Unit failures mark only `windSpeed` and `windDirection` stale. A `windGust` that fails
+    conversion becomes 0 m/s and is not marked stale.
+  - The K-6 pilot notes trust any gust that isn't stale, so a gust above the rating would go
+    unreported, with no "not checked" note.
+  - It triggers only if NWS changes the gust unit. The fix is one line, plus a test beside
+    `test_get_weather_bad_unit_is_stale`.
+
+**Follow-ups for F-1 / F-1.5. Not reachable from the CLI today:** both need a custom
+`MissionRequest`, which F-1 makes a user input.
+- **The default climb point can land past line 1's first waypoint**
+  (`planner._default_climb_waypoint`). It is always 600 m from the pad toward WP001, but
+  Strat 1 measures the turn from the pad.
+  - Probed with pads within 600 m of WP001: the recorded arrival differs from the one flown
+    from the climb point by 5°–180°.
+    - Pad 250 m behind WP001: recorded 0°, flown 180°.
+    - Pad 400 m off at 135°: recorded 114°, flown 53°, with an 86 m pushback that isn't
+      needed.
+  - The transit runs 400–860 m past the direct route, against the docstring's "no longer
+    than the transit without it".
+  - The 500 m orbit is then centred 32–431 m from WP001, so it overlaps line 1.
+  - Fix with F-1: place the climb point using the pad-to-line-1 distance, and measure
+    Strat 1's arrival from the climb point.
+- **`_check_minimum_legs` checks a leg that isn't flown** (`planner.py:426`). It walks
+  `plan.waypoints`, so it checks pad→WP001 and never climb point→WP001.
+  - A pad 100 m from WP001 is wrongly rejected, although the leg flown is 500 m.
+  - A climb point 32 m from WP001 passes, although that is below the 126 m capture distance.
+- **`--design-wind nan` or `inf` passes the argument check.** The run then fails in `geo` with
+  a grid-too-small message that blames the wrong input. Reject non-finite values in
+  `_design_wind_ms`.
+
+**Merge method:** squash, or a rebase that drops the "test" commits (`88cd726`, the
+`3b43c8f`, `37d2c86` and its revert `65439d1`). 52 commits would make `main` hard to read.
+
+Everything verified also checked out: the duration/transit split, the fit loop's use of
+values across passes, units, Optional paths and the VTOL takeoff altitude.

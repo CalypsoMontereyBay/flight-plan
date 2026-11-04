@@ -230,3 +230,6 @@ __marimo__/
 !exp..plan
 !exp2.plan
 !roundtrip_qgc.plan
+
+# BlackSwift example plans: theirs, kept locally only (the repo is public)
+/BS_EXAMPLES/

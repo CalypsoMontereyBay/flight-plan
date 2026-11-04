@@ -13,6 +13,13 @@ Guidance for Claude Code when working in this repository.
   say otherwise.
 - **QGroundControl Constants** shall only be modified by the user. Do **not** modify these constants
 unless given express permission from the user.
+- **Pull requests.** I open each PR by hand. Claude's review, appended to the Logs section
+  of `claude_prompts/pull_requests.md`, is the PR's description: the reviewer and his agents
+  read it there. Write each entry for them. It covers the scope, what merges, what isn't
+  built, what's unflown or provisional, the verification, the findings and the merge
+  advice.
+- **This repo is public.** Never commit third-party files, such as BlackSwift's example
+  plans, which are kept locally in the git-ignored `BS_EXAMPLES/`.
 
 ## Project overview
 
@@ -128,7 +135,9 @@ conflicts with this one, this one wins. Step K replaced the S2 in the code (K-3,
   landing. The S3 will not launch without the takeoff and landing files. It orbits after
   the takeoff file and after the last mission waypoint until the operator moves it on.
   There are no automatic transitions and no combined plan (as of 2026-10-13).
-- **Example plan files** arrived on 2026-10-14 (`BS_EXAMPLES/`). **Still to come by
+- **Example plan files** arrived on 2026-10-14. They are BlackSwift's, so they are kept
+  locally in `BS_EXAMPLES/`, which git ignores. The user decided on 2026-11-03 to remove
+  them from the repo and its history, because the repo is public. **Still to come by
   email:** the minimum waypoint acceptance radius of BlackSwift's flight management system
   (adjustable within software limits).
 - **Landing (question 6, answered by the user 2026-10-27):** the S3 **descends along the
@@ -167,7 +176,7 @@ simulation of Strat 1 or the Strat 2 loop is planned.
 - **MAVLink identity (2026-10-27, the user):** vehicle type 21, tilt-rotor VTOL, the more
   precise term for the kind of VTOL the S3 is; firmware 0, generic, because it isn't PX4.
 
-**How the engine treats BlackSwift's example plans (`BS_EXAMPLES/`):** as the file format,
+**How the engine treats BlackSwift's example plans (local only, not in the repo):** as the file format,
 not as a template. The engine serves many vehicles that BlackSwift doesn't make, and
 launch, landing and climb points are chosen for legality and operational feasibility.
 - The climb orbit sits on the departure bearing, seaward and clear of the pad, with a
@@ -1256,7 +1265,9 @@ for each change. In outline:
 - ❌ **K-5, the BlackSwift writer, was NOT built (the user, 2026-11-03).** The default
   aircraft may change, and the writer would be lost work if BlackSwift goes. It would write
   three XML files (takeoff, mission, landing) as a sibling of the QGC writer, from the same
-  neutral item list, in the format of `BS_EXAMPLES/` (the example files, not a template).
+  neutral item list, in the format of BlackSwift's example files (the format, not a
+  template). Those files are local only and must never be committed: the repo is public,
+  so a K-5 test could not read them from the repo as the J-7 tests read QGC's files.
   It needs BlackSwift's answers first: altitude units and datum, home, waypoint numbering,
   climbs a leg can't hold, how a vertical landing is written, camera control, orbit radius
   limits, and FLY_OVER. The planning artifact lists them as questions 1–9. **Revisit only
