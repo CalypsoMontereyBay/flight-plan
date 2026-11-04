@@ -76,7 +76,7 @@ section wins.
 2. **The mission must become configurable.** Users set line length, grid width, center
    point, launch point, landing point, desired grid area (honoured when mathematically
    feasible), overlap percentage in **both** the along- and cross-track directions, and
-   the camera viewing angle. See [Step F](#f-mission-configurability-after-k-not-started).
+   the camera viewing angle. See [Step F](#f-mission-configurability-next--not-started).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 3. **The aircraft must become configurable.** Fixed-wing, quadcopter, or hexacopter. For
    a fixed wing every performance constant currently hard-coded to the BlackSwift S2 (the
@@ -1277,11 +1277,52 @@ for each change. In outline:
 - ✅ **Tests** that read the S2 as the default aircraft were rebased in K-3, and the gap
   K-3 left (a fixed wing's takeoff altitude) was closed in K-7.
 
-### F. Mission configurability (AFTER K, NOT STARTED)
+### F. Mission configurability (NEXT — NOT STARTED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,
 landing point, desired grid area (honoured **when mathematically feasible**, otherwise
 reported as infeasible with the closest achievable), cross-track overlap %, along-track
 overlap %, and camera off-nadir viewing angle.
+
+**▶ START HERE (readiness check, 2026-11-03).** Checked against the code, not recalled.
+- **Branch.** PR #3 (`rollout_hotfix` → `main`) is open and mergeable at `12d3ffd`, with 120
+  tests green. Build F on a fresh branch from `main` once the user merges it.
+- **Decide F-1.5 first.** What does Strat 1 do at steep arrivals? My recommendation is option
+  B: cap the pushback and print an RPIC note. The cap was 120°, the S2's widest shore entry.
+  The S3's shore entries reach **126°**, so the cap angle needs re-picking. See F-1.5 below
+  and the planning artifact.
+- **F-1 replaces four Terrace Point reach-ins:**
+  1. `planner._build_dated_objects` builds the sun state at `CONST.V1_LAUNCH_POINT_*`.
+  2. It also fetches the weather there, and the clear-sky stub carries those coordinates.
+     A boat plan therefore gets Terrace Point's forecast, and so do its pilot notes.
+  3. `outputs._qgc_home` gives every home `TERRACE_POINT_AMSL_m` (16 m), even a boat deck.
+  4. `planner.build_candidate_plan` Step 2 floors the climb and the descent at
+     `TERRACE_POINT_AMSL_m` (K-4). A boat launch landing ashore needs the launch and land
+     elevations separately.
+  - The module-level `_Launch_Waypoint`, `_Land_Waypoint`, `_M1_Waypoint`,
+    `_Calypso_payload` and `_BlackSwift_S3` feed only `plan_default_mission` and
+    `_build_dated_objects`. `build_candidate_plan` already works from its parameters, so
+    F-1 replaces the singletons, not the function.
+  - `sun.create_sun_state` defaults to the launch constants, but every caller passes
+    coordinates.
+- **F-1 also has to fix two bugs from the PR #3 review** (`claude_prompts/pull_requests.md`).
+  Both are unreachable today and become reachable once launch is settable:
+  - The default climb point is always 600 m from the pad toward line 1, so a pad within
+    600 m of line 1 puts it past or beside WP001. Strat 1 measures the arrival from the pad,
+    not from the climb point: up to 180° wrong, and the orbit overlaps line 1.
+  - `_check_minimum_legs` walks `plan.waypoints`. It checks pad→WP001, which isn't flown,
+    and never climb point→WP001, which is.
+- **J-4's seed changes with separate launch and land:** from `2·d(launch, M1)` to
+  `d(launch, M1) + d(M1, land)`. Measured for the S2: a boat launch landing at Terrace Point
+  seeded 4.0 km where 24.4 km was right. It still converged in 2 passes, so it cost a
+  wasted pass, not a failure.
+- **Small items from the same review, buildable any time:**
+  - a stray `test` line in `src/constants.py`'s module docstring (line 19);
+  - the transit re-seed test proves nothing since K-4 (`tests/test_4_grid_assembly.py:174`);
+  - a `windGust` in an unknown unit is not marked stale (`weather.py:268`), so the pilot
+    notes would trust a 0 m/s gust;
+  - `--design-wind nan` and `inf` pass `_design_wind_ms`.
+- **F-3 inherits** `require_m1_overflight`, which is stored with no getter and no reader.
+  **F-4 inherits** the three unread `V1_DEFAULT_*_km` constants.
 - **This dissolves three current invariants.** The grid is no longer necessarily
   M1-centered; the M1 overflight is no longer necessarily required; and grid size is no
   longer necessarily derived from the endurance budget. `geo.make_lawnmower_grid_through_m1`,
