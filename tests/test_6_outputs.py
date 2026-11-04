@@ -13,6 +13,8 @@ Top of the cake: depends on everything below. Two halves:
      constants.py: a test that read the QGC constants back would pass on the very typo it
      exists to catch. Since K-3 the default aircraft is the S3, a VTOL, so the checks that
      depend on a fixed wing's commands fly a PX4 fixed wing built from literals.
+  3. The terminal summary, the only RPIC-facing text the engine writes today, and since K-6
+     the pilot notes the planner attaches to every plan.
 """
 
 import argparse
@@ -517,6 +519,132 @@ def test_design_wind_flag_rejects_bad_values():
     for bad in ("-1", "calm"):
         with pytest.raises(argparse.ArgumentTypeError):
             flight_plan_maker._design_wind_ms(bad)
+
+
+"""
+============================================================================
+==            Pilot notes and the phases in the summary (K-6)              ==
+============================================================================
+"""
+
+
+def _forecast(sustained_ms, gust_ms, stale_fields=None):
+    # A live NWS forecast for the default mission. A wind field weather.py could not fill is
+    # in stale_fields, and the wind counts as measured only when speed and direction both are.
+    stale = set(stale_fields or ())
+    return OBJ.Weather(
+        CONST.V1_LAUNCH_POINT_LAT, CONST.V1_LAUNCH_POINT_LONG, P.DEFAULT_MISSION_DATETIME,
+        42, sustained_ms, 300, gust_ms, 9000, "overcast",
+        wind_is_measured=not ({"windSpeed", "windDirection"} & stale),
+        stale_fields=stale, source=CONST.WEATHER_SOURCE_NWS,
+    )
+
+
+def _notes_for(monkeypatch, forecast, design_wind_ms=CONST.DEFAULT_DESIGN_WIND_ALOFT_ms):
+    # The default mission's pilot notes with the weather leaf answering `forecast` (None is
+    # the leaf's "no forecast", which sends the planner to its clear-sky stub).
+    import weather
+    monkeypatch.setattr(weather, "get_weather", lambda lat, lon, when: forecast)
+    return P.plan_default_mission("t5_notes", design_wind_aloft_ms=design_wind_ms).pilot_notes
+
+
+def _notes_saying(notes, *phrases):
+    return [note for note in notes if all(phrase in note for phrase in phrases)]
+
+
+def test_pilot_notes_flag_a_wind_above_the_rating(monkeypatch):
+    # A wind above the plan's own aircraft's wind rating gets a note, never a rejection
+    # (constraint 4). The forecast is compared at the 10 m NWS gives it, unscaled, and the
+    # design wind as the RPIC typed it. At the rating is not above it.
+    rating = P._BlackSwift_S3.vehicle_wind_rating
+
+    notes = _notes_for(monkeypatch, _forecast(rating, rating), design_wind_ms=rating)
+    assert not _notes_saying(notes, "exceeds")
+
+    notes = _notes_for(monkeypatch, _forecast(rating + 1, rating + 2))
+    assert _notes_saying(notes, "forecast wind at 10 m", f"{rating + 1:.1f} m/s gusting {rating + 2:.1f} m/s", "exceeds")
+    assert not _notes_saying(notes, "design wind")
+
+    # a gust alone is enough
+    notes = _notes_for(monkeypatch, _forecast(rating - 5, rating + 1))
+    assert _notes_saying(notes, "forecast wind at 10 m", f"gusting {rating + 1:.1f} m/s", "exceeds")
+
+    notes = _notes_for(monkeypatch, _forecast(1, 2), design_wind_ms=rating + 1)
+    assert _notes_saying(notes, "design wind", f"{rating + 1:.1f} m/s", "exceeds")
+    assert not _notes_saying(notes, "forecast wind")
+
+
+def test_pilot_notes_never_compare_a_default_with_the_rating(monkeypatch):
+    # weather.py fills a field NWS has no forecast for with a default, and a defaulted wind
+    # reads as calm. So a default is never compared with the rating, and when the sustained
+    # wind is one, the note says the wind went unchecked.
+    rating = P._BlackSwift_S3.vehicle_wind_rating
+
+    notes = _notes_for(monkeypatch, _forecast(rating - 5, rating + 10, stale_fields={"windGust"}))
+    assert not _notes_saying(notes, "exceeds")
+    assert _notes_saying(notes, "for wind gust,", "Check it")
+    assert not _notes_saying(notes, "has not been checked")
+
+    notes = _notes_for(
+        monkeypatch, _forecast(rating + 10, rating - 5, stale_fields={"windSpeed", "windDirection"})
+    )
+    assert not _notes_saying(notes, "exceeds")
+    assert _notes_saying(notes, "for wind speed and wind direction,", "Check them", "has not been checked")
+
+    # no forecast at all: the stub's calm wind is never compared either
+    notes = _notes_for(monkeypatch, None)
+    assert _notes_saying(notes, "No live NWS forecast", "has not been checked")
+    assert not _notes_saying(notes, "exceeds")
+
+
+def test_pilot_notes_say_when_the_weather_is_not_a_forecast(monkeypatch):
+    # A full forecast raises no weather note. Visibility past NWS's short coverage, the
+    # everyday case for a plan more than a day out, is named.
+    notes = _notes_for(monkeypatch, _forecast(3, 5))
+    assert not _notes_saying(notes, "NWS")
+
+    notes = _notes_for(monkeypatch, _forecast(3, 5, stale_fields={"visibility"}))
+    assert _notes_saying(notes, "for visibility,", "Check it")
+    assert not _notes_saying(notes, "has not been checked")
+
+
+def test_summary_prints_the_phases_and_every_pilot_note(capsys, monkeypatch):
+    # Every note the planner attached reaches the summary, most urgent first, with the
+    # final-frame note last. The summary shows the climb orbit and the phase times that the
+    # transit time includes.
+    rating = P._BlackSwift_S3.vehicle_wind_rating
+    import weather
+    monkeypatch.setattr(
+        weather, "get_weather",
+        lambda lat, lon, when: _forecast(rating + 1, rating + 2, stale_fields={"visibility"}),
+    )
+    plan = P.plan_default_mission("t5_summary", design_wind_aloft_ms=rating + 1)
+
+    notes = plan.pilot_notes
+    order = [
+        _notes_saying(notes, "design wind")[0],
+        _notes_saying(notes, "forecast wind")[0],
+        _notes_saying(notes, "for visibility,")[0],
+        _notes_saying(notes, "hand-off")[0],
+        CONST.RPIC_NOTE_FINAL_FRAME,
+    ]
+    assert list(notes) == order
+
+    flight_plan_maker._print_summary(plan, "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME)
+    out = capsys.readouterr().out
+    for note in notes:
+        assert f"RPIC NOTE: {note}" in out
+
+    assert plan.climb_duration_min is not None
+    assert plan.descent_overrun_min is not None
+    assert plan.handoff_reserve_min is not None
+    assert f"climb {plan.climb_duration_min:.2f} min" in out
+    assert f"descent overrun {plan.descent_overrun_min:.2f} min" in out
+    assert f"hand-offs {plan.handoff_reserve_min:.2f} min" in out
+
+    climb_wp = plan.climb_waypoint
+    assert climb_wp is not None
+    assert f"{plan.climb_orbit_radius_m:g} m radius around {climb_wp.latitude:.5f}, {climb_wp.longitude:.5f}" in out
 
 
 def test_positions_come_from_the_waypoints():

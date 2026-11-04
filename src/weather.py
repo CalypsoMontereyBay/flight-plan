@@ -186,9 +186,9 @@ def _field_at_time(props, field_name: str, when, stale_fields: set):
     A field is STALE when the block is missing entirely, when no interval covers the
     requested time, or when the unit is not one we recognise. All three end in the same
     DEFAULT_*, and all three mean the same thing to any consumer: the number being held is
-    not a forecast for this mission. The set is how a consumer -- the pilot-notes report,
-    or a Step E gate if one is built -- tells a default that happens to look like fair
-    weather apart from a real forecast. Nothing reads it yet.
+    not a forecast for this mission. The set is how a consumer -- the pilot notes since
+    K-6, or a Step E gate if one is built -- tells a default that happens to look like fair
+    weather apart from a real forecast.
     """
 
     block = props.get(field_name)

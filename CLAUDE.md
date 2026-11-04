@@ -43,8 +43,12 @@ S2 model, so they are provisional placeholders for the S3, and the S2 loop sweep
 to check them is cancelled (warning box item 4).** **K-1 to K-4 were built on 2026-10-27
 (115 tests green): the S3 is now the default aircraft, the S2's constants are gone, and the
 climb, descent and hand-offs are paid for.** The default plan is 9 lines, 74.3 min, with a
-15.7 min margin. Every VTOL now transitions 10 m above home. Most default-plan figures
-below are still the S2's until K-8 (see Step K). K-5 waits on BlackSwift. The two
+15.7 min margin. Every VTOL now transitions 10 m above home. **K-6's summary half was
+built on 2026-11-03 (119 tests green):** the summary shows the climb orbit and phase times,
+and every plan carries pilot notes, including winds above the aircraft's rating and
+weather that isn't a forecast. Most default-plan figures below are still the S2's until
+K-8 (see Step K). K-5 waits on BlackSwift, and **no more S3-only work is wanted while the
+default aircraft may change** (2026-11-03). The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -255,9 +259,10 @@ launch, landing and climb points are chosen for legality and operational feasibi
   `--design-wind` (m/s at flight altitude; default `DEFAULT_DESIGN_WIND_ALOFT_ms`).
   Writes the KML, PNG and `.plan`, then prints the total, transit and grid duration and
   distance, the margin, both bearings, the design wind with the inset and line 1 lead-in it
-  produced, the forecast wind beside them (reported only), the three output paths, and the
-  final-frame RPIC note
-  (see the J-5 writer bullet).
+  produced, the forecast wind beside them (reported only), the three output paths, and
+  every pilot note on the plan (`RPIC NOTE:` lines). Since K-6 it also prints the phase
+  times (climb, descent overrun, hand-offs) and the climb orbit. See the K-6 bullet under
+  Current state.
 - `src/` — engine modules:
   - `constants.py` — engine constants (aircraft, M1, sensor, date/time defaults + timezone, weather, actions).
   - `objects.py` — core classes (Aircraft, **Vehicle**, Sensor, Weather, CurrentSunState,
@@ -283,7 +288,7 @@ launch, landing and climb points are chosen for legality and operational feasibi
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
-- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 115 tests); see [Setup & run](#setup--run).
+- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 119 tests); see [Setup & run](#setup--run).
 - `exp2.plan`, `exp..plan` — **real QGroundControl exports for this site**, and until
   2026-09-30 the only ground truth the repo had for the `.plan` format. Several format
   questions that docs left ambiguous are settled by reading them, and the J-7 tests read
@@ -567,7 +572,7 @@ Read this before touching the grid, classification, or output code.
     single-launch probe no longer reached the re-seed.
 
 - **Takeoff and landing phases (V2 Step K-4, built 2026-10-27).** ⚠️ **Read the K-4 entry
-  in [Step K](#k-s3-adoption-in-progress--k-1-to-k-4-built-2026-10-27) before touching the
+  in [Step K](#k-s3-adoption-in-progress--k-1-to-k-4-built-2026-10-27-k-6-summary-2026-11-03) before touching the
   budget, the transit or the takeoff item.** In short:
   - **Climb point:** a plan field, not a waypoint.
   - **Budget:** the climb and hand-offs are reserved before sizing, and the descent rides
@@ -575,6 +580,31 @@ Read this before touching the grid, classification, or output code.
   - **Takeoff altitude:** a VTOL's is its transition height (10 m standard).
   - **Camera and legs:** the S3's capture distance is its early camera start and its
     shortest allowed leg.
+
+- **Pilot notes (V2 Step K-6, built 2026-11-03).** `planner._pilot_notes` builds a tuple of
+  notes in Step 8, and `CandidatePlan.pilot_notes` carries it. The summary prints each as
+  an `RPIC NOTE:` line, and the pilot-notes document will read the same tuple. The texts are
+  `PILOT_NOTE_*` templates in `constants.py`, beside `RPIC_NOTE_FINAL_FRAME`. **Notes report;
+  none rejects or reshapes a plan** (constraint 4). In print order, most urgent first:
+  1. **The design wind above the aircraft's wind rating** (`vehicle_wind_rating`, strictly
+     above).
+  2. **The forecast's sustained wind or gust at 10 m above the rating**, compared as NWS
+     gives it and never scaled aloft (the user's choice, 2026-11-03). The note quotes the
+     measured morning ratio over M1, ~1.15, and the engine never applies it.
+  3. **Weather that isn't a forecast.** If the weather's source isn't NWS (the stub), the
+     plan had no live forecast, and the note says to re-run within 7 days of the flight. If
+     NWS left fields uncovered, it names `Weather.stale_fields` by their
+     `NWS_FIELD_LABELS`. Visibility is the everyday case, since NWS covers it only
+     8–30 h ahead. "Out of date" means exactly this (the user's choice, 2026-11-03): no
+     forecast-age or lead-time threshold exists.
+  4. **The two operator hand-offs**, every plan, because every vehicle is charged them.
+  5. **`RPIC_NOTE_FINAL_FRAME`**, every plan, moved into the tuple unchanged.
+  - ⚠️ **A default never stands in for a forecast.** A wind field `weather.py` defaulted
+    reads as dead calm, so it is never compared with the rating, and when the sustained
+    wind was defaulted the note says it went unchecked. The stub is never compared at all.
+  - Not built, by the user's choice: the S3-only belly-landing note. The summary's phase
+    line also states that `Transit Flight`'s time includes the phases.
+  - The `.plan` and KML are byte-identical to K-4's (shore and live-forecast dates).
 
 - **QGC `.plan` writer (V2 Step J-5, built 2026-09-22).** ⚠️ **Read this before touching
   Section 2 of `outputs.py`.** The call chain is
@@ -624,8 +654,9 @@ Read this before touching the grid, classification, or output code.
     on every stop item. It folds each camera item into the waypoint before it and writes the
     item back from its own template. Our stop items now match, so every science line ends
     with one final frame, whichever ground station uploads the plan. That frame's glint, and
-    the aircraft's attitude as it leaves the line for the turn, are **unverified**. So the
-    terminal summary prints `CONST.RPIC_NOTE_FINAL_FRAME` on every run, telling the RPIC to
+    the aircraft's attitude as it leaves the line for the turn, are **unverified**. So every
+    plan's pilot notes end with `CONST.RPIC_NOTE_FINAL_FRAME` (since K-6; the summary
+    printed it directly before), and the summary prints it on every run, telling the RPIC to
     disregard the last photograph of each science line. **The note is permanent until that
     frame is characterized**, and the pilot-notes document inherits it. Two tests hold the
     two halves, and each turned red when broken in a scratch copy:
@@ -633,7 +664,7 @@ Read this before touching the grid, classification, or output code.
     boat plans) and `test_summary_carries_the_rpic_note`.
 
 - **J-6 warning gate (cleared 2026-09-22; held when J-6 landed; re-run 2026-09-25,
-  2026-09-30 and 2026-10-18).** The console must stay quiet enough for J-6's new output to be read. That is
+  2026-09-30, 2026-10-18, 2026-10-27 and 2026-11-03).** The console must stay quiet enough for J-6's new output to be read. That is
   a **state to keep**, not a task that was done once. The 2026-09-30 re-run, after the RPIC
   note joined the summary: the entry point exits 0 with nothing on stderr under `-W error`
   on the default date, a live-forecast date and an out-of-forecast date; 94 tests pass under
@@ -641,7 +672,9 @@ Read this before touching the grid, classification, or output code.
   2026-10-18 re-run, after the design wind and forecast joined the summary, held the same
   on all three dates with 104 tests. Re-run again on 2026-10-27 after K-1 to K-4, which
   changed the numbers the summary prints but not its lines. It held on all three dates, with
-  115 tests passing under `-W error` and pyright at 0 errors.
+  115 tests passing under `-W error` and pyright at 0 errors. Re-run on 2026-11-03 after K-6
+  added the phase, climb-orbit and pilot-note lines. It held on all three dates, with 119
+  tests passing under `-W error` and pyright at 0 errors.
   - `simplekml`'s `codecs.open()` DeprecationWarning is **fixed at source**. `write_kml`
     writes `kml.kml()` itself with `open(..., encoding="utf-8", newline="")` instead of
     calling `kml.save()`. Verified byte-identical to `save()`.
@@ -686,7 +719,8 @@ Read this before touching the grid, classification, or output code.
   K-4 added seven (two Tier 2: climb/descent durations and the descent overrun; four Tier 3:
   phases paid for, slower climbs never give more lines, the climb point, the shortest leg;
   one Tier 5: the VTOL takeoff at the transition height), and rebased the Tier 3 split's
-  transit line: 115.
+  transit line: 115. K-6 added four Tier 5 tests (a wind above the rating, never comparing
+  a default, weather that isn't a forecast, and the summary's phases and notes): 119.
 - **Known defects and deferred items:**
   - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
   - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1**, and the waypoint names followed
@@ -784,7 +818,7 @@ Read this before touching the grid, classification, or output code.
 
 **Execution order as of 2026-10-18: `J` → `K` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
 **J is complete (2026-09-30). K, S3 adoption, is in progress: K-1 to K-4 were built on
-2026-10-27, and K-5 waits on BlackSwift. Then F.** Letters record the order
+2026-10-27 and K-6's summary half on 2026-11-03, and K-5 waits on BlackSwift. Then F.** Letters record the order
 steps were *scoped*, not the order they are *built* — the same convention the `V1_`
 constant prefixes follow.
 
@@ -1010,8 +1044,8 @@ wind / crab / return-time reporting, deliberately kept out of the machine-readab
 Its first operational customer is already known and now computed: the **recommended landing
 approach**, comparing `plan.approach_bearing_deg` against the into-wind heading. That is
 also the first time any of C-2's wind math will have done real work for anybody. It also
-inherits the **final-frame RPIC note** (`CONST.RPIC_NOTE_FINAL_FRAME`), which lives in the
-terminal summary until the document exists.
+inherits the **pilot notes** (`plan.pilot_notes`, K-6), which end with the final-frame
+RPIC note and live in the terminal summary until the document exists.
 
 ### What `exp2.plan` settles
 
@@ -1076,7 +1110,7 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### K. S3 adoption (IN PROGRESS — K-1 to K-4 built 2026-10-27)
+### K. S3 adoption (IN PROGRESS — K-1 to K-4 built 2026-10-27, K-6 summary 2026-11-03)
 Decided 2026-10-18, from BlackSwift's answers (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)):
 retire the end-of-life S2 and make the S3 the default aircraft, before Step F, so F-1 builds
 on the aircraft that will fly. The planning artifact's §K has the step cards and the reason
@@ -1159,18 +1193,18 @@ for each change. In outline:
     wrong:** it charged the 5.4 min descent as extra time, which the descend-on-approach
     answer removes. The boat 2 km north of M1: 11 lines, 59.7 min, a 3.6 km approach and a
     **2.5 min overrun**. It now arrives at 113.9° with an 85 m lead-in, not the S2's 178.2°.
-- **⏸ PAUSED 2026-10-27: pick up here.** Uncommitted on `rollout_hotfix`; git is the
-  user's. 115 tests are green, pyright reports 0, and the warning gate held.
-  - **Open decisions for the user:**
-    1. Charge the orbit climb and hand-offs per vehicle now, or leave it to Step G?
-       Today every vehicle pays them.
-    2. Build K-6's summary half next (the climb point, orbit radius, phase times and the two
-       pilot notes)? Today `Transit Flight` silently includes the phases.
-  - **Blocked:** K-5, the XML writer, waits on BlackSwift questions 2–5 and 7–9 (the
+- **K-1 to K-4 were committed by the user** (`b3337b6`, `677f68a`, `afcb6f4`). The two
+  decisions left open at the 2026-10-27 pause were settled on 2026-11-03:
+  1. **Per-vehicle phase charging is left to Step G.** The default aircraft may change
+     soon, so no more S3-only work is wanted until that is settled.
+  2. **K-6's summary half is built** (2026-11-03), with the user's addition: pilot notes for
+     winds above the aircraft's wind rating and for weather that isn't a forecast. See the
+     K-6 bullet under Current state. The S3-only belly-landing note was not built.
+  - **Blocked:** K-5, the XML writer, waits on BlackSwift questions 1–5 and 7–9 (the
     planning artifact lists them). K-6's writer selection waits on K-5.
-  - **Buildable now:** K-6's summary half, and K-8's docs pass. K-8 rewrites the S2-era
-    figures in Current state (the camera rollout bullet, the J-4/J-6 numbers, and the
-    "Measured on the default plan" lines). README was brought current on 2026-10-27.
+  - **Buildable now:** K-8's docs pass, which rewrites the S2-era figures in Current state
+    (the camera rollout bullet, the J-4/J-6 numbers, and the "Measured on the default plan"
+    lines). README is current as of 2026-11-03.
 - **A BlackSwift writer:** three XML files (takeoff, mission, landing), a sibling to the QGC
   writer that consumes the same neutral item list. The format comes from `BS_EXAMPLES/`;
   units, datum, waypoint numbering, camera control and the S3's vertical landing are open
@@ -1272,8 +1306,9 @@ constant user-settable rather than hard-coded to the BlackSwift S2.
   fixed-wing config lands, per the user.
 - **Climb and descent: modelled in K-4 (2026-10-27), for every vehicle alike.** Every
   vehicle is charged an orbit climb from its transition height and two operator hand-offs,
-  and descends along its approach. G makes that per vehicle: a fixed wing that climbs on its
-  way out is over-counted today, and a multirotor hovers its whole climb. The rates are
+  and descends along its approach. G makes that per vehicle (left to G by the user,
+  2026-11-03): a fixed wing that climbs on its way out is over-counted today, and a
+  multirotor hovers its whole climb. The rates are
   still the S2's provisional 3.35 and 1.80 m/s.
 - **Vehicle facts (updated 2026-10-13):** the S2, a pure fixed wing, is **end of life**. The
   tri-motor VTOL **S3 is the default and only non-copter aircraft**, and Step K adopts it
@@ -1360,8 +1395,8 @@ distance 82,320 m). **Everything else built in C-2 has zero callers**:
 `wind_correction_angle_deg`, `ground_speed_ms`, `effective_lawnmower_speed_ms`,
 `return_time_min`, `required_reserve_time_min`, `wind_aware_usable_distance_m`,
 `max_crosswind_tolerance_ms`, `cross_wind_component_ms`, `head_wind_component_ms`,
-`furthest_point_distance_m`. `Weather.wind_is_measured` and `.stale_fields` are populated
-and read by nobody. `route_duration_min` accepts `weather`/`axis_deg` but `planner` calls
+`furthest_point_distance_m`. `Weather.wind_is_measured` and `.stale_fields` are read by
+the summary's forecast line and, since K-6, by the pilot notes. `route_duration_min` accepts `weather`/`axis_deg` but `planner` calls
 it with three arguments, so duration is still-air.
 
 **None of that math is wasted — its destination changed.** It was built to *decide*; it

@@ -74,12 +74,32 @@ def _forecast_wind_text(weather):
     )
 
 
+def _climb_orbit_text(plan):
+    """
+    Where the aircraft climbs and between which heights: from its transition height above
+    home, or from the pad for a vehicle that never transitions.
+    """
+
+    climb_wp = plan.climb_waypoint
+    if plan.transition_height_agl_m is None:
+        climb_from = "the pad"
+    else:
+        climb_from = f"its {plan.transition_height_agl_m:g} m transition above home"
+
+    return (
+        f"{plan.climb_orbit_radius_m:g} m radius around {climb_wp.latitude:.5f}, "
+        f"{climb_wp.longitude:.5f}, from {climb_from} to {plan.mission_request.altitude} m"
+    )
+
+
 def _print_summary(plan, kml_path, png_path, json_path, mission_datetime):
     """
     User-friendly terminal recap of what was produced, without force-opening files.
     Extended in V2 to echo the selected mission datetime (local + UTC), and since the
     camera rollout fix to show the design wind, the geometry it produced, and the
     forecast wind beside them. The forecast is reported only: it never shapes the plan.
+    Since K-6 it also shows the climb orbit and the takeoff and landing phases, and ends
+    with every pilot note the planner attached to the plan.
     """
 
     # mission_datetime is a UTC-aware datetime; show both the Monterey-local wall
@@ -92,15 +112,22 @@ def _print_summary(plan, kml_path, png_path, json_path, mission_datetime):
     print(f"Total Flight Duration: {round(plan.duration, 1)} min")
     print(f"Transit Flight: {round(plan.transit_duration_min, 2)} min, {round(plan.transit_distance_m, 2)} meters")
     print(f"Grid Flight: {round(plan.grid_duration_min, 2)} min, {round(plan.total_grid_distance_m, 2)} meters")
+    print(
+        f"Phases: climb {plan.climb_duration_min:.2f} min | descent overrun "
+        f"{plan.descent_overrun_min:.2f} min | hand-offs {plan.handoff_reserve_min:.2f} min "
+        f"(all inside Transit Flight's time)"
+    )
     print(f"Margin: {round(plan.margin, 1)} min")
     print(f"Departure Bearing: {round(plan.departure_bearing_deg, 2)} deg | Approach Bearing: {round(plan.approach_bearing_deg, 2)} deg")
+    print(f"Climb Orbit: {_climb_orbit_text(plan)}")
     print(f"Design Wind: {plan.mission_request.design_wind_aloft_ms:.1f} m/s at flight altitude (planning input) | Collection Inset: {round(plan.collection_inset_m, 2)} m")
     print(f"Line 1 Lead-in: {round(plan.entry_pushback_m, 2)} m, for a {round(plan.entry_arrival_angle_deg, 2)} deg turn in from the transit")
     print(f"Forecast Wind: {_forecast_wind_text(plan.weather)}")
     print(f"KML -> {kml_path}")
     print(f"PNG -> {png_path}")
     print(f"PLAN -> {json_path}")
-    print(f"RPIC NOTE: {CONST.RPIC_NOTE_FINAL_FRAME}")
+    for note in plan.pilot_notes:
+        print(f"RPIC NOTE: {note}")
 
 
 def main():

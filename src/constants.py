@@ -237,6 +237,16 @@ NWS_WIND_HEIGHT_m = 10  # Units = m. NWS forecasts the sustained wind at 10 m; t
 WEATHER_SOURCE_NWS = "NWS"  # tags a Weather object as live NWS data (vs the "STUB" fallback)
 WEATHER_SOURCE = "NWS"
 
+# What a pilot note calls each NWS gridpoint field that weather.py can mark stale, in the
+# order a note lists them (Step K-6).
+NWS_FIELD_LABELS = {
+    "windSpeed": "wind speed",
+    "windGust": "wind gust",
+    "windDirection": "wind direction",
+    "skyCover": "cloud cover",
+    "visibility": "visibility",
+}
+
 '''
 ========================================================================================
 '''
@@ -381,6 +391,47 @@ RPIC_NOTE_FINAL_FRAME = (
     "Disregard the last photograph of each science line. The camera fires one final frame "
     "where triggering stops, at the end of the line as the aircraft heads into the turn, and "
     "that frame's glint and attitude have not been verified."
+)
+
+# PILOT NOTES (Step K-6, 11/03/2026). planner._pilot_notes decides which apply to a plan
+# and fills them in; the summary prints every one, and the pilot-notes document will
+# inherit the same list. A note REPORTS: none of them rejects or reshapes a plan
+# (constraint 4).
+
+PILOT_NOTE_DESIGN_WIND_OVER_RATING = (
+    "The design wind, {design_ms:.1f} m/s at flight altitude, exceeds the aircraft's "
+    "{rating_ms:.1f} m/s wind rating."
+)
+
+# The 1.15 is the mean morning ratio of the wind at 609.6 m to the 10 m wind over M1
+# (archived model winds, 2022-2025; see DEFAULT_DESIGN_WIND_ALOFT_ms). The note quotes it
+# and the engine never applies it: the comparison is with the forecast as NWS gives it.
+PILOT_NOTE_FORECAST_WIND_OVER_RATING = (
+    "The forecast wind at {height_m} m, {forecast}, exceeds the aircraft's {rating_ms:.1f} m/s "
+    "wind rating. In the morning the wind at flight altitude over M1 runs about 1.15 times "
+    "the 10 m wind."
+)
+
+PILOT_NOTE_NO_FORECAST = (
+    "No live NWS forecast was available for this date and time: it is in the past, more "
+    "than {horizon_days} days out, or NWS could not be reached. The plan holds clear-sky, "
+    "calm defaults, and the wind has not been checked against the aircraft's wind rating. "
+    "Re-run the plan within {horizon_days} days of the flight."
+)
+
+PILOT_NOTE_DEFAULTED_FIELDS = (
+    "NWS has no forecast at the mission time for {fields}, so the plan uses a default in "
+    "place of each forecast. Check {pronoun} before the flight."
+)
+
+# Appended to PILOT_NOTE_DEFAULTED_FIELDS when the sustained wind is one of the defaults.
+PILOT_NOTE_WIND_UNCHECKED = (
+    " The sustained wind has not been checked against the aircraft's wind rating."
+)
+
+PILOT_NOTE_HANDOFF = (
+    "The aircraft orbits at the climb point after takeoff, and again after the last "
+    "waypoint, until you move it on. The plan budgets {reserve_min:g} min for each hand-off."
 )
 
 '''

@@ -442,6 +442,96 @@ def _check_minimum_legs(waypoints: list, capture_distance_m):
             )
 
 
+def _join_words(words: list):
+    """
+    "a", "a and b", "a, b and c": a list as a note reads it.
+    """
+
+    if len(words) <= 1:
+        return "".join(words)
+
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def _forecast_wind_figure(sustained_ms, gust_ms):
+    """
+    The forecast wind as a pilot note quotes it, from whichever halves are real forecasts.
+    """
+
+    if sustained_ms is None:
+        return f"gusts of {gust_ms:.1f} m/s"
+
+    if gust_ms is None:
+        return f"{sustained_ms:.1f} m/s"
+
+    return f"{sustained_ms:.1f} m/s gusting {gust_ms:.1f} m/s"
+
+
+def _pilot_notes(aircraft: Vehicle, mission_weather: Weather, design_wind_aloft_ms,
+                 handoff_reserve_min):
+    """
+    The notes the RPIC reads with this plan, most urgent first. They report and never
+    reject or reshape the plan (constraint 4):
+
+      1. a wind above the aircraft's wind rating: the design wind aloft, or the forecast's
+         sustained wind or gust at 10 m, compared as NWS gives it and never scaled aloft
+      2. weather that is not a forecast: no live forecast at all, or the fields NWS has no
+         forecast for at the mission time, which weather.py filled with defaults
+      3. the operator hand-offs the plan budgets for
+      4. the final frame of each science line
+
+    A default never stands in for a forecast here. A wind that weather.py defaulted is not
+    compared with the rating, and the note says it was not checked, because a defaulted
+    wind reads as dead calm.
+    """
+
+    notes = []
+
+    rating_ms = aircraft.vehicle_wind_rating
+    is_forecast = mission_weather.source == CONST.WEATHER_SOURCE_NWS
+
+    if design_wind_aloft_ms > rating_ms:
+        notes.append(CONST.PILOT_NOTE_DESIGN_WIND_OVER_RATING.format(
+            design_ms=design_wind_aloft_ms, rating_ms=rating_ms
+        ))
+
+    if is_forecast:
+        sustained_ms = None if mission_weather.is_stale("windSpeed") else mission_weather.wind_speed
+        gust_ms = None if mission_weather.is_stale("windGust") else mission_weather.wind_gusts
+
+        if any(wind_ms is not None and wind_ms > rating_ms for wind_ms in (sustained_ms, gust_ms)):
+            notes.append(CONST.PILOT_NOTE_FORECAST_WIND_OVER_RATING.format(
+                height_m=CONST.NWS_WIND_HEIGHT_m,
+                forecast=_forecast_wind_figure(sustained_ms, gust_ms),
+                rating_ms=rating_ms,
+            ))
+
+    if not is_forecast:
+        notes.append(CONST.PILOT_NOTE_NO_FORECAST.format(
+            horizon_days=CONST.NWS_FORECAST_HORIZON_days
+        ))
+
+    elif mission_weather.stale_fields:
+        # Known fields in the order the labels list them, then any other name as NWS spells it.
+        stale = mission_weather.stale_fields
+        labels = [label for field, label in CONST.NWS_FIELD_LABELS.items() if field in stale]
+        labels += sorted(field for field in stale if field not in CONST.NWS_FIELD_LABELS)
+
+        note = CONST.PILOT_NOTE_DEFAULTED_FIELDS.format(
+            fields=_join_words(labels), pronoun="it" if len(labels) == 1 else "them"
+        )
+        if mission_weather.is_stale("windSpeed"):
+            note += CONST.PILOT_NOTE_WIND_UNCHECKED
+        notes.append(note)
+
+    if handoff_reserve_min > 0:
+        notes.append(CONST.PILOT_NOTE_HANDOFF.format(reserve_min=handoff_reserve_min))
+
+    notes.append(CONST.RPIC_NOTE_FINAL_FRAME)
+
+    return tuple(notes)
+
+
 def _angular_distance(heading1_deg, heading2_deg):
     """
     Smallest angle between two headings, in degrees (0..180).
@@ -564,7 +654,8 @@ def build_candidate_plan(
       5. classify each waypoint now that the orientation is final, and place the climb point
       6. measure the real transit and the descent's overrun; if the flight does not fit,
          re-seed and repeat
-      7-10. build the CandidatePlan and set its metrics, duration, margin and score
+      7-10. build the CandidatePlan and set its metrics, pilot notes, duration, margin
+            and score
     """
 
     # Step 1, generate the potential orientation candidates
@@ -782,6 +873,11 @@ def build_candidate_plan(
     candidate_plan.set_phase_durations(
         climb_min, descent_min, descent_distance_m, descent_overrun_time_min, handoff_min
     )
+
+    candidate_plan.set_pilot_notes(_pilot_notes(
+        mission_aircraft, mission_weather, mission_request.design_wind_aloft_ms,
+        CONST.OPERATOR_HANDOFF_RESERVE_min
+    ))
 
     # A vehicle that captures its waypoints early must never be handed a leg it would skip.
     if capture_distance_m is not None:

@@ -154,22 +154,40 @@ Lines   : 9  |  Glint Score: 0.0
 Total Flight Duration: 74.3 min
 Transit Flight: 40.79 min, 45218.87 meters
 Grid Flight: 33.53 min, 42241.59 meters
+Phases: climb 2.90 min | descent overrun 0.00 min | hand-offs 2.00 min (all inside Transit Flight's time)
 Margin: 15.7 min
 Departure Bearing: 176.33 deg | Approach Bearing: 343.28 deg
+Climb Orbit: 500 m radius around 36.94300, -122.06495, from its 10 m transition above home to 609.6 m
 Design Wind: 9.0 m/s at flight altitude (planning input) | Collection Inset: 601.92 m
 Line 1 Lead-in: 110.26 m, for a 118.96 deg turn in from the transit
 Forecast Wind: none for this date and time (reported only, never applied)
-KML -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.kml
-PNG -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.png
-PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20261027-200709.plan
+KML -> ./CALYPSO_OUTPUT/V2 Plan_20261103-170259.kml
+PNG -> ./CALYPSO_OUTPUT/V2 Plan_20261103-170259.png
+PLAN -> ./CALYPSO_OUTPUT/V2 Plan_20261103-170259.plan
+RPIC NOTE: No live NWS forecast was available for this date and time: it is in the past, more than 7 days out, or NWS could not be reached. The plan holds clear-sky, calm defaults, and the wind has not been checked against the aircraft's wind rating. Re-run the plan within 7 days of the flight.
+RPIC NOTE: The aircraft orbits at the climb point after takeoff, and again after the last waypoint, until you move it on. The plan budgets 1 min for each hand-off.
 RPIC NOTE: Disregard the last photograph of each science line. The camera fires one final frame where triggering stops, at the end of the line as the aircraft heads into the turn, and that frame's glint and attitude have not been verified.
 ```
 
-> ⚠️ **The `RPIC NOTE` is permanent until that last frame is characterized.** Every science
-> line ends with one extra photograph where triggering stops, because that is how
-> QGroundControl writes a camera-stop item. Nobody has yet checked that frame's sun glint,
-> or the aircraft's attitude as it leaves the line, so treat the last photograph of each
-> line as unusable.
+> ⚠️ **Read every `RPIC NOTE`.** They report and never change the plan. The engine adds
+> one when it applies, most urgent first:
+>
+> - **A wind above the aircraft's wind rating** (15 m/s for the S3): the design wind you
+>   set, or the forecast's sustained wind or gust at 10 m. The forecast is compared as NWS
+>   gives it, not scaled to flight altitude, so the note also reminds you that the morning
+>   wind aloft runs about 1.15 times the 10 m wind.
+> - **Weather that isn't a forecast.** Either there was no live forecast at all (the date is
+>   in the past or more than 7 days out, or NWS was unreachable), or NWS had no forecast at
+>   the mission time for some fields, which the engine then filled with defaults. The note
+>   names them. Visibility is the usual one, because NWS forecasts it only 8 to 30 hours
+>   ahead. A wind that was filled with a default is never compared with the rating, and
+>   the note says it went unchecked.
+> - **The operator hand-offs:** the aircraft orbits after its climb and after the last
+>   waypoint until you move it on.
+> - **The last photograph of each science line,** on every run, until that frame is
+>   characterized. Every line ends with one extra photograph where triggering stops,
+>   because that is how QGroundControl writes a camera-stop item. Nobody has yet checked
+>   its sun glint or the aircraft's attitude as it leaves the line, so treat it as unusable.
 >
 > The `When` line shows the mission time you selected in **Monterey local** and the
 > **UTC** instant the engine actually computed the sun position with.
@@ -189,8 +207,10 @@ RPIC NOTE: Disregard the last photograph of each science line. The camera fires 
 > spare on a 90-minute battery. The engine now reserves the round trip to the mooring, the
 > 2.9 min climb orbit and two 1 min operator hand-offs *before* deciding how many flight
 > lines fit. The descent is flown along the approach, so it costs extra time only when the
-> approach is too short to hold it. `Transit Flight` includes all of these. The rates are
-> provisional (see the warning box below).
+> approach is too short to hold it. The `Phases` line shows each of them, and
+> `Transit Flight`'s time includes them. `Climb Orbit` is where the aircraft climbs, on the
+> departure bearing and clear of the pad. The rates are provisional (see the warning box
+> below).
 
 ### Options
 
@@ -253,7 +273,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 115 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 119 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -285,9 +305,11 @@ save, the engine now writes that value too, and a fresh plan matches QGC's save 
 
 **Step K, adopting the BlackSwift S3, is in progress (2026-10-27).** BlackSwift retired the
 S2. The S3 is now the default aircraft, and its takeoff, climb orbit, descent and hand-offs
-are budgeted. Its three XML files wait on format questions with BlackSwift.
+are budgeted. Since 2026-11-03 the summary shows the climb orbit and phase times, and
+pilot notes for winds above the aircraft's rating and for weather that isn't a forecast.
+Its three XML files wait on format questions with BlackSwift.
 
-**Remaining work, in execution order:** **K** — the S3's XML files and summary;
+**Remaining work, in execution order:** **K** — the S3's XML files;
 **F** — mission configurability; **G** —
 aircraft configurability; **C-2** — wind/boresight reporting (half built, re-scoped from a
 safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — legality gating.

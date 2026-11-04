@@ -441,9 +441,9 @@ class Weather:
 
     # PROVENANCE. Safety math must be able to tell "measured calm" from "no idea".
     # DEFAULT_ZERO_WIND makes an absent wind field look like a dead-calm day, which is
-    # the most PERMISSIVE possible input to any safety check -- exactly backwards. Nothing
-    # reads these yet; their consumers (the pilot-notes report, any Step E gate) must use
-    # them to refuse to present assumed conditions as measured.
+    # the most PERMISSIVE possible input to any safety check -- exactly backwards. Their
+    # consumers (the pilot notes since K-6, any Step E gate) must use them to refuse to
+    # present assumed conditions as measured.
 
     @property
     def wind_is_measured(self):
@@ -827,6 +827,8 @@ class CandidatePlan:
         self._descent_overrun_min = None
         self._handoff_reserve_min = None
 
+        self._pilot_notes = ()
+
     # Properties:
 
     @property
@@ -989,6 +991,14 @@ class CandidatePlan:
         if climb_min is None or overrun_min is None or handoff_min is None:
             return None
         return climb_min + overrun_min + handoff_min
+
+    # Pilot notes (Step K-6): what the RPIC reads with this plan, in print order. planner
+    # chooses and fills them in; the summary prints them, and the pilot-notes document will
+    # read the same tuple. They report, and never change the plan.
+
+    @property
+    def pilot_notes(self):
+        return self._pilot_notes
 
     # V2C-2 viewing geometry + RTH assessment. STORED FOR REPORTING ONLY -- outputs and
     # the terminal summary read these. validator, when it is written, must NOT: it has to
@@ -1172,6 +1182,10 @@ class CandidatePlan:
         self._descent_distance_m = descent_distance_m
         self._descent_overrun_min = descent_overrun_min
         self._handoff_reserve_min = handoff_min
+        return
+
+    def set_pilot_notes(self, pilot_notes):
+        self._pilot_notes = tuple(pilot_notes)
         return
 
     # V2C-2 setters for the viewing geometry and RTH figures (reporting only):
