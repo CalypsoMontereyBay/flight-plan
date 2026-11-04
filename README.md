@@ -57,14 +57,14 @@ in an orbit to mission altitude before it heads out. The engine places that **cl
 600 m out from the pad on the departure bearing, so the whole orbit stays clear of it. On
 the way home the aircraft **descends along the approach**, transitions back to hover 10 m
 over the pad, and lands vertically. Every VTOL transitions at 10 m. The `.plan` ends with a
-plain **land item at the pad**, and the **approach direction is a recommendation to the
+plain **land item at the pad** (a vertical landing for a VTOL), and the **approach direction is a recommendation to the
 RPIC**, not part of the flight plan. The pilot can take manual control of the landing, as
 with any QGC plan.
 
-> **Writing the S3's own files is not built yet.** BlackSwift's flight management system
-> flies the S3 from three XML files (takeoff, mission and landing), and their format is
-> still being settled with BlackSwift. Until then the engine writes the `.plan` for every
-> aircraft. See Step K in [`CLAUDE.md`](CLAUDE.md).
+> **The engine does not write the S3's own files.** BlackSwift's flight management system
+> flies the S3 from three XML files (takeoff, mission and landing). That writer was left
+> unbuilt on purpose on 2026-11-03, because the default aircraft may change. The engine
+> writes the `.plan` for every aircraft. See Step K in [`CLAUDE.md`](CLAUDE.md).
 
 A fourth artifact — a **PDF pilot-notes document** carrying the wind/crab/return numbers — is
 planned, so that reporting stays out of the machine-readable outputs. Its
@@ -273,7 +273,7 @@ flight-plan/
 
 ## Running the tests
 
-The suite is a **tiered gate** (seven tiers, 119 tests): primitives (`test_0`), date/time +
+The suite is a **tiered gate** (seven tiers, 120 tests): primitives (`test_0`), date/time +
 sun (`test_1`), derived math incl. the wind triangle (`test_2`), the weather leaf (`test_3`),
 then grid / classification / rendering indicators (`test_4`–`test_6`). `pytest.ini` sets `-x` (fail-fast), so a run stops at
 the first broken tier — fix the lowest red tier, re-run, climb.
@@ -303,14 +303,14 @@ the transit. The summary reports the grid/transit split, both bearings and the R
 The file has been round-tripped through QGC: QGC changed one camera value on load and
 save, the engine now writes that value too, and a fresh plan matches QGC's save exactly.
 
-**Step K, adopting the BlackSwift S3, is in progress (2026-10-27).** BlackSwift retired the
-S2. The S3 is now the default aircraft, and its takeoff, climb orbit, descent and hand-offs
-are budgeted. Since 2026-11-03 the summary shows the climb orbit and phase times, and
-pilot notes for winds above the aircraft's rating and for weather that isn't a forecast.
-Its three XML files wait on format questions with BlackSwift.
+**Step K, adopting the BlackSwift S3, closed on 2026-11-03.** BlackSwift retired the S2.
+The S3 is now the default aircraft, and its takeoff, climb orbit, descent and hand-offs are
+budgeted. The summary shows the climb orbit and phase times, and pilot notes for winds
+above the aircraft's rating and for weather that isn't a forecast. The engine does **not**
+write the S3's three XML files: that writer was left unbuilt on purpose, because the
+default aircraft may change.
 
-**Remaining work, in execution order:** **K** — the S3's XML files;
-**F** — mission configurability; **G** —
+**Remaining work, in execution order:** **F** — mission configurability; **G** —
 aircraft configurability; **C-2** — wind/boresight reporting (half built, re-scoped from a
 safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — legality gating.
 
@@ -359,7 +359,8 @@ safety gate to report-only); **D** — sun/cloud-quality ranking; **E** — lega
 > reported as +11.4 min of margin. (From Terrace Point the same defect would have flown
 > 127,559 m.)
 > The engine now reserves the round trip *before* choosing how many flight lines fit. The
-> default mission became **9 lines / 77,296 m / 72.9 min / 17.1 min margin** on the S2,
+> default mission became **9 lines / 77,296 m / 72.9 min / 17.1 min margin** on the S2
+> (9 lines / 87,460 m / 74.3 min / 15.7 min on the S3 today, climb and hand-offs included),
 > and `Total Flight Duration` and `Margin` describe the route that would actually be flown.
 >
 > **The launch/land coordinates used to be stale**, holding a south-shore position while

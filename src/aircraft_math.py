@@ -268,8 +268,8 @@ def max_crosswind_tolerance_ms(airspeed_ms, tolerance_deg):
         crab = asin(crosswind / V) <= tolerance   =>   crosswind <= V * sin(tolerance)
 
     Wind DIRECTION is irrelevant here; this is a magnitude limit. Called with
-    V1_GLINT_TOLERANCE_DEG it yields 4.659 m/s, the science-axis crosswind headroom
-    reported to the RPIC. Not to be confused with MANUAL_RTH_MAX_CROSSWIND_ms, which is
+    V1_GLINT_TOLERANCE_DEG at the S3's 21 m/s it yields 5.435 m/s (4.659 at the S2's 18), the
+    science-axis crosswind headroom reported to the RPIC. Not to be confused with MANUAL_RTH_MAX_CROSSWIND_ms, which is
     a direct m/s limit on the HOMEWARD leg rather than an angle-derived one.
     """
     max_cross_wind_ms = airspeed_ms * math.sin(math.radians(tolerance_deg))

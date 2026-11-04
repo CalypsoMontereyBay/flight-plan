@@ -574,6 +574,17 @@ def test_pilot_notes_flag_a_wind_above_the_rating(monkeypatch):
     assert not _notes_saying(notes, "forecast wind")
 
 
+def test_pilot_notes_use_the_plans_own_wind_rating(monkeypatch):
+    # The rating is the plan's own aircraft's, never the default aircraft's. A 12 m/s
+    # forecast is inside the S3's rating and above this vehicle's 10 m/s one.
+    assert not _notes_saying(_notes_for(monkeypatch, _forecast(12, 12)), "exceeds")
+
+    lower_rated = OBJ.Vehicle(90, 10, 3.35, 1.80, 57, 10, 12, 18, MAV_TYPE_FIXED_WING,
+                              MAV_AUTOPILOT_PX4)
+    notes = _plan_built_with(aircraft=lower_rated).pilot_notes
+    assert _notes_saying(notes, "forecast wind at 10 m", "10.0 m/s wind rating", "exceeds")
+
+
 def test_pilot_notes_never_compare_a_default_with_the_rating(monkeypatch):
     # weather.py fills a field NWS has no forecast for with a default, and a defaulted wind
     # reads as calm. So a default is never compared with the rating, and when the sustained
@@ -645,6 +656,14 @@ def test_summary_prints_the_phases_and_every_pilot_note(capsys, monkeypatch):
     climb_wp = plan.climb_waypoint
     assert climb_wp is not None
     assert f"{plan.climb_orbit_radius_m:g} m radius around {climb_wp.latitude:.5f}, {climb_wp.longitude:.5f}" in out
+    assert plan.transition_height_agl_m is not None
+    assert f"from its {plan.transition_height_agl_m:g} m transition above home to" in out
+
+    # a vehicle that never transitions climbs from the pad
+    flight_plan_maker._print_summary(
+        _fixed_wing_plan(), "t5.kml", "t5.png", "t5.plan", P.DEFAULT_MISSION_DATETIME
+    )
+    assert "from the pad to" in capsys.readouterr().out
 
 
 def test_positions_come_from_the_waypoints():
@@ -666,17 +685,23 @@ def test_positions_come_from_the_waypoints():
 def test_altitudes_by_class():
     # Cruise flies the plan's own altitude, AMSL. Takeoff and land are relative to home: the
     # land altitude must be 0 (anything else lands above or below the pad), and the
-    # climb-out must sit above the pad and below the cruise altitude.
-    plan = _default_plan()
-    cruise_altitude_m = plan.mission_request.altitude
-    items, doc = _serialized(plan)
-    by_keyword = {}
-    for item, qgc_item in zip(items, doc["mission"]["items"]):
-        by_keyword.setdefault(item["Keyword"], []).append(qgc_item)
+    # climb-out must sit above the pad and below the cruise altitude. Both takeoff branches:
+    # the default S3 transitions, and a fixed wing climbs out.
+    for plan in (_default_plan(), _fixed_wing_plan()):
+        cruise_altitude_m = plan.mission_request.altitude
+        items, doc = _serialized(plan)
+        by_keyword = {}
+        for item, qgc_item in zip(items, doc["mission"]["items"]):
+            by_keyword.setdefault(item["Keyword"], []).append(qgc_item)
 
-    assert all(nav["Altitude"] == cruise_altitude_m for nav in by_keyword["nav"])
-    assert by_keyword["land"][0]["Altitude"] == 0
-    assert 0 < by_keyword["takeoff"][0]["Altitude"] < cruise_altitude_m
+        assert all(nav["Altitude"] == cruise_altitude_m for nav in by_keyword["nav"])
+        assert by_keyword["land"][0]["Altitude"] == 0
+        assert 0 < by_keyword["takeoff"][0]["Altitude"] < cruise_altitude_m
+
+    # A fixed wing climbs out to the height QGC kept when it loaded and saved our S2 plan.
+    _, doc = _serialized(_fixed_wing_plan())
+    round_trip_takeoff = _reference_item(_reference_plan("roundtrip_qgc.plan"), MAV_CMD_NAV_TAKEOFF)
+    assert doc["mission"]["items"][0]["Altitude"] == round_trip_takeoff["Altitude"]
 
 
 def test_bearings_are_not_serialized():
@@ -761,6 +786,14 @@ def test_vtol_takeoff_climbs_to_the_transition_height():
         takeoff = doc["mission"]["items"][0]
         assert takeoff["command"] == MAV_CMD_NAV_VTOL_TAKEOFF
         assert takeoff["Altitude"] == takeoff["params"][6] == 10
+
+    # A VTOL that carries its own transition height takes off to that, not to the standard.
+    own_height = OBJ.Vehicle(90, 15, 3.35, 1.80, 57, 10, 12, 18, MAV_TYPE_VTOL_TILTROTOR,
+                             MAV_AUTOPILOT_PX4, hover_speed_ms=5, transition_height_agl_m=15)
+    plan = _plan_built_with(aircraft=own_height)
+    assert plan.transition_height_agl_m == 15
+    _, doc = _serialized(plan)
+    assert doc["mission"]["items"][0]["Altitude"] == 15
 
     # a fixed wing never transitions, and keeps its climb-out altitude
     assert _fixed_wing_plan().transition_height_agl_m is None

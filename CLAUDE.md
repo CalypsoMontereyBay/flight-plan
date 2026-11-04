@@ -24,7 +24,8 @@ route as `.kml` and `.png`. See [`README.md`](README.md) for the full descriptio
 **V1 (proof-of-engine) is complete and tested. V2 Steps A (selectable date/time), B
 (live NWS weather) and C-1 (along-track payload mount) are complete and tested. C-2 is
 HALF BUILT and has been RE-SCOPED — it is no longer a gate. Step J (JSON output) is
-COMPLETE as of 2026-09-30, and Step F (mission configurability) is next.** See
+COMPLETE as of 2026-09-30, Step K (S3 adoption) CLOSED on 2026-11-03, and Step F (mission
+configurability) is next.** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
@@ -34,21 +35,20 @@ grid/transit split, both bearings (J-6) and the final-frame RPIC note. 22 Tier 5
 the file against the MAVLink spec and QGC's own files (J-7). The QGC round trip is clean:
 QGC changed one value, a camera-stop parameter, and the engine now writes the same value.
 **BlackSwift answered on 2026-10-13: the S2 is end of life, and the S3, a VTOL, is the
-default and only non-copter aircraft** (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)). Next is
-**Step K, S3 adoption**, built before Step F, which has no step table yet; its F-0
-decisions are in (2026-10-09). The camera-rollout fast track was BUILT on 2026-10-18
-(R-3 to R-7, 104 tests green): every line now leaves 2.5·R_g + 150 m between its turn and
-the camera, sized from a design wind the RPIC sets. Its constants came from PX4 flying an
-S2 model, so they are provisional placeholders for the S3, and the S2 loop sweep that was
-to check them is cancelled (warning box item 4).** **K-1 to K-4 were built on 2026-10-27
-(115 tests green): the S3 is now the default aircraft, the S2's constants are gone, and the
-climb, descent and hand-offs are paid for.** The default plan is 9 lines, 74.3 min, with a
-15.7 min margin. Every VTOL now transitions 10 m above home. **K-6's summary half was
-built on 2026-11-03 (119 tests green):** the summary shows the climb orbit and phase times,
-and every plan carries pilot notes, including winds above the aircraft's rating and
-weather that isn't a forecast. Most default-plan figures below are still the S2's until
-K-8 (see Step K). K-5 waits on BlackSwift, and **no more S3-only work is wanted while the
-default aircraft may change** (2026-11-03). The two
+default and only non-copter aircraft** (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)). The
+camera-rollout fast track was BUILT on 2026-10-18 (R-3 to R-7, 104 tests green): every line
+leaves 2.5·R_g + 80 m plus the aircraft's early camera start between its turn and the
+camera, sized from a design wind the RPIC sets. Its constants came from PX4 flying an S2
+model, so they are provisional placeholders for the S3, and the S2 loop sweep that was to
+check them is cancelled (warning box item 4).** **Step K CLOSED on 2026-11-03 (120 tests
+green).** K-1 to K-4 (2026-10-27) made the S3 the default aircraft, deleted the S2's
+constants, paid for the climb, descent and hand-offs, and set every VTOL to transition
+10 m above home. K-6 (2026-11-03) put the climb orbit and phase times in the summary and
+pilot notes on every plan, including winds above the aircraft's rating and weather that
+isn't a forecast. The default plan is 9 lines, 74.3 min, with a 15.7 min margin. **K-5, the
+BlackSwift XML writer, was not built** (the user, 2026-11-03): the default aircraft may
+change, and no S3-only work is wanted until that is settled. Step F has no step table yet;
+its F-0 decisions are in (2026-10-09). The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -72,8 +72,8 @@ section wins.
    the camera viewing angle. See [Step F](#f-mission-configurability-after-k-not-started).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 3. **The aircraft must become configurable.** Fixed-wing, quadcopter, or hexacopter. For
-   a fixed wing every performance constant currently hard-coded to the BlackSwift S2 must
-   be user-settable. Multirotor constraints get scoped once the fixed-wing config lands.
+   a fixed wing every performance constant currently hard-coded to the BlackSwift S2 (the
+   S3 since K-3, 2026-10-27) must be user-settable. Multirotor constraints get scoped once the fixed-wing config lands.
    See [Step G](#g-aircraft-configurability-sidelined).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 4. **Wind is compensated onboard — the engine must not gate or steer on it.** Assume all
@@ -98,11 +98,12 @@ launching from a boat and landing on solid ground (2026-10-13).
 **Vehicle facts that follow from the constraints** (recorded here because they decide the
 takeoff/land commands Step J must emit):
 - **~~BlackSwift S2 — pure fixed wing, the default aircraft.~~ End of life (BlackSwift,
-  2026-10-13).** The code still builds it until Step K replaces it.
+  2026-10-13).** K-3 (2026-10-27) removed it from the code.
 - **The BlackSwift S3, a tri-motor VTOL, is the default and only non-copter aircraft
   (2026-10-13).** Its only airframe was destroyed in company testing; BlackSwift has since
   changed its PDB, with no change to endurance, electrics or aerodynamics. It takes off and
-  lands vertically and transitions at ~10–15 m AGL. See
+  lands vertically and transitions at ~10–15 m AGL; the engine sets every VTOL to
+  transition 10 m above home (2026-10-27). See
   [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts).
 - **Custom partner vehicles are essentially always rotorcraft**, flashed with PX4 and
   driven from QGC.
@@ -113,8 +114,8 @@ takeoff/land commands Step J must emit):
 
 BlackSwift answered our questions in a meeting on 2026-10-13. The user's write-up is
 `BlackSwift Response Writeup.txt` in the repo root. Where an older section of this file
-conflicts with this one, this one wins. The code still builds the S2 until Step K lands, and
-the full list of changes, with the reason for each, is in the planning artifact's
+conflicts with this one, this one wins. Step K replaced the S2 in the code (K-3,
+2026-10-27), and the full list of changes, with the reason for each, is in the planning artifact's
 "BlackSwift response" section.
 
 - **The S2 is end of life.** It comes out of the engine and the sim. The **S3 is the default
@@ -127,8 +128,9 @@ the full list of changes, with the reason for each, is in the planning artifact'
   landing. The S3 will not launch without the takeoff and landing files. It orbits after
   the takeoff file and after the last mission waypoint until the operator moves it on.
   There are no automatic transitions and no combined plan (as of 2026-10-13).
-- **Still to come by email:** example S3 plan files, and the minimum waypoint acceptance
-  radius of BlackSwift's flight management system (adjustable within software limits).
+- **Example plan files** arrived on 2026-10-14 (`BS_EXAMPLES/`). **Still to come by
+  email:** the minimum waypoint acceptance radius of BlackSwift's flight management system
+  (adjustable within software limits).
 - **Landing (question 6, answered by the user 2026-10-27):** the S3 **descends along the
   approach**, transitions to hover 10 m over the pad, and lands vertically. The descent
   costs time only where the approach is too short to hold it.
@@ -160,8 +162,8 @@ simulation of Strat 1 or the Strat 2 loop is planned.
   the engine already counts.
 - **Placeholders:** climb and descent are the S2's 3.35 and 1.80 m/s, labelled provisional.
   BlackSwift's limits can't be shared.
-- **The user sets** a max hover speed of a few m/s; the S3 isn't flown laterally in hover.
-  (A 3 m/s placeholder holds the place in `constants.py` until then.)
+- **Max hover speed: 1 m/s** (the user, 2026-10-27, `BLACKSWIFT_S3_MAX_HOVER_SPEED_ms`).
+  The S3 isn't designed to travel laterally in hover and almost never does.
 - **MAVLink identity (2026-10-27, the user):** vehicle type 21, tilt-rotor VTOL, the more
   precise term for the kind of VTOL the S3 is; firmware 0, generic, because it isn't PX4.
 
@@ -173,7 +175,8 @@ launch, landing and climb points are chosen for legality and operational feasibi
 - Each operator hand-off gets a small time reserve.
 
 **Measured at the S3 numbers:**
-- The default plan returns to 9 lines (96.4 km usable).
+- The default plan returns to 9 lines (96.4 km usable): 74.3 min with a 15.7 min margin
+  once K-4 paid for the phases.
 - W* drops to 8.84 m/s, under the 9 m/s default, so the two turns between lines no longer fit
   in the 313.4 m line spacing at the default design wind.
 
@@ -194,8 +197,9 @@ launch, landing and climb points are chosen for legality and operational feasibi
 > of this software and of the actual UAS hardware, and a Gazebo (GZ) simulation for our
 > possible vehicle types and plans is under construction. BlackSwift's answers (2026-10-13)
 > settle the takeoff question and raise a larger one: the S3 flies three XML files through
-> BlackSwift's own flight management system, which the engine cannot write yet (Step K),
-> and its firmware is nothing like PX4, so PX4 SITL and Gazebo runs do not describe it.
+> BlackSwift's own flight management system, which the engine does not write (the user did
+> not build K-5, 2026-11-03), and its firmware is nothing like PX4, so PX4 SITL and Gazebo
+> runs do not describe it.
 >
 > **3. Climb, descent and hand-offs are modelled with provisional rates** (K-4,
 > 2026-10-27). The climb orbit costs 2.9 min and the two hand-offs 2 min. The descent rides
@@ -204,8 +208,9 @@ launch, landing and climb points are chosen for legality and operational feasibi
 > over-counts for a vehicle that climbs on its way out.
 >
 > **4. The camera-rollout fix is built, with provisional constants** (2026-10-18). Every
-> line now leaves a collection inset of 2.5·R_g + 150 m between its turn waypoint and the
-> camera, 470.6 m at the 9 m/s default design wind, and line 1's first turn moves back for
+> line now leaves a collection inset of 2.5·R_g + 80 m plus the aircraft's early camera
+> start (the S3's 126 m capture distance, or PX4's 70 m) between its turn waypoint and the
+> camera, 601.9 m for the S3 at the 9 m/s default design wind, and line 1's first turn moves back for
 > the turn in from the transit (Strat 1). The constants were calibrated on PX4 SITL flying
 > an S2 model. The S2 is end of life and the S3's firmware is nothing like PX4, so they are
 > **provisional placeholders** for the S3, and the S2 sweep that was to check them is
@@ -222,7 +227,8 @@ launch, landing and climb points are chosen for legality and operational feasibi
 > against a 90 min battery, and printed +11.4 min of margin.** `planner` now reserves the
 > transit before `geo` chooses N. The default mission after J-4 was **N=9 / 77,296 m /
 > 72.9 min / 17.1 min margin**; the rollout fix (2026-10-18) takes it to **N=7 / 71,630 m /
-> 67.3 min / 22.7 min margin**. See the J step table in the roadmap.
+> 67.3 min / 22.7 min margin**, and the S3 with its takeoff and landing phases (K-4) to
+> **N=9 / 87,460 m / 74.3 min / 15.7 min margin**. See the J step table in the roadmap.
 >
 > **~~The launch point in `constants.py` is stale.~~ Fixed in J-1.** The constants held
 > the south shore (36.637, −121.936) while the waypoint names said Seymour. They now hold
@@ -250,8 +256,8 @@ launch, landing and climb points are chosen for legality and operational feasibi
 >
 > The one V2C-2 change that IS live is the parallax line extension in
 > `geo.make_lawnmower_grid_through_m1`. Each end of every line grows by the parallax plus
-> the collection inset: 2 × (352 + 470.6) = 1,645 m per line at the 9 m/s default (808 m
-> with the old 52 m inset).
+> the collection inset: 2 × (352 + 601.9) = 1,908 m per line for the S3 at the 9 m/s
+> default (1,645 m for the S2 after the rollout fix, 808 m with the old 52 m inset).
 
 ## Layout
 
@@ -288,7 +294,7 @@ launch, landing and climb points are chosen for legality and operational feasibi
   - `validator.py` — **docstring only, no code.** Its docstring still describes the
     **cancelled** C-2 RTH/crosswind gate; read it as history, not as a spec. What
     validation survives is narrowed and sidelined — see Step E.
-- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 119 tests); see [Setup & run](#setup--run).
+- `tests/` — tiered pytest harness (`test_0_*` … `test_6_*`, **seven** files, 120 tests); see [Setup & run](#setup--run).
 - `exp2.plan`, `exp..plan` — **real QGroundControl exports for this site**, and until
   2026-09-30 the only ground truth the repo had for the `.plan` format. Several format
   questions that docs left ambiguous are settled by reading them, and the J-7 tests read
@@ -427,7 +433,7 @@ Read this before touching the grid, classification, or output code.
   a `Sensor` declares anything other than along-track. `geo.sensor_parallax_m` reports the
   **352 m** offset between nadir and the boresight ground point. The parallax **line
   extension** in `make_lawnmower_grid_through_m1` is live (parallax + inset at each end,
-  +1,645 m/line at the 9 m/s default); the crab-shear half
+  +1,908 m/line for the S3 at the 9 m/s default); the crab-shear half
   of that correction is cancelled with the rest of C-2's plan-altering work.
   ⚠️ Step F makes off-nadir angle user-settable, so none of these numbers stay constant.
 - **5-point flight lines.** `geo.make_line_through_point` emits
@@ -458,12 +464,15 @@ Read this before touching the grid, classification, or output code.
 - **Transit-aware sizing (V2 Step J-4, done).** ⚠️ **Read this before touching the budget,
   `geo`'s signature, or anything named `*_distance_m`.** `planner.build_candidate_plan`
   reserves the transit *before* `geo` is allowed to choose N:
-  1. `seed = 2 × distance(launch, M1)` — accurate to **+0.40%** against the measured
-     entry/exit legs at the Terrace Point geometry, so one pass normally suffices.
+  1. `seed = 2 × distance(launch, M1)`. From Terrace Point it falls **1.0% short** of the
+     measured transit for the S3 (44,773 m against 45,219 m; 0.40% short for the S2 at J-4),
+     and the default plan still fits on the first pass.
   2. `grid_budget = usable_endurance − seed`, handed to `_pick_best_orientation`. Since
      K-4 the takeoff and landing phases are subtracted too (see the K-4 bullet below).
   3. After `_reorient_to_launch` and `_classify_waypoints`, the **true** transit is measured
-     from the real corners: `d(launch_wp, route[1]) + d(route[-2], land_wp)`.
+     from the real corners: `d(launch_wp, climb point) + d(climb point, route[1])` plus
+     line 1's lead-in on the way out (K-4 and the rollout fix), and `d(route[-2], land_wp)`
+     on the way back.
   4. If the total does not fit, re-seed with the **measured** transit and loop, bounded by
      `CONST.TRANSIT_FIT_MAX_PASSES`. The measured value is strictly larger than the estimate
      that just failed, so the budget strictly shrinks and the loop **cannot spin**. If it
@@ -476,30 +485,33 @@ Read this before touching the grid, classification, or output code.
     *weather* gate that was cancelled; this one bounds a *geometric* convergence. Do not
     merge them.
   - **Four names, four distances** — the distinction is load-bearing:
-    - `plan.usable_endurance_distance_m` — what the **battery** affords (82,620 m). Set by
-      `planner`, because only the hub knows it.
-    - `plan.grid_budget_m` — what `geo` was **handed** (endurance − transit, 37,847 m).
-      Arrives via the metrics dict.
-    - `plan.total_grid_distance_m` — what the **grid** costs (26,559 m since the rollout
-      fix; 32,343 m at J-4). From `geo`.
-    - `plan.total_flight_distance` — what is actually **flown** (71,630 m; 77,296 m at J-4).
-      Computed by `planner` over the classified route, and what `route_duration_min`
-      consumes.
+    - `plan.usable_endurance_distance_m` — what the **battery** affords (96,390 m for the
+      S3; 82,620 m for the S2). Set by `planner`, because only the hub knows it.
+    - `plan.grid_budget_m` — what `geo` was **handed** (endurance − transit − the phase
+      reserve, 45,439 m; 37,847 m for the S2 at J-4, before the phases). Arrives via the
+      metrics dict.
+    - `plan.total_grid_distance_m` — what the **grid** costs (42,242 m; for the S2, 26,559 m
+      after the rollout fix and 32,343 m at J-4). From `geo`.
+    - `plan.total_flight_distance` — what is actually **flown** (87,460 m; for the S2,
+      71,630 m and 77,296 m). Computed by `planner` over the classified route, and what
+      `route_duration_min` consumes.
 
     Collapsing any two of these reintroduces the defect. It has already happened twice under
     different names — see the last bullet in [Design conventions](#design-conventions).
     Since J-6 the plan also carries the **measured transit** itself: `plan.transit_distance_m`
-    (45,071 m, set by `set_transit_distance_m`; 44,953 m at J-4). It is stored, not derived,
+    (45,219 m, set by `set_transit_distance_m`; for the S2, 45,071 m and 44,953 m at J-4).
+    It is stored, not derived,
     so no consumer subtracts two of the four. Since the rollout fix it includes line 1's
     lead-in (see the camera rollout bullet below).
 
 - **Grid/transit split (V2 Step J-6, built 2026-09-25).** The summary reports the flight as a
   grid part and a transit part: `plan.grid_duration_min` / `plan.total_grid_distance_m` and
-  `plan.transit_duration_min` / `plan.transit_distance_m`. Default plan since the rollout
-  fix: **grid 25.6 min / 26,559 m, transit 41.7 min / 45,071 m, total 67.3 min** (at J-6:
-  31.3 / 41.6 / 72.9). At J-6 a boat launch 2 km from M1 flipped it to grid 60.5 min,
-  transit 6.6 min: the Step F argument in two numbers. Since the rollout fix that boat plan
-  flies a 7,990 m line 1 lead-in (see the camera rollout bullet below).
+  `plan.transit_duration_min` / `plan.transit_distance_m`. Default plan for the S3 (K-4):
+  **grid 33.5 min / 42,242 m, transit 40.8 min / 45,219 m, total 74.3 min**. The transit
+  time includes the 4.9 min of phases. For the S2 it was 25.6 / 41.7 / 67.3 after the
+  rollout fix, and 31.3 / 41.6 / 72.9 at J-6. At J-6 a boat launch 2 km from M1 flipped it
+  to grid 60.5 min, transit 6.6 min: the Step F argument in two numbers. The S3's boat
+  plan: grid 46.5 min, transit 13.2 min, 7.4 min of it phases.
   - **The grid is costed; the transit is the remainder.** `planner` Step 9 calls
     `route_duration_min(total_grid_distance_m, N, aircraft)` for the grid and subtracts it
     from the total. Every one of the N−1 turn penalties is a grid turn, and the transit legs
@@ -515,23 +527,25 @@ Read this before touching the grid, classification, or output code.
   - Pinned in Tier 3 (`test_flight_splits_into_grid_and_transit`, shore and boat), in closed
     form. The line that asserts transit = distance ÷ cruise is the one to rebase in Step G.
 
-- **Transit bearings (V2 Step J-4.5, done).** `plan.departure_bearing_deg` (**174.9°**, 174.8°
-  before the rollout fix moved line 1's first waypoint) and `plan.approach_bearing_deg`
-  (**344.6°**) are set by `set_transit_bearings` from the same
-  two waypoint pairs J-4 measures for the transit. **Reporting only** — they reach the
+- **Transit bearings (V2 Step J-4.5, done).** `plan.departure_bearing_deg` (**176.3°**
+  for the S3; 174.9° for the S2 after the rollout fix) and `plan.approach_bearing_deg`
+  (**343.3°**; 344.6° for the S2) are set by `set_transit_bearings` from the same
+  waypoint pairs J-4 measures for the transit. Since K-4 the departure bearing points from
+  the pad to the climb point. **Reporting only** — they reach the
   terminal summary and the pilot-notes PDF, never the `.plan` (a heading in the file would
   mean a commanded yaw, which the null-yaw decision rules out).
   - ⚠️ **Measure after `_reorient_to_launch`, never before.** Reorientation decides which end
     of the serpentine the aircraft exits from; read off the raw grid the approach comes out
     ~10° wrong. Pinned by a Tier 4 assertion that the reported approach equals
     `bearing_between(waypoints[-2], waypoints[-1])`, mutation-verified to fail otherwise.
-  - The approach sits **5.0° off the pad→M1 reciprocal** (349.6°) for a shore launch,
-    because 22.4 km of transit dominates a few-km grid. **A boat launch breaks that** —
-    from 2 km out it swings to 305.2° (308.5° before the rollout fix). Never brief the
+  - The approach sits **6.3° off the pad→M1 reciprocal** (349.6°) for a shore launch (5.0°
+    for the S2), because 22.4 km of transit dominates a few-km grid. **A boat launch breaks
+    that** — from 2 km out the S3's approach is 55.4° (305.2° for the S2). Never brief the
     number from memory; recompute it.
-  - Operational use: a wind **from ~164.6°** is a pure tailwind on the approach, which is
-    the case worth warning about on a belly-landing airframe. Crab on approach at 18 m/s
-    cruise: 6.4° at 2 m/s crosswind, 12.8° at 4, 19.5° at 6, 26.4° at 8, 33.8° at 10.
+  - Operational use: a wind **from ~163.3°** is a pure tailwind on the approach, which the
+    S3 meets as it slows to transition to hover over the pad. A belly landing is now an
+    emergency only. Crab on approach at the S3's 21 m/s cruise: 5.5° at 2 m/s crosswind,
+    11.0° at 4, 16.6° at 6, 22.4° at 8, 28.4° at 10 (6.4° to 33.8° at the S2's 18 m/s).
 
 - **Camera rollout geometry (fast track, built 2026-10-18).** ⚠️ **Read this before touching
   the inset, line 1's first waypoint, or the transit figure.**
@@ -539,7 +553,8 @@ Read this before touching the grid, classification, or output code.
     altitude (`--design-wind`, default `DEFAULT_DESIGN_WIND_ALOFT_ms` = 9). The summary
     prints the forecast beside it at the 10 m NWS gives it, and never applies it
     (constraint 4).
-  - `planner` Step 2 sizes `collection_inset_m = rollout_inset_m(aircraft, design wind)` once
+  - `planner` Step 2 sizes `collection_inset_m = rollout_inset_m(aircraft, design wind)` once,
+    with the aircraft's capture distance as its early camera start when it has one (K-4),
     and hands it to `geo`, which places it at both ends of every line and extends each line
     by parallax + inset at each end. `geo` takes it as a parameter, the same contract as the
     payload figures. `V1_COLLECTION_INSET_m` is retired.
@@ -555,11 +570,14 @@ Read this before touching the grid, classification, or output code.
     the flight equals the distance along the plan's own waypoints; that is the check that
     fails if the lead-in is left out.
   - ⚠️ **Strat 1 explodes near a reversal.** tan(θ/2) runs to infinity at 180°. Shore launches
-    arrive at 9°–120° over the sampled dates, but the Tier 3/5 boat launch 2 km north of M1
-    arrives at 178.2°, and its line 1 lead-in is **7,990 m** (11 lines, 15.5 min margin; 13
-    lines before the fix). No CLI path reaches a boat launch until F-1, so this must be
-    settled before or with F-1 (see F-1.5).
-  - Default plan: 7 lines, inset 470.62 m, θ 117.56°, pushback 83.4 m, 51 `.plan` items.
+    arrive at 1°–126° (60 samples across 2026, 08:00–16:00, measured for the S3 on
+    2026-11-03). The Tier 3/5 boat launch 2 km north of M1 arrived at 178.2° with the S2,
+    and its line 1 lead-in was **7,990 m**. With the S3 it arrives at 113.9° and flies 85 m,
+    but a launch point F-1 makes settable can still arrive near 180°. No CLI path reaches a
+    boat launch until F-1, so this must be settled before or with F-1 (see F-1.5).
+  - Default plan (S3, K-4): 9 lines, inset 601.92 m, θ 118.96°, pushback 110.26 m, 65
+    `.plan` items. For the S2 after the rollout fix: 7 lines, 470.62 m, 117.56°, 83.4 m, 51
+    items.
   - Pinned by Tier 3 (`test_higher_design_wind_never_gives_more_lines`, the waypoint-sum
     check in `test_flight_splits_into_grid_and_transit`), Tier 4
     (`test_camera_starts_an_inset_past_every_turn`, which also pins the parallax extension,
@@ -572,7 +590,7 @@ Read this before touching the grid, classification, or output code.
     single-launch probe no longer reached the re-seed.
 
 - **Takeoff and landing phases (V2 Step K-4, built 2026-10-27).** ⚠️ **Read the K-4 entry
-  in [Step K](#k-s3-adoption-in-progress--k-1-to-k-4-built-2026-10-27-k-6-summary-2026-11-03) before touching the
+  in [Step K](#k-s3-adoption-closed-2026-11-03--k-5-not-built) before touching the
   budget, the transit or the takeoff item.** In short:
   - **Climb point:** a plan field, not a waypoint.
   - **Budget:** the climb and hand-offs are reserved before sizing, and the descent rides
@@ -637,10 +655,13 @@ Read this before touching the grid, classification, or output code.
     silently: the file still writes. The word "MISSION" in the constant's name is the
     trap; a note beside the table says so. The constant is a QGC constant, so renaming it is
     the user's call.
-  - Measured on the default plan: 65 items = 7N + 2; commands 16×45, 206×18, 22×1, 21×1;
-    frames 0×45, 2×18, 3×2; key sets identical to `exp2.plan`; 34,248 bytes (35,615 before
-    the camera-key fix). The boat plan gives 93 = 7·13 + 2. VTOL gives 84/85, and a
-    multirotor gives 22/21 with `hoverSpeed`.
+  - Measured on the default plan, flown by the S3 since K-3 (2026-11-03): 65 items = 7N + 2;
+    commands 16×45, 206×18, 84×1, 85×1 (VTOL takeoff and land); frames 0×45, 2×18, 3×2;
+    header vehicle 21, firmware 0, cruise 21, hover 1; 34,257 bytes. The S3's boat plan gives
+    79 = 7·11 + 2. A PX4 fixed wing flying the default mission (`_fixed_wing_plan()`, the S2's
+    numbers) gives 51 = 7·7 + 2 with 22/21, and a multirotor gives 22/21 with `hoverSpeed`.
+    For the S2 at J-5 the default was 65 items with 22/21, 34,248 bytes (35,615 before the
+    camera-key fix).
   - **All of the above is pinned by J-7** (`tests/test_6_outputs.py`, 22 tests). ⚠️ **Every
     expected value there is a MAVLink-spec literal or is read out of `exp2.plan`,
     `exp..plan` or `roundtrip_qgc.plan`, never out of `constants.py`.** A test that read the
@@ -674,7 +695,7 @@ Read this before touching the grid, classification, or output code.
   changed the numbers the summary prints but not its lines. It held on all three dates, with
   115 tests passing under `-W error` and pyright at 0 errors. Re-run on 2026-11-03 after K-6
   added the phase, climb-orbit and pilot-note lines. It held on all three dates, with 119
-  tests passing under `-W error` and pyright at 0 errors.
+  tests passing under `-W error` and pyright at 0 errors, and again after K-7 with 120.
   - `simplekml`'s `codecs.open()` DeprecationWarning is **fixed at source**. `write_kml`
     writes `kml.kml()` itself with `open(..., encoding="utf-8", newline="")` instead of
     calling `kml.save()`. Verified byte-identical to `save()`.
@@ -720,7 +741,13 @@ Read this before touching the grid, classification, or output code.
   phases paid for, slower climbs never give more lines, the climb point, the shortest leg;
   one Tier 5: the VTOL takeoff at the transition height), and rebased the Tier 3 split's
   transit line: 115. K-6 added four Tier 5 tests (a wind above the rating, never comparing
-  a default, weather that isn't a forecast, and the summary's phases and notes): 119.
+  a default, weather that isn't a forecast, and the summary's phases and notes): 119. K-7
+  (2026-11-03) found four branches no test reached, each confirmed by a break that passed
+  the suite. It added one Tier 5 test (the notes use the plan's own aircraft's rating) and
+  extended three: `test_altitudes_by_class` now also checks a fixed wing, against
+  `roundtrip_qgc.plan`'s 50 m climb-out (unpinned since K-3 made the default a VTOL); the
+  VTOL takeoff test checks a vehicle's own transition height; and the summary test checks
+  "from the pad". 120.
 - **Known defects and deferred items:**
   - ✅ ~~The budget and the reported duration exclude the transit legs.~~ **Fixed in J-4.**
   - ✅ ~~Launch/land constants are stale.~~ **Fixed in J-1**, and the waypoint names followed
@@ -729,9 +756,10 @@ Read this before touching the grid, classification, or output code.
     `cross_track_overlap` and `along_track_overlap` separately;
     `metrics["camera_trigger_distance_m"]` is **280.74 m** (561.48 m footprint × 50%) and
     reaches the plan. `ground_footprint_along_m` finally has a caller.
-  - ✅ ~~`Vehicle` is never instantiated.~~ **Fixed.** `planner._Black_Swift` is a `Vehicle`.
-    Measured on the default plan: `vehicle_type 1`, `firmware_type 12`, `is_VTOL False`,
-    `hover_speed_ms 0` — all four fields the writer branches on are reachable. ✅ Asserted
+  - ✅ ~~`Vehicle` is never instantiated.~~ **Fixed.** `planner._BlackSwift_S3` is a
+    `Vehicle` (the S2's `_Black_Swift` until K-3). Measured on the default plan:
+    `vehicle_type 21`, `firmware_type 0`, `is_VTOL True`, `hover_speed_ms 1` (the S2 gave 1,
+    12, False, 0) — all four fields the writer branches on are reachable. ✅ Asserted
     since J-7 by `test_plan_aircraft_is_a_vehicle`. The gap had survived three steps precisely
     because no test looked.
   - ✅ **The camera started before the S2 had rolled out of its turn. Fixed in code
@@ -766,7 +794,9 @@ Read this before touching the grid, classification, or output code.
       - The default is a **fixed value**, overridable per plan, and it must be derived from
         Monterey Bay wind data, not set arbitrarily (2026-10-09). Its value is **9 m/s at
         altitude** (2026-10-09): the 90th percentile of the 10:00 wind at 609.6 m over M1.
-        That gives R_g = 128.25 m, an inset of 470.6 m, 7 lines and a 22.7 min margin.
+        For the S2 that gave R_g = 128.25 m, an inset of 470.6 m, 7 lines and a 22.7 min
+        margin. For the S3 it gives R_g = 158.4 m, an inset of 601.9 m (with its 126 m early
+        start), 9 lines and a 15.7 min margin.
       - `V1_COLLECTION_INSET_m` is **retired** (2026-10-09). It went in R-4, not R-3: R-3
         made the inset a parameter of `geo` with `planner` still passing 52 m, a pure
         refactor that left both test plans byte-identical, and R-4 removed the last reader.
@@ -788,13 +818,16 @@ Read this before touching the grid, classification, or output code.
       - A design wind below the day's real wind brings back banked first images on the
         downwind lines. The summary shows the forecast beside the design wind for that reason.
       - Strat 1 near a reversal (the boat case above) waits on F-1.5.
-    - **Measured cost, with Strat 1:**
-      - 9 lines hold only up to a design wind of **~2.8 m/s at altitude** (inset ~340 m).
-      - Above that the grid drops to 7 lines, with a 24.4 min margin at 3 m/s and 20.5 min
-        at 15 m/s.
-      - The 7-line grid has 56% of the 9-line area, because the grid is square. Step F-4
-        undoes that: at 9 m/s, a 7-line grid with 1.5 km longer lines covers 6.36 km² (today
-        6.29 km²) with a 12.9 min margin.
+    - **Measured cost, with Strat 1, for the S3** (2026-11-03, K-4 phases paid for):
+      - 9 lines hold up to a design wind of **14.1 m/s at altitude**. The margin falls from
+        18.7 min at 0 m/s to 15.7 min at 9 m/s and 13.6 min at 14 m/s.
+      - At the 15 m/s rating the grid drops to 7 lines (inset 776.1 m, 24.7 min margin).
+    - **The same for the S2, kept as history** (it drove the F-4 argument):
+      - 9 lines held only up to ~2.8 m/s (inset ~340 m). Above that the grid dropped to 7
+        lines, with a 24.4 min margin at 3 m/s and 20.5 min at 15 m/s.
+      - The 7-line grid has 56% of the 9-line area, because the grid is square. At 9 m/s, a
+        7-line grid with 1.5 km longer lines covered 6.36 km² (against 6.29 km² for 9 lines)
+        with a 12.9 min margin.
     - **Wind data for the default (2026-10-09, not in the repo).** Archived model winds over
       M1 for 2022–2025, at 10:00 local, interpolated to 609.6 m: mean 4.9 m/s, p90 8.8 m/s,
       ≤ 2.8 m/s on 26% of mornings. The wind at 609.6 m is only ~1.15× the 10 m wind on
@@ -817,8 +850,8 @@ Read this before touching the grid, classification, or output code.
 ## V2 roadmap — what comes next
 
 **Execution order as of 2026-10-18: `J` → `K` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
-**J is complete (2026-09-30). K, S3 adoption, is in progress: K-1 to K-4 were built on
-2026-10-27 and K-6's summary half on 2026-11-03, and K-5 waits on BlackSwift. Then F.** Letters record the order
+**J is complete (2026-09-30). K, S3 adoption, CLOSED on 2026-11-03 without K-5, the
+BlackSwift writer. F is next.** Letters record the order
 steps were *scoped*, not the order they are *built* — the same convention the `V1_`
 constant prefixes follow.
 
@@ -892,15 +925,16 @@ without them. Both are BUILT as of J-2/J-3:**
 - ✅ *From G:* the **vehicle class**, built as `Vehicle(Aircraft)` rather than as a field on
   `Aircraft` — it carries `vehicle_type`, `firmware_type`, `is_VTOL` and `hover_speed_ms`.
   Same move `Sensor.mounting` already makes: record the assumption as data on the object
-  instead of burying it in a formula. **Neither class in use today needs a transition
-  altitude** (the S2 is a pure fixed wing; custom vehicles are pure rotorcraft);
-  `TRANSITION_REL_m = 50` is provisional, applies to the VTOL class only, and that class has
-  no instance. ✅ `planner._Black_Swift` constructs a `Vehicle`.
+  instead of burying it in a formula. **At J, neither class in use needed a transition
+  altitude** (the S2 was a pure fixed wing; custom vehicles are pure rotorcraft), and
+  `TRANSITION_REL_m = 50` had no instance. Since K-3 the default S3 is a VTOL, and since
+  2026-10-27 `TRANSITION_REL_m` is 10 and is its takeoff altitude. ✅ `planner._BlackSwift_S3`
+  constructs a `Vehicle` (the S2's `_Black_Swift` until K-3).
 - ✅ *From F:* the **along-track overlap** on `Sensor`, because distance triggering needs a
   spacing. `Sensor` now carries `cross_track_overlap` and `along_track_overlap` separately,
   and `geo.ground_footprint_along_m` finally has a caller. Measured: footprint **561.48 m**,
-  spacing = footprint × (1 − overlap) = **280.74 m at 50%** = one frame every 15.6 s at
-  cruise, carried as `metrics["camera_trigger_distance_m"]`.
+  spacing = footprint × (1 − overlap) = **280.74 m at 50%** = one frame every 13.4 s at the
+  S3's 21 m/s (15.6 s at the S2's 18), carried as `metrics["camera_trigger_distance_m"]`.
   ⚠️ **`geo` takes both as parameters and reads neither from `constants`** — the same
   contract `cross_track_fov_deg` already had. Step F makes them user-settable, and a
   `Sensor` read inside `geo` would be silently ignored.
@@ -918,8 +952,8 @@ flight. Implementation detail is in
 [Current state](#current-state--what-the-engine-actually-does-context-for-future-work);
 what follows is the measurement, kept because re-deriving it is expensive.
 
-Measured from Terrace Point: **22,386 m to M1**, bearing 169.6°, round-trip transit
-**44.8 km ≈ 41.5 min of a 90 min battery**, barely varying with grid size (45,239 m at N=15
+Measured from Terrace Point, for the S2 at J-4: **22,386 m to M1**, bearing 169.6°,
+round-trip transit **44.8 km ≈ 41.5 min of a 90 min battery** at 18 m/s, barely varying with grid size (45,239 m at N=15
 vs. 44,800 m at N=3) because M1 dominates. The old engine emitted **N=15 = 127,559 m =
 120.4 min**, thirty minutes past the battery, and printed +11.4 min of margin. Now:
 
@@ -942,11 +976,15 @@ TOTAL FLIGHT              77,296 m  |  72.9 min  |  margin 17.1 min   FITS
   default mission's N, so the tiering absorbed the change.
 - **"or a stationary boat" is the escape hatch, and it is now measurable.** A launch 2 km
   from M1 yields **N=13 instead of N=9**, pinned by a Tier 3 test. Transit is **54% of the
-  battery** before a single science line is flown. That reframes Step F from partner
+  battery** before a single science line is flown (47% of the S3's usable distance, which
+  gets 11 lines from that boat against 9 from the shore). That reframes Step F from partner
   convenience into the largest efficiency lever the engine has.
 
-**✅ LAUNCH AND RECOVERY — SETTLED, AND SIMPLER THAN FEARED** (decided 2026-09-08).
-The S2 **launches from a stand** and **lands on its belly at a very low stall speed with
+**✅ LAUNCH AND RECOVERY — SETTLED, AND SIMPLER THAN FEARED** (decided 2026-09-08, for the
+S2; history). Since K-4 the default S3 takes off vertically to its 10 m transition height,
+climbs in an orbit at the climb point, descends along the approach and lands vertically,
+so the `.plan` carries `NAV_VTOL_TAKEOFF` (84) and `NAV_VTOL_LAND` (85). A fixed wing still
+gets what follows. The S2 **launches from a stand** and **lands on its belly at a very low stall speed with
 steep descent capability**, which is precisely why Terrace Point works as a single pad. So:
 - **`geo` needs no approach geometry.** J-5 emits a plain land item at the pad coordinate.
   No landing pattern, no loiter-to-alt, no new geometry anywhere.
@@ -956,7 +994,8 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
   always take manual control of the landing, as with any QGC plan.**
 - **⚠️ The `.plan` still encodes an approach direction implicitly**, and as of **J-4.5 the
   engine now computes and carries it** — `plan.approach_bearing_deg` = **344.6°**,
-  `plan.departure_bearing_deg` = **174.8°**. A *fact of the geometry*, not a wind decision,
+  `plan.departure_bearing_deg` = **174.8°** for the S2 at J-4.5 (343.3° and 176.3° for the
+  S3). A *fact of the geometry*, not a wind decision,
   and the RPIC must be told it. This gives the pilot-notes document its **first genuinely
   operational customer**: compare the arrival bearing against the into-wind heading and
   state the headwind/crosswind/tailwind component the pilot will meet. A belly-landing
@@ -964,7 +1003,8 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
   caveats in [Current state](#current-state--what-the-engine-actually-does-context-for-future-work).
 - The **launch item's altitude** is a climb-out altitude, not the 609.6 m mission altitude
   the launch waypoint carries. Set in J-1 as `TAKEOFF_REL_m = 50` (relative frame), with
-  `LANDING_REL_m = 0` for the land item.
+  `LANDING_REL_m = 0` for the land item. Since K-4 a VTOL's takeoff item takes the plan's
+  transition height instead (10 m for the S3).
 - **✅ ANSWERED 2026-10-13, and moot: the S2 is end of life.** The S3 never flies back over
   home; it climbs in an orbit to a takeoff waypoint (see
   [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)). The question as it stood, kept as history:
@@ -992,9 +1032,11 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
   line from the last grid waypoint (344.6°).
 - **✅ Speed is not commanded, by design (confirmed 2026-09-22).** The header `cruiseSpeed` is
   a QGC planning estimate only; a MAVLink mission upload carries items, not the header. The
-  aircraft flies its autopilot's configured cruise speed, and the user confirmed the S2's is
-  **18 m/s = `BLACKSWIFT_CRUISE_SPEED_ms`**, the speed every budget, duration and margin
-  assumes. So no `DO_CHANGE_SPEED` (178) is emitted. **Step G must revisit this:** once the
+  aircraft flies its autopilot's configured cruise speed. The user confirmed the S2's was
+  18 m/s, the speed every budget assumed until K-3. Since K-3 the default is the S3 at
+  **21 m/s = `BLACKSWIFT_S3_CRUISE_SPEED_ms`**, which the header carries. The S3 doesn't fly
+  a QGC file at all (it flies BlackSwift's XML, which the engine does not write), so the
+  header speaks only to a QGC-flown vehicle. So no `DO_CHANGE_SPEED` (178) is emitted. **Step G must revisit this:** once the
   aircraft is user-settable, the engine's cruise speed and the autopilot's can differ.
   Emitting a `DO_CHANGE_SPEED` after takeoff is then the fix (QGC's own "Flight speed"
   setting does exactly that).
@@ -1015,9 +1057,11 @@ steep descent capability**, which is precisely why Terrace Point works as a sing
 | J-7 | `tests/test_6_outputs.py` | Item ordering, camera toggles paired, monotonic `doJumpId`, per-class frames, home position | ✅ 2026-09-25 — 20 tests, broken 15 ways to confirm each catches its defect; 22 since the 2026-09-30 round trip |
 | J-8 | docs | Closeout: warning box narrowed, round trip recorded, stale `Seymour-*` waypoint names fixed (`Terrace-Point-*`, `e0630ff`), status lines | ✅ 2026-09-30 |
 
-**✅ J-5's PREREQUISITE IS CLEARED — `Vehicle` is adopted.** `BLACKSWIFT_VEHICLE_TYPE = 1`
-(Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4) are in `constants.py`, and
-`planner._Black_Swift = Vehicle(...)` reads them. Measured on the default plan:
+**✅ J-5's PREREQUISITE IS CLEARED — `Vehicle` is adopted.** At J, `BLACKSWIFT_VEHICLE_TYPE
+= 1` (Fixed Wing) and `BLACKSWIFT_FIRMWARE_TYPE = 12` (PX4) were in `constants.py`, and
+`planner._Black_Swift = Vehicle(...)` read them. K-3 deleted both with the S2; the S3 is
+`BLACKSWIFT_S3_VEHICLE_TYPE = 21` and `BLACKSWIFT_S3_FIRMWARE_TYPE = 0`. Measured on the
+default plan at J:
 `vehicle_type 1`, `firmware_type 12`, `is_VTOL False`, `hover_speed_ms 0` — all four fields
 `_serialize_qgc` branches on are reachable. `Vehicle.__init__` **raises** on an invalid
 vehicle type and **warns + defaults to PX4** on an invalid firmware type, so a typo fails
@@ -1027,7 +1071,8 @@ loudly rather than writing a bad file.
   `test_plan_aircraft_is_a_vehicle`). The gap survived three steps precisely because nothing
   checked.
 
-**✅ Landing item — SETTLED as plain `NAV_LAND` (21)**, which is what `_qgc_params` builds.
+**✅ Landing item — SETTLED as plain `NAV_LAND` (21)** for a fixed wing, which is what
+`_qgc_params` builds; a VTOL gets `NAV_VTOL_LAND` (85), the default S3's since K-3.
 `exp2.plan` expresses its fixed-wing landing as a **`ComplexItem` of
 `complexItemType: "fwLandingPattern"`** — with `landingApproachCoordinate`,
 `loiterRadius: 75`, `loiterClockwise`, `finalApproachSpeed` and `stopTakingPhotos` — not
@@ -1057,7 +1102,7 @@ resolves:
 
 | item | `frame` | `AltitudeMode` | altitude |
 |---|---|---|---|
-| takeoff / land | 3 (relative) | 1 | `TAKEOFF_REL_m` 50 / `LANDING_REL_m` 0 |
+| takeoff / land | 3 (relative) | 1 | `TAKEOFF_REL_m` 50 (a VTOL's transition height, 10, since K-4) / `LANDING_REL_m` 0 |
 | cruise nav | 0 (AMSL) | 2 | 609.6 |
 | DO camera | 2 (mission) | **omitted** | **omitted** (and so is `AMSLAltAboveTerrain`) |
 
@@ -1110,7 +1155,7 @@ The rest:
   bracket on its own line, and we write `[]`. Both files end with a newline, as ours now
   does.
 
-### K. S3 adoption (IN PROGRESS — K-1 to K-4 built 2026-10-27, K-6 summary 2026-11-03)
+### K. S3 adoption (CLOSED 2026-11-03 — K-5 not built)
 Decided 2026-10-18, from BlackSwift's answers (see [BlackSwift response](#blackswift-response--2026-10-13-supersedes-the-s2-vehicle-facts)):
 retire the end-of-life S2 and make the S3 the default aircraft, before Step F, so F-1 builds
 on the aircraft that will fly. The planning artifact's §K has the step cards and the reason
@@ -1153,9 +1198,9 @@ for each change. In outline:
       cruise 21, hover 1.
   - K-3 was an intermediate state; its numbers are superseded by K-4's below. At 77.6 m,
     2·R_g = 316.7 m at 9 m/s, more than the 313.4 m line spacing: the two turns between
-    lines no longer fit (W* = 8.84 m/s). **Every other default-plan figure in this file
-    (7 lines, 67.3 min, 470.6 m, 83.4 m, 117.56°) is the S2's**, and K-8 rewrites them at
-    K's close.
+    lines no longer fit (W* = 8.84 m/s). K-8 (2026-11-03) rewrote the S2-era default-plan
+    figures elsewhere in this file. An S2 number that remains is labelled as the S2's or as
+    history.
 - **Takeoff and landing phases:** a hover takeoff, a transition at ~10–15 m AGL, an orbit
   climb to a takeoff waypoint, and the descent along the approach.
   - ✅ **Transition standardized 2026-10-27 (the user, with permission to edit these QGC
@@ -1193,25 +1238,32 @@ for each change. In outline:
     wrong:** it charged the 5.4 min descent as extra time, which the descend-on-approach
     answer removes. The boat 2 km north of M1: 11 lines, 59.7 min, a 3.6 km approach and a
     **2.5 min overrun**. It now arrives at 113.9° with an 85 m lead-in, not the S2's 178.2°.
-- **K-1 to K-4 were committed by the user** (`b3337b6`, `677f68a`, `afcb6f4`). The two
+- **K-1 to K-4 and K-6 were committed by the user** (`b3337b6`, `677f68a`, `afcb6f4`, `701794c`). The two
   decisions left open at the 2026-10-27 pause were settled on 2026-11-03:
   1. **Per-vehicle phase charging is left to Step G.** The default aircraft may change
      soon, so no more S3-only work is wanted until that is settled.
   2. **K-6's summary half is built** (2026-11-03), with the user's addition: pilot notes for
      winds above the aircraft's wind rating and for weather that isn't a forecast. See the
      K-6 bullet under Current state. The S3-only belly-landing note was not built.
-  - **Blocked:** K-5, the XML writer, waits on BlackSwift questions 1–5 and 7–9 (the
-    planning artifact lists them). K-6's writer selection waits on K-5.
-  - **Buildable now:** K-8's docs pass, which rewrites the S2-era figures in Current state
-    (the camera rollout bullet, the J-4/J-6 numbers, and the "Measured on the default plan"
-    lines). README is current as of 2026-11-03.
-- **A BlackSwift writer:** three XML files (takeoff, mission, landing), a sibling to the QGC
-  writer that consumes the same neutral item list. The format comes from `BS_EXAMPLES/`;
-  units, datum, waypoint numbering, camera control and the S3's vertical landing are open
-  questions for BlackSwift.
-- **Which writers run** is an output selection (K-6), never inferred from the vehicle: see
-  the K-2 decision above.
-- **Tests** that read the S2 as the default aircraft are rebased.
+- ✅ **K-7 built 2026-11-03: the test audit.** Every test the K-7 card listed already
+  existed from K-2 to K-4, except the BlackSwift XML tests, which went with K-5. Four
+  branches had no test, and a break of each passed the suite: a fixed wing's takeoff
+  altitude (unpinned since K-3 made the default a VTOL), a VTOL's own transition height,
+  the pilot notes' choice of wind rating, and the summary's "from the pad". One new Tier 5
+  test and three extended tests now catch all four: 120 tests.
+- ✅ **K-8 built 2026-11-03: the docs.** CLAUDE.md's S2-era figures were re-measured on the
+  S3 and rewritten, or labelled as the S2's history. README was already current.
+- ❌ **K-5, the BlackSwift writer, was NOT built (the user, 2026-11-03).** The default
+  aircraft may change, and the writer would be lost work if BlackSwift goes. It would write
+  three XML files (takeoff, mission, landing) as a sibling of the QGC writer, from the same
+  neutral item list, in the format of `BS_EXAMPLES/` (the example files, not a template).
+  It needs BlackSwift's answers first: altitude units and datum, home, waypoint numbering,
+  climbs a leg can't hold, how a vertical landing is written, camera control, orbit radius
+  limits, and FLY_OVER. The planning artifact lists them as questions 1–9. **Revisit only
+  if BlackSwift stays.** K-6's writer selection goes with it: which writers run stays an
+  output selection, never inferred from the vehicle (see the K-2 decision above).
+- ✅ **Tests** that read the S2 as the default aircraft were rebased in K-3, and the gap
+  K-3 left (a fixed wing's takeoff altitude) was closed in K-7.
 
 ### F. Mission configurability (AFTER K, NOT STARTED)
 Per constraint 2, the user sets: line length, grid width, center point, launch point,
@@ -1234,10 +1286,11 @@ overlap %, and camera off-nadir viewing angle.
   overlaps, `geo` takes both as parameters, and the trigger distance rides the metrics dict.
   F only has to make them *user-settable*; the physics is done.
 - **The launch point is the highest-value knob, not a convenience.** J-4 made the cost
-  visible: transit is **54% of the battery** from Terrace Point, and at J-4 a launch 2 km
-  from M1 took the mission from N=9 to N=13. Since the rollout fix that same boat gets 11
-  lines against the shore's 7, and spends 7,990 m of it on Strat 1's line 1 lead-in, which
-  F-1.5 has to fix. Whatever the delivery mechanism, launch/land coordinates should be
+  visible: transit is **54% of the battery** from Terrace Point (47% of the S3's usable
+  distance), and at J-4 a launch 2 km from M1 took the mission from N=9 to N=13. For the S3
+  that boat gets 11 lines against the shore's 9, arriving at 113.9° with an 85 m lead-in.
+  With the S2 it arrived at 178.2° and spent 7,990 m on Strat 1's lead-in, the case F-1.5
+  has to fix. Whatever the delivery mechanism, launch/land coordinates should be
   first-class.
 - **F-0 decided 2026-10-09:**
   - **F-1 comes first:** launch and land as real inputs, before the pilot-notes PDF.
@@ -1248,8 +1301,10 @@ overlap %, and camera off-nadir viewing angle.
     keeps today's plan.
   - **A requested grid that doesn't fit:** report the closest grid that fits and proceed.
     Whether it should also refuse stays with Step E's open endurance-gate question.
-- **F-4 also undoes most of the rollout fix's cost.** The camera-rollout inset drops the
-  default grid from 9 lines to 7 at any design wind above ~2.8 m/s, and the square-grid rule
+- **F-4 also undid most of the rollout fix's cost for the S2** (history: for the S3 the
+  default holds 9 lines up to a 14.1 m/s design wind, so F-4's case now rests on
+  configurability alone). For the S2 the camera-rollout inset dropped the default grid from
+  9 lines to 7 at any design wind above ~2.8 m/s, and the square-grid rule
   (side = offset × (N − 1)) then shrinks the lines too, to 56% of the area. With line length
   independent of N, the freed margin buys longer lines. Measured 2026-10-09 at a 9 m/s
   design wind: 7 lines, 1.5 km longer, 6.36 km² against today's 6.29 km², with a 12.9 min
@@ -1259,17 +1314,19 @@ overlap %, and camera off-nadir viewing angle.
   turn from the transit onto line 1: line 1's first turn waypoint moves back along the line,
   with no new waypoints. Strat 1's cost grows with tan(θ/2) of the arrival angle θ, and it
   passes the loop's cost at about 118° at every wind speed. Shore launches arrive at
-  2°–120°, but a launch point F makes settable (a boat) can arrive near 180°.
+  1°–126° (S3, 2026-11-03), but a launch point F makes settable (a boat) can arrive near
+  180°.
   - **The Strat 2 loop:** keep the outbound heading, turn onto a leg running opposite to
     line 1 and offset from it by 2·R_g, then make a 180° turn onto line 1 with a straight
     run-in before the camera starts.
   - The same loop replaces the two 90° turns **between lines** once the design wind passes
-    `W*` ≈ 11.8 m/s at altitude, where 2·R_g is wider than the 313.4 m line spacing.
-  - Size the offset from R_g at the design wind, never from the still-air 57 m. At 15 m/s a
-    114 m offset overshoots line 1 by up to ~270 m.
+    `W*`, where 2·R_g is wider than the 313.4 m line spacing. For the S3, W* ≈ **8.84 m/s**,
+    under the 9 m/s default design wind (11.8 m/s for the S2).
+  - Size the offset from R_g at the design wind, never from the still-air radius (77.6 m
+    for the S3). For the S2 at 15 m/s, a 114 m offset overshot line 1 by up to ~270 m.
   - **The 2026-10-08 sweep makes the case for the loop stronger.** Most of D_level is not
     the turn but the overshoot and S-turn after a downwind 90° fly-by onto the line, which
-    PX4 does even in still air (D_level 180–188 m against a 57 m radius). A loop or lead-in
+    PX4 did even in still air (the S2 in SITL: D_level 180–188 m against a 57 m radius). A loop or lead-in
     that joins the line's axis outside the grid is designed to remove exactly that. It
     needs its own sim sweep before it is built, because waypoint-following is not
     arc-following. **That sweep was requested 2026-10-09** (the user's choice: now, in
@@ -1282,15 +1339,17 @@ overlap %, and camera off-nadir viewing angle.
   - The turn onto line 1 depends on the launch point, so its loop lives in `planner`, and
     `geo` still never learns where launch is. The loop between lines is grid geometry and can
     live in `geo`, with R_g passed in as a parameter.
-  - **Measured 2026-10-18, once Strat 1 was built:** the Tier 3/5 boat launch 2 km north of
-    M1 arrives at 178.2°, and Strat 1 pushes line 1's first waypoint back **7,990 m**. A
+  - **Measured 2026-10-18 for the S2, once Strat 1 was built:** the Tier 3/5 boat launch
+    2 km north of M1 arrived at 178.2°, and Strat 1 pushed line 1's first waypoint back
+    **7,990 m**. With the S3 (K-4) that boat arrives at 113.9°, so today's test boat no
+    longer reaches the blow-up, but a launch point F-1 makes settable can. A
     near-reversal fly-by is not what the formula models, and with the S2 sweep cancelled no
     simulation shows what the S3 would fly instead. F-1 makes this reachable from the CLI, so F-1.5,
     or a cap on Strat 1 the user chooses, has to land with or before F-1.
 
 ### G. Aircraft configurability (SIDELINED)
 Per constraint 3. Fixed-wing, quadcopter, or hexacopter, with every fixed-wing performance
-constant user-settable rather than hard-coded to the BlackSwift S2.
+constant user-settable rather than hard-coded to the BlackSwift S3 (the S2 until K-3).
 - `objects.Aircraft` is already a general constructor — the hard-coding lives in
   `planner._BlackSwift_S3`, a module-level singleton built from `BLACKSWIFT_S3_*` constants (the S2's `_Black_Swift` until K-3).
   That singleton is what has to go. J-4 already removed the *reach-ins* to it from inside
@@ -1390,8 +1449,9 @@ for what that changed and why the two FOV formulas traded places.
 | 8 | docs | ⏳ this section |
 
 **What is LIVE vs INERT.** Step 4's parallax extension is inside
-`make_lawnmower_grid_through_m1`, so it changes every plan today (+808 m per line; grid
-distance 82,320 m). **Everything else built in C-2 has zero callers**:
+`make_lawnmower_grid_through_m1`, so it changes every plan today (+1,908 m per line for the
+S3 at the 9 m/s default since the rollout fix; +808 m per line, grid distance 82,320 m, when
+this was written). **Everything else built in C-2 has zero callers**:
 `wind_correction_angle_deg`, `ground_speed_ms`, `effective_lawnmower_speed_ms`,
 `return_time_min`, `required_reserve_time_min`, `wind_aware_usable_distance_m`,
 `max_crosswind_tolerance_ms`, `cross_wind_component_ms`, `head_wind_component_ms`,
@@ -1419,8 +1479,8 @@ crab moves the imaged geometry even though it no longer moves the plan.
   Rotating the axis to chase a smaller δ **provably never helps** (|dδ/dα| ≤ w/V < 1), so
   α = 0 is always optimal. Under constraint 4 this stops being an argument for *not
   rotating* and becomes simply the *reported* error.
-- `|δ| ≤ 15°` ⟺ crosswind across the science axis ≤ `V·sin(15°)` ≈ **4.66 m/s** at S2
-  cruise. Report it as **science-quality headroom** for the RPIC, never as a gate.
+- `|δ| ≤ 15°` ⟺ crosswind across the science axis ≤ `V·sin(15°)` ≈ **5.44 m/s** at the
+  S3's 21 m/s cruise (4.66 m/s at the S2's 18). Report it as **science-quality headroom** for the RPIC, never as a gate.
 - `cross_track_strip_offset_m = parallax · sin(crab)` — report, do not correct.
 
 ### D. Fold weather into scoring (SIDELINED, NARROWED)
@@ -1467,8 +1527,8 @@ gate — read it as history. What remains for E:
 - V1 was a proof-of-engine build (fixed aircraft, clear skies, fixed date/time, assumed
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
   B (live NWS weather), C-1 (along-track mount) and J (JSON `.plan` output, completed
-  2026-09-30) are done**. Remaining, in execution order: **K** (S3 adoption, in progress),
-  **F** (mission configurability), **G** (aircraft configurability), **C-2 re-scoped**
+  2026-09-30) and K (S3 adoption, closed 2026-11-03 without the BlackSwift writer) are
+  done**. Remaining, in execution order: **F** (mission configurability), **G** (aircraft configurability), **C-2 re-scoped**
   (wind reporting), **D** (sun/cloud ranking), **E** (legality).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.
   `V1_DEFAULT_SENSOR_OFF_NADIR_deg` is 30, the V2C angle). The prefix records where the
