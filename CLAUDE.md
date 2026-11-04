@@ -119,8 +119,9 @@ takeoff/land commands Step J must emit):
 
 ## BlackSwift response — 2026-10-13 (SUPERSEDES the S2 vehicle facts)
 
-BlackSwift answered our questions in a meeting on 2026-10-13. The user's write-up is
-`BlackSwift Response Writeup.txt` in the repo root. Where an older section of this file
+BlackSwift answered our questions in a meeting on 2026-10-13. The user's write-up,
+`BlackSwift Response Writeup.txt`, is kept locally in the repo root and is git-ignored; the
+user removed it from the public repo and its history on 2026-11-03. Where an older section of this file
 conflicts with this one, this one wins. Step K replaced the S2 in the code (K-3,
 2026-10-27), and the full list of changes, with the reason for each, is in the planning artifact's
 "BlackSwift response" section.

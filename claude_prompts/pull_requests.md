@@ -289,22 +289,20 @@ entry does it for PR #3.
 **Blocking: none in the code.**
 
 **Before merge:**
-- **BlackSwift's example plans come out of the repo and its history** (the user's decision,
-  2026-11-03). The repo is PUBLIC, BlackSwift declined to share its S3 model on IP grounds,
-  and the files are BlackSwift's.
-  - All three were added in one commit, `a902cc2`. Only `rollout_hotfix` contains it, so the
-    rewrite touches the 7 commits from `a902cc2` to the head. `main`, other branches and
-    forks (there are none) are unaffected.
-  - The rewrite was dry-run on a throwaway clone:
-    - no commit on the branch carries the files;
-    - the new head differs from the old only by the three deleted files;
-    - all 52 commits and the 120 tests survive.
-  - The head SHA changes, so `d07201a` above names the pre-rewrite head.
-  - The files stay on the user's disk, ignored by `.gitignore`. No code reads them.
+- **BlackSwift's material comes out of the repo and its history** (the user's decision,
+  2026-11-03). The repo is PUBLIC, and BlackSwift declined to share its S3 model on IP
+  grounds. Both removals rewrite only `rollout_hotfix`; `main`, other branches and forks
+  (there are none) are unaffected. The files stay on the user's disk, ignored by
+  `.gitignore`, and no code reads them.
+  - **The three example plans (`BS_EXAMPLES/`): removed.** They were added in `a902cc2`. The
+    rewrite of the 7 commits from there to the head was dry-run on a throwaway clone, then
+    run by the user and pushed. I verified the pushed result: no reachable commit carries
+    the files, `main` is still an ancestor, and the 120 tests pass.
+  - **The meeting write-up (`BlackSwift Response Writeup.txt`): removed the same way.** It
+    was added in `ccacf9a`, so that rewrite covers the commits from there to the head.
+  - Each rewrite changes the head SHA, so `d07201a` above names the original head.
   - GitHub keeps the old commits reachable by SHA from PR #3's history until GitHub
     Support purges them. A complete removal needs that request.
-  - `BlackSwift Response Writeup.txt`, the user's notes of the BlackSwift meeting, is also
-    public on the branch. Whether it stays is the user's call.
 - **A stray `test` line is still in `src/constants.py`'s module docstring (line 19)**, from
   commit `88cd726 test`. Delete it.
 - **The re-seed test proves nothing since K-4** (`tests/test_4_grid_assembly.py:174`).
