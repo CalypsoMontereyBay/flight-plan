@@ -32,7 +32,8 @@ route as `.kml` and `.png`. See [`README.md`](README.md) for the full descriptio
 (live NWS weather) and C-1 (along-track payload mount) are complete and tested. C-2 is
 HALF BUILT and has been RE-SCOPED — it is no longer a gate. Step J (JSON output) is
 COMPLETE as of 2026-09-30, Step K (S3 adoption) CLOSED on 2026-11-03, and Step F (mission
-configurability) is next.** See
+and aircraft configurability) is next. Its design was settled with the user on 2026-11-06.
+None of it is built, and F-1's functions are agreed with the user before any code.** See
 [Operating constraints](#operating-constraints--2026-09-08-supersedes-earlier-scoping) and
 the [V2 roadmap](#v2-roadmap--what-comes-next).
 
@@ -54,8 +55,8 @@ constants, paid for the climb, descent and hand-offs, and set every VTOL to tran
 pilot notes on every plan, including winds above the aircraft's rating and weather that
 isn't a forecast. The default plan is 9 lines, 74.3 min, with a 15.7 min margin. **K-5, the
 BlackSwift XML writer, was not built** (the user, 2026-11-03): the default aircraft may
-change, and no S3-only work is wanted until that is settled. Step F has no step table yet;
-its F-0 decisions are in (2026-10-09). The two
+change, and no S3-only work is wanted until that is settled. Step F's design, its settings
+list and its F-1 to F-7 slicing were settled on 2026-11-06 (see Step F). The two
 largest defects the warning box used to carry — the transit-blind budget and the stale
 launch coordinates — are **fixed**. The engine now sizes N against a budget that pays for
 the commute, reports a duration for the route actually flown, and carries the approach
@@ -76,12 +77,13 @@ section wins.
 2. **The mission must become configurable.** Users set line length, grid width, center
    point, launch point, landing point, desired grid area (honoured when mathematically
    feasible), overlap percentage in **both** the along- and cross-track directions, and
-   the camera viewing angle. See [Step F](#f-mission-configurability-next--not-started).
+   the camera viewing angle. See [Step F](#f-mission-and-aircraft-configurability-next--design-settled-2026-11-06).
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 3. **The aircraft must become configurable.** Fixed-wing, quadcopter, or hexacopter. For
    a fixed wing every performance constant currently hard-coded to the BlackSwift S2 (the
    S3 since K-3, 2026-10-27) must be user-settable. Multirotor constraints get scoped once the fixed-wing config lands.
-   See [Step G](#g-aircraft-configurability-sidelined).
+   See [Step F](#f-mission-and-aircraft-configurability-next--design-settled-2026-11-06),
+   which took in most of Step G on 2026-11-06.
    MAVLINK PROTOCOL MUST BE ACCOUNTED FOR (SEE LINK): https://docs.qgroundcontrol.com/master/en/qgc-dev-guide/file_formats/plan.html
 4. **Wind is compensated onboard — the engine must not gate or steer on it.** Assume all
    aircraft carry wind sensing and adjust heading and speed in flight for best
@@ -94,6 +96,20 @@ section wins.
    - Net effect: **V2C is stripped to math + reporting.** Its gating and
      plan-altering functionality is cancelled, not deferred. See
      [C-2 re-scoped](#c-2-boresight--wind-reporting--re-scoped-2026-09-08-sidelined).
+
+**Amended 2026-11-06 (the user, in Step F's design).** Where these differ from items 2 and
+3, these win:
+- **Item 2:** area is reported, never requested. A grid is requested as line length + grid
+  width. The centre is a location, with no overflight required, and a plan can be made
+  anywhere on earth.
+- **Item 3:** aircraft configuration moves into Step F, multirotors included. The first
+  real-world test flies a PX4 VTOL and a hexacopter through QGC.
+- **Four requirements for Step F:**
+  1. An unflyable plan is never written, and the user is told why.
+  2. The CLI and a config file are interchangeable: the same plan made either way gives
+     the same output.
+  3. AI agents, as well as humans, can make plans.
+  4. Every setting is listed before development starts (done: see Step F).
 
 **Default launch/land is now UCSC Coastal Science Campus — Terrace Point** (Santa Cruz,
 north shore) at **36.94840 N, 122.06538 W**, and stays that way until re-specified. This is
@@ -163,6 +179,10 @@ numbers behind it, on IP grounds. No S3 data is coming from BlackSwift to replac
 provisional rollout constants (2.5, 80) or the S2 climb and descent rates, and no S3
 simulation of Strat 1 or the Strat 2 loop is planned.
 
+**Test aircraft (the user, 2026-11-06):** the first real-world test of Step F's plans flies a
+PX4 VTOL and a hexacopter through QGC. The S3 stays as a built-in aircraft profile that
+anchors the regression tests, and its operator hand-offs become a profile field.
+
 **S3 numbers (2026-10-18, from the user):**
 - **Given:** endurance 90 min; cruise **21 m/s**; stall speed and wind rating as the S2's;
   best transition at 10–15 m AGL. The waypoint capture distance is 2 × cruise × lookahead,
@@ -196,12 +216,14 @@ launch, landing and climb points are chosen for legality and operational feasibi
 > lists the reasons that still stand. The ones fixed since are recorded below as history,
 > because the reasoning is worth keeping and because re-measuring is expensive.
 >
-> **1. Nothing validates anything.** `validator.py` holds a docstring and no code. Note
-> that under the 2026-09-08 constraints this is *no longer* about wind: the RTH/crosswind
-> gate C-2 was scoping is **cancelled**. What survives as a genuine open question is
-> whether **battery/endurance feasibility** stays a gate or also becomes a report — see
-> [Step E](#e-validatorpy--legalityfeasibility-gating-sidelined-and-narrowed). Note that
-> J-4 makes the *sizing* honest; it does not add a *gate*, and the two are different jobs.
+> **1. Nothing validates anything yet.** `validator.py` holds a docstring and no code, and
+> the engine checks no legality. The RTH/crosswind gate C-2 was scoping is **cancelled**
+> (constraint 4). **Decided 2026-11-06:** an unflyable plan (battery, invalid input,
+> geometry, legality) will be refused with its reasons, which Step F builds (F-1, F-6).
+> Until then, two findings from the 2026-11-06 research stand: a Terrace Point plan climbs
+> and descends below 1,000 ft over the Monterey Bay sanctuary's Zone 1, which needs a NOAA
+> permit, and a grid reaching ~3 nm southeast of M1 enters Monterey's Class C at 2,000 ft.
+> See Step F.
 >
 > **2. No output has been flown.** We are still deep in the construction and design phase
 > of this software and of the actual UAS hardware, and a Gazebo (GZ) simulation for our
@@ -228,6 +250,15 @@ launch, landing and climb points are chosen for legality and operational feasibi
 > banked again. The RPIC sets the
 > design wind per plan (`--design-wind`, m/s at flight altitude). See the Known defects
 > entry.
+>
+> **5. Today's `.plan` is not ready for a PX4 VTOL or a hexacopter** (read from PX4's
+> source on 2026-11-06; nothing flown). The VTOL takeoff item sits on the pad, so PX4's
+> transition heading is undefined and the mission can abort. VTOL land back-transitions at
+> the last waypoint's altitude, ~594 m up, and hovers down for ~6.6 min the budget doesn't
+> count. A hexacopter flies PX4's 5 m/s default with no speed item, cuts every corner by the
+> 28.5 m acceptance radius, and descends vertically from ~594 m to land. The climb orbit and
+> hand-offs K-4 charges don't exist in a QGC mission. Camera triggering needs `TRIG_MODE=4`
+> set on the vehicle. Step F-2 fixes the plan side.
 >
 > ### ✅ FIXED — kept as history, do not re-diagnose
 >
@@ -859,9 +890,10 @@ Read this before touching the grid, classification, or output code.
 
 ## V2 roadmap — what comes next
 
-**Execution order as of 2026-10-18: `J` → `K` → `F` → `G` → `C-2 (re-scoped)` → `D` → `E`.**
+**Execution order as of 2026-11-06: `J` → `K` → `F` → `C-2 (re-scoped)` → `D`.** F took in
+most of `G` and `E`'s legality checks on 2026-11-06, so neither has scope of its own left.
 **J is complete (2026-09-30). K, S3 adoption, CLOSED on 2026-11-03 without K-5, the
-BlackSwift writer. F is next.** Letters record the order
+BlackSwift writer. F is next, and its design was settled on 2026-11-06.** Letters record the order
 steps were *scoped*, not the order they are *built* — the same convention the `V1_`
 constant prefixes follow.
 
@@ -1277,83 +1309,252 @@ for each change. In outline:
 - ✅ **Tests** that read the S2 as the default aircraft were rebased in K-3, and the gap
   K-3 left (a fixed wing's takeoff altitude) was closed in K-7.
 
-### F. Mission configurability (NEXT — NOT STARTED)
-Per constraint 2, the user sets: line length, grid width, center point, launch point,
-landing point, desired grid area (honoured **when mathematically feasible**, otherwise
-reported as infeasible with the closest achievable), cross-track overlap %, along-track
-overlap %, and camera off-nadir viewing angle.
+### F. Mission and aircraft configurability (NEXT — DESIGN SETTLED 2026-11-06)
+Per constraints 2 and 3 as amended on 2026-11-06. Step F's goal is **plans ready for a
+real-world test on a PX4 VTOL and a hexacopter, both flown through QGC.** It takes in most
+of Step G (aircraft profiles, the multirotor branch, per-vehicle phases) and Step E's
+legality checks. The design was settled with the user in a 33-question session on
+2026-11-06. **Nothing is built.** The user wants to be closely involved in this phase:
+F-1's functions are agreed with the user before any code or artifact change.
 
-**▶ START HERE (readiness check, 2026-11-03).** Checked against the code, not recalled.
-- **Branch.** PR #3 (`rollout_hotfix` → `main`) is open and mergeable at `12d3ffd`, with 120
-  tests green. Build F on a fresh branch from `main` once the user merges it.
-- **Decide F-1.5 first.** What does Strat 1 do at steep arrivals? My recommendation is option
-  B: cap the pushback and print an RPIC note. The cap was 120°, the S2's widest shore entry.
-  The S3's shore entries reach **126°**, so the cap angle needs re-picking. See F-1.5 below
-  and the planning artifact.
-- **F-1 replaces four Terrace Point reach-ins:**
-  1. `planner._build_dated_objects` builds the sun state at `CONST.V1_LAUNCH_POINT_*`.
-  2. It also fetches the weather there, and the clear-sky stub carries those coordinates.
-     A boat plan therefore gets Terrace Point's forecast, and so do its pilot notes.
+**▶ START HERE (2026-11-06): the F-1 function discussion.**
+- **Git.** PR #3 merged as `f2dab26` on `origin/main`. Local `main` was at `aef8a40` at the
+  pause. F starts on a fresh branch from an updated `main` (the user's git).
+- Open with the [F-1 agenda](#f-1-for-discussion). Agree each function's job, signature and
+  home module with the user, then update the planning artifact, then write code.
+
+#### Decided 2026-11-06
+- **Refusals.** No unflyable plan is ever written: the user is told why, and no files are
+  written. Unflyable means a route longer than the battery, invalid input, geometry the
+  vehicle can't fly, or a legality failure. A legality check refuses only when its data is
+  available. With no data, the plan is made and a pilot note says what went unchecked
+  ("trust the pilot", the user). Wind and weather minima stay reports (constraint 4). This
+  closes Step E's endurance-gate question.
+- **A requested grid too big for the battery** is refused, and the reason names the closest
+  grid that fits. This replaces F-0's "report the closest and proceed".
+- **Agents use the CLI.** `--json` prints the result, or the refusal reasons, as one object.
+  Exit codes: 0 plan written, 1 refused, 2 engine error. A command lists every setting with
+  its unit, default and range. No Python API or MCP server.
+- **CLI ≡ config.** One schema defines each setting once, and the JSON config key and the
+  CLI flag both come from it. The CLI overrides the file (`--mission FILE`), which
+  overrides the defaults. The summary and the JSON mark each value as default or given,
+  never as file or CLI, so a plan made either way writes identical files.
+- **Resolved settings.** Every run writes its resolved settings as JSON beside the outputs,
+  with each profile's name, a hash of its contents, and the engine version. Re-running that
+  file refuses if a profile has changed since; a different engine version adds a note. The
+  flight files never read the weather, so they reproduce exactly.
+- **Aircraft** is a named profile, **required, with no default**. The S3 stays as a built-in
+  profile and anchors the regression tests. Operator hand-offs become a profile field: 2 for
+  the S3, 0 for PX4 vehicles, whose missions run straight through.
+- **Profiles and sites are JSON.** The built-ins the tests need live in the repo. Users' own
+  aircraft, authorization and site files stay on their machines, outside the repo, at a
+  location the user gives: the engine assumes no user directory.
+- **Camera.** Both test aircraft hard-mount it, with pitch compensated in the mount and the
+  maximum pitch limited in software, so 30° off-nadir holds and the geometry is unchanged.
+- **VTOL phases (PX4).** The takeoff item sits 300 m out on the departure bearing (QGC's
+  default) at the transition height. A loiter-to-altitude item (MAV_CMD 31) at the climb
+  point climbs to mission altitude. Its radius comes from the profile, and a mission can
+  override the radius and the climb point. Homeward, a top-of-descent waypoint, then a low
+  waypoint near the pad, make it descend along the approach before VTOL land.
+- **Hexacopter phases (PX4).** It climbs vertically over the launch to mission altitude, and
+  descends along the return leg to a low waypoint over the landing point. Any remainder is
+  vertical, and budgeted. A speed item (MAV_CMD 178) sets its cruise speed. Its collection
+  inset is the distance to accelerate from corner speed back to cruise, each corner's
+  slow-down is turn time, and Strat 1 doesn't apply.
+- **Acceptance radius** is written as 0 on every nav item, so each vehicle uses its own (the
+  user's decision on the QGC constant `ACCEPTANCE_RADIUS_m`).
+- **F-1.5 is option B.** Strat 1 is capped at **120°**, just past the 117.7° entry the PX4
+  sweep validated, and above it an RPIC note says line 1's first image may be banked. It
+  applies to vehicles that bank through turns.
+- **Grid.** The centre is a location (default M1), and a plan can be made anywhere on earth.
+  Any line count from **1** up. An "overfly the centre" flag, off by default, forces an odd
+  count. A request is **line length + grid width**, both or neither, measured as the
+  **imaged** box, with the line count rounded up. Area is reported, never requested.
+- **More settings:** mission altitude, battery reserve % and which outputs to write. The
+  glint target and tolerance stay constants.
+- **Legality** compares the plan with a named authorization profile, required from F-6.
+  Checks: ceiling, operating area, line-of-sight range, the daylight window, the
+  sanctuary's overflight zones, FAA airspace classes and TFRs.
+- **Time.** `--time` is takeoff, in a time-zone setting (default `America/Los_Angeles`), with
+  UTC shown in the summary and notes. The grid is oriented for the sun at mid-grid: over M1
+  the azimuth moves 4.5° in 20 min on a January morning and 19.8° on a June early
+  afternoon, against the 15° glint tolerance.
+- **Weather** comes from both the launch and the grid centre. The notes compare the stronger
+  wind with the rating and say where. NWS covers M1 (gridpoint MTR 89,57).
+- **The Monterey defaults stay:** centre M1, launch and land at Terrace Point (16 m), design
+  wind 9 m/s, Pacific time.
+
+#### The settings (the user's requirement 4)
+Names are provisional until F-1 settles them.
+
+| Mission setting (a JSON key and a CLI flag each) | Default |
+|---|---|
+| `name`, `out_dir`, `outputs` (kml, png, plan) | "V2 Plan", `./CALYPSO_OUTPUT`, all three. The resolved settings are always written. |
+| `date`, `time` (takeoff), `timezone` | 2026-01-01, 10:00, `America/Los_Angeles` |
+| `aircraft` | required: a profile name |
+| `authorization` | required from F-6: a profile name |
+| `launch`, `land` | Terrace Point. A site name or lat/lon/elevation AMSL; `land` defaults to `launch`. |
+| `centre`, `overfly_centre` | M1, false |
+| `line_length_m`, `grid_width_m` | none, which fills the battery with a square grid |
+| `altitude_m` (AMSL), `design_wind_ms` (aloft), `battery_reserve_pct` | 609.6, 9, 15 |
+| `cross_track_overlap_pct`, `along_track_overlap_pct` | 50, 50 |
+| `off_nadir_deg`, `climb_point`, `climb_orbit_radius_m` | the profile's, or computed; a mission may override |
+
+- **Aircraft profile:** MAVLink vehicle type (13 hexacopter, 21 or 22 VTOL) and firmware
+  type; endurance, cruise speed, wind rating, climb and descent rates, operator hand-offs,
+  and an optional waypoint lookahead. Fixed wing or VTOL: turn radius, turn penalty, stall
+  speed. VTOL: transition height (10 m), takeoff transition distance (300 m), climb-orbit
+  radius, hover speed. Multirotor: horizontal acceleration, hover speed. Payload: sensor
+  name, both FOVs, mount, off-nadir angle (30°).
+- **Authorization profile:** regime label; ceiling AGL; an operating-area polygon or none;
+  BVLOS approved, or a line-of-sight range; twilight allowed; night allowed; sanctuary
+  permit; authorized airspace classes.
+- **Site:** name, lat, lon, elevation AMSL. Terrace Point is built in.
+- **Constants, not settings:** glint 90° ± 15°; the rollout constants (2.5, 80, 70, still
+  provisional); the Strat 1 cap (120°); the 1-line minimum; 1 min per hand-off; the QGC
+  constants.
+
+#### Slicing (all seven land before the flight test)
+| Step | Builds |
+|---|---|
+| F-1 | Settings and places: see [F-1, for discussion](#f-1-for-discussion) |
+| F-2 | Aircraft profiles (built-in S3, test VTOL, test hexacopter) and PX4-correct plans: per-class phases, the new `.plan` items, home from the launch point rather than the takeoff item, the multirotor grid branch, pilot notes (`TRIG_MODE=4`; hand-offs only when the profile has them), QGC round trips on both aircraft |
+| F-3 | The remaining mission settings: altitude, reserve, overlaps, off-nadir, outputs, climb point and radius |
+| F-4 | The grid model: centre as a location, any count ≥ 1, the overflight flag, the requested imaged box, imaged area. It also decides the fate of the three unread `V1_DEFAULT_*_km` constants, since no default request exists |
+| F-5 | The sun at mid-grid, and forecasts at launch and grid centre |
+| F-6 | Legality: authorization profiles and the seven checks |
+| F-7 | Audit, docs, PR log |
+
+**Regression baselines move on purpose.** Acceptance radius 0, the VTOL items and the
+mid-grid sun all change the S3's `.plan` and orientation. Re-record the baselines once,
+with the reason, and keep tests asserting relationships in N.
+
+#### F-1, for discussion
+**Scope:** the settings schema; the JSON config and the CLI flags generated from it;
+precedence; refusals with reasons; `--json`, exit codes and the settings listing; the
+resolved-settings file; the site library; launch, land, centre and their elevations; the
+time zone and strict date/time parsing; the `aircraft` setting, with the S3 its only
+built-in until F-2. Settable launch points make four latent defects reachable, so F-1 also
+fixes them: the Terrace Point reach-ins, the transit seed, and the two PR #3 bugs. The
+Strat 1 cap lands with it.
+
+**Agenda, one function or decision at a time:**
+1. How a setting is declared once (name, type, unit, default, range, help), and how its
+   flag and JSON key derive from that.
+2. Loading and precedence: defaults, `--mission FILE`, CLI. Unknown keys and half a grid
+   request are invalid input.
+3. The refusal: what carries the rule, the message and, for a grid, the closest fit; which
+   of today's `ValueError`s become refusals and which stay engine errors.
+4. The `--json` shape beside the human summary, and how defaults are marked.
+5. The resolved-settings file: its name, contents, fingerprints and the re-run check.
+6. How the user tells the engine where their profile and site files are.
+7. Sites: the built-ins (Terrace Point, and M1 as the default centre), the site file, and
+   separate launch and land elevations.
+8. The `aircraft` setting before F-2's profiles exist.
+9. The time-zone setting and strict date/time parsing.
+10. Where F-1 takes the sun and the weather: the plan's own launch point, until F-5.
+11. The transit seed, the climb point, the minimum-leg check, the Strat 1 cap.
+12. Tests: config ≡ CLI with the weather stubbed; refusals; the S3 baseline.
+13. The PR #3 small items.
+
+**Code touchpoints (checked 2026-11-06):**
+- `flight_plan_maker.py`: `_parse_args` holds five flags; `_design_wind_ms` accepts `nan`
+  and `inf`; `main` has no error handling, so a `ValueError` reaches the user as a
+  traceback.
+- `sun.resolve_mission_datetime` falls back to the defaults on bad input, silently, and
+  reads `V2_MISSION_INPUT_TIMEZONE`. `sun.create_sun_state` defaults to the launch
+  constants, though every caller passes coordinates.
+- `planner`'s module singletons `_BlackSwift_S3`, `_BlackSwift_S3_usable_endurance_m`,
+  `_Calypso_payload`, `_Launch_Waypoint`, `_Land_Waypoint` and `_M1_Waypoint` feed only
+  `plan_default_mission` and `_build_dated_objects`. `build_candidate_plan` already works
+  from its parameters, so F-1 replaces the singletons, not the function.
+- **The four Terrace Point reach-ins:**
+  1. `_build_dated_objects` builds the sun state at `CONST.V1_LAUNCH_POINT_*`.
+  2. It fetches the weather there too, and the clear-sky stub carries those coordinates.
   3. `outputs._qgc_home` gives every home `TERRACE_POINT_AMSL_m` (16 m), even a boat deck.
-  4. `planner.build_candidate_plan` Step 2 floors the climb and the descent at
-     `TERRACE_POINT_AMSL_m` (K-4). A boat launch landing ashore needs the launch and land
-     elevations separately.
-  - The module-level `_Launch_Waypoint`, `_Land_Waypoint`, `_M1_Waypoint`,
-    `_Calypso_payload` and `_BlackSwift_S3` feed only `plan_default_mission` and
-    `_build_dated_objects`. `build_candidate_plan` already works from its parameters, so
-    F-1 replaces the singletons, not the function.
-  - `sun.create_sun_state` defaults to the launch constants, but every caller passes
-    coordinates.
-- **F-1 also has to fix two bugs from the PR #3 review** (`claude_prompts/pull_requests.md`).
-  Both are unreachable today and become reachable once launch is settable:
-  - The default climb point is always 600 m from the pad toward line 1, so a pad within
-    600 m of line 1 puts it past or beside WP001. Strat 1 measures the arrival from the pad,
-    not from the climb point: up to 180° wrong, and the orbit overlaps line 1.
-  - `_check_minimum_legs` walks `plan.waypoints`. It checks pad→WP001, which isn't flown,
+  4. `build_candidate_plan` Step 2 floors the climb and the descent at
+     `TERRACE_POINT_AMSL_m`. A boat launch that lands ashore needs both elevations.
+- **The transit seed** `2·d(launch, M1)` becomes `d(launch, centre) + d(centre, land)`. For
+  the S2, a boat launch landing at Terrace Point seeded 4.0 km where 24.4 km was right, and
+  cost a wasted pass.
+- **The two PR #3 bugs** (`claude_prompts/pull_requests.md`):
+  - `_default_climb_waypoint` always sits 600 m from the pad toward WP001, and
+    `_apply_entry_pushback` measures the arrival from the pad. A pad within 600 m of line 1
+    puts the climb point past or beside WP001, the recorded arrival is up to 180° wrong, and
+    the orbit overlaps line 1.
+  - `_check_minimum_legs` walks `plan.waypoints`, so it checks pad→WP001, which isn't flown,
     and never climb point→WP001, which is.
-- **J-4's seed changes with separate launch and land:** from `2·d(launch, M1)` to
-  `d(launch, M1) + d(M1, land)`. Measured for the S2: a boat launch landing at Terrace Point
-  seeded 4.0 km where 24.4 km was right. It still converged in 2 passes, so it cost a
-  wasted pass, not a failure.
-- **Small items from the same review, buildable any time:**
-  - a stray `test` line in `src/constants.py`'s module docstring (line 19);
-  - the transit re-seed test proves nothing since K-4 (`tests/test_4_grid_assembly.py:174`);
-  - a `windGust` in an unknown unit is not marked stale (`weather.py:268`), so the pilot
-    notes would trust a 0 m/s gust;
-  - `--design-wind nan` and `inf` pass `_design_wind_ms`.
-- **F-3 inherits** `require_m1_overflight`, which is stored with no getter and no reader.
-  **F-4 inherits** the three unread `V1_DEFAULT_*_km` constants.
-- **This dissolves three current invariants.** The grid is no longer necessarily
-  M1-centered; the M1 overflight is no longer necessarily required; and grid size is no
-  longer necessarily derived from the endurance budget. `geo.make_lawnmower_grid_through_m1`,
-  `_initial_total_lines_from_budget`, and the odd-N parity rule all assume otherwise. The
-  odd-N rule exists to put the center line through M1 — with a configurable center it
-  generalises to "center-point overflight" and should stay, but as a *default*.
-- **Requested-vs-derived sizing is a real design fork.** Today N falls out of the budget.
-  With a requested area/length/width, the budget becomes a **feasibility check** on a
-  requested grid rather than the source of its dimensions. Both modes need to coexist
-  ("fill my endurance" vs. "cover this box").
-- The three unread constants (`V1_DEFAULT_GRID_WIDTH_km`, `V1_DEFAULT_LINE_LENGTH_km`,
-  `V1_DEFAULT_LINE_SPACING_km`) become the defaults behind these inputs.
-- ✅ **Along-track overlap already exists** — J-3 pulled it forward. `Sensor` carries both
-  overlaps, `geo` takes both as parameters, and the trigger distance rides the metrics dict.
-  F only has to make them *user-settable*; the physics is done.
-- **The launch point is the highest-value knob, not a convenience.** J-4 made the cost
-  visible: transit is **54% of the battery** from Terrace Point (47% of the S3's usable
-  distance), and at J-4 a launch 2 km from M1 took the mission from N=9 to N=13. For the S3
-  that boat gets 11 lines against the shore's 9, arriving at 113.9° with an 85 m lead-in.
-  With the S2 it arrived at 178.2° and spent 7,990 m on Strat 1's lead-in, the case F-1.5
-  has to fix. Whatever the delivery mechanism, launch/land coordinates should be
-  first-class.
-- **F-0 decided 2026-10-09:**
-  - **F-1 comes first:** launch and land as real inputs, before the pilot-notes PDF.
-  - **Settings come in through a mission config file** (for example `--mission FILE`), and the
-    four existing flags stay. F-1 builds the loader, with launch and land as its first
-    fields.
-  - **Both sizing modes,** with "fill my endurance" the default, so a run with no settings
-    keeps today's plan.
-  - **A requested grid that doesn't fit:** report the closest grid that fits and proceed.
-    Whether it should also refuse stays with Step E's open endurance-gate question.
+- `aircraft_math.entry_pushback_m` raises at 180°; the 120° cap sits in front of it.
+- `objects.MissionRequest` stores `require_m1_overflight` and `grid_orientation_deg`, and
+  nothing reads either. `Waypoint` has no elevation.
+- **PR #3 small items:** the stray `test` line in `constants.py`'s docstring (line 19); the
+  re-seed test that proves nothing since K-4 (`tests/test_4_grid_assembly.py:174`); a
+  `windGust` in an unknown unit isn't marked stale (`weather.py:268`).
+- `geo` keeps its signature through F-1: it already takes the centre as a parameter and
+  never learns where launch is.
+
+**Facts still needed (none blocks F-1):** the real numbers for both test airframes, for the
+user's own profiles; the authority the test flies under; whether a sanctuary permit is held.
+Without a permit, every Terrace Point VTOL plan fails the zone check. A hexacopter can't
+reach M1 from Terrace Point, so its test plan needs a boat launch.
+
+#### Research behind the decisions (2026-11-06, primary sources, nothing flown)
+**PX4** (source v1.16.2, the same logic in v1.17.0; QGC v5.1.5). Where docs.px4.io and the
+source disagree, the source is right.
+- VTOL takeoff (84): PX4 reads only param4 (yaw). It climbs vertically to param7, yaws
+  toward the item's own lat/lon (the mission fails past `MIS_YAW_TMT`), transitions, flies
+  there, and goes on without loitering. With the item on the pad, that heading is GPS noise.
+- A fixed-wing waypoint counts as reached only within `NAV_FW_ALT_RAD` (10 m) of its
+  altitude; below it the aircraft orbits at `NAV_LOITER_RAD` (80 m) until it climbs.
+- Loiter-to-altitude (31): param2 is the radius (its sign sets the direction; 0 uses
+  `NAV_LOITER_RAD`). param1 = 1 leaves heading for the next waypoint, param4 = 1 leaves on
+  a tangent. QGC writes it as a SimpleItem.
+- VTOL land (85): it flies at the previous waypoint's altitude, back-transitions
+  v²/(2·`VT_B_DEC_MSS`) short of the point (~110 m at 21 m/s), then descends at
+  `MPC_Z_V_AUTO_DN` (1.5 m/s). Params 1, 3 and 7 are unused.
+- Multicopter: takeoff (22) climbs vertically to param7. param2 acceptance is honoured only
+  on multicopters. A 90° corner is flown at √(`MPC_XY_TRAJ_P`·`MPC_ACC_HOR`·R·tan(α/2)):
+  1.7 m/s at R = 2 m, 6.5 m/s at 28.5 m. Speed is `MPC_XY_CRUISE` (5 m/s) unless a 178
+  sets it, and a VTOL transition resets it. `MPC_YAW_MODE` 0 points the nose along the
+  track. Vertical speed is held to 3 m/s up and 1.5 m/s down by slowing the whole leg.
+- The camera trigger (206) works on multicopters and on VTOLs in either mode, with
+  `TRIG_MODE=4` set on the vehicle.
+- MAVLink types: hexarotor 13, tilt-rotor VTOL 21, standard VTOL 22; PX4 firmware 12.
+  Missions hold 500 items by default, and the geofence is off by default.
+- A multicopter flying forward pitches nose-down, which tips a forward-pitched camera toward
+  nadir (30° − θ, not + θ). The user's mounts compensate for it.
+
+**Airspace and the sanctuary** (eCFR current 2026-11-04; FAA chart cycle 2026-10-29 to
+2026-12-24):
+- 15 CFR 922.132(a)(6) bars motorized aircraft below 1,000 ft over four Monterey Bay
+  sanctuary zones, and NOAA says it covers drones. Zone 1 runs from mean high water to
+  3 nmi offshore, between 220° true off Point Santa Cruz and 240° true off 2 nmi north of
+  Pescadero Point, so it begins at the shore below Terrace Point. A climb or descent below
+  1,000 ft there needs a sanctuary permit (§922.133); an FAA authorization doesn't replace
+  it. M1, the grid and a boat near M1 are outside all four zones. NOAA publishes no zone
+  data, so build it from Appendix B's text. The sanctuary boundary is at
+  `sanctuaries.noaa.gov/library/imast/mbnms_py2.zip`.
+- The pad and the first ~8.3 km of the route sit under Class E from 700 ft. At 2,000 ft the
+  cruise is in Class E. Monterey's Class C shelf (1,500–4,200 ft) is 3.0 nm southeast of
+  M1. No special-use airspace is near, and M1 is inside the 12 nm territorial sea.
+- Part 107: 400 ft AGL (§107.51) and visual line of sight (§107.31). Outside Alaska, civil
+  twilight is the 30 min before official sunrise and after official sunset (§107.29(c)),
+  flown with an anti-collision light. Under a public COA, BVLOS needs a concept of
+  operations sent to AFS-750, and flight above 400 ft needs CAPS (Notice N JO 7200.21).
+- Data with no key needed: the FAA ArcGIS `Class_Airspace` and `Special_Use_Airspace`
+  FeatureServers (8-week cycle), UAS Facility Maps, the TFR list at `tfr.faa.gov`
+  (undocumented), and NOAA's 12 nm line KMZ.
+
+#### History (scoping before 2026-11-06)
+- **F-0, decided 2026-10-09:** F-1 first; a mission config file, keeping the existing flags;
+  both sizing modes, with "fill my endurance" the default. Its fourth decision, "report the
+  closest grid and proceed", was replaced on 2026-11-06 by refusing and naming the closest.
+- ✅ **Along-track overlap already exists:** J-3 pulled it forward. `Sensor` carries both
+  overlaps, and `geo` takes both as parameters.
+- **The launch point is the highest-value knob.** Transit is 54% of the battery from Terrace
+  Point (47% of the S3's usable distance). For the S3, a boat 2 km north of M1 gets 11
+  lines against the shore's 9. With the S2 that boat arrived at 178.2° and spent 7,990 m on
+  Strat 1's lead-in, the case the 120° cap now bounds.
 - **F-4 also undid most of the rollout fix's cost for the S2** (history: for the S3 the
   default holds 9 lines up to a 14.1 m/s design wind, so F-4's case now rests on
   configurability alone). For the S2 the camera-rollout inset dropped the default grid from
@@ -1362,7 +1563,8 @@ overlap %, and camera off-nadir viewing angle.
   independent of N, the freed margin buys longer lines. Measured 2026-10-09 at a 9 m/s
   design wind: 7 lines, 1.5 km longer, 6.36 km² against today's 6.29 km², with a 12.9 min
   margin. The box is 1.9 × 3.4 km instead of 2.5 × 2.5 km, which is a science call.
-- **Build the Strat 2 loop (noted 2026-10-06).** The camera-rollout fast track (see Known
+- **The Strat 2 loop (noted 2026-10-06; not built, because F-1.5 chose option B, the 120°
+  cap, on 2026-11-06).** The camera-rollout fast track (see Known
   defects) fixes each line's entry with a longer collection inset, plus **Strat 1** for the
   turn from the transit onto line 1: line 1's first turn waypoint moves back along the line,
   with no new waypoints. Strat 1's cost grows with tan(θ/2) of the arrival angle θ, and it
@@ -1398,9 +1600,12 @@ overlap %, and camera off-nadir viewing angle.
     longer reaches the blow-up, but a launch point F-1 makes settable can. A
     near-reversal fly-by is not what the formula models, and with the S2 sweep cancelled no
     simulation shows what the S3 would fly instead. F-1 makes this reachable from the CLI, so F-1.5,
-    or a cap on Strat 1 the user chooses, has to land with or before F-1.
+    or a cap on Strat 1 the user chooses, has to land with or before F-1. **Decided
+    2026-11-06:** the 120° cap, which lands with F-1.
 
-### G. Aircraft configurability (SIDELINED)
+### G. Aircraft configurability (TAKEN INTO STEP F, 2026-11-06)
+**Step F builds this now** (F-2): named aircraft profiles, the multirotor branch and
+per-vehicle phases, for a PX4 VTOL and a hexacopter. What follows is the scoping it came from.
 Per constraint 3. Fixed-wing, quadcopter, or hexacopter, with every fixed-wing performance
 constant user-settable rather than hard-coded to the BlackSwift S3 (the S2 until K-3).
 - `objects.Aircraft` is already a general constructor — the hard-coding lives in
@@ -1450,7 +1655,8 @@ network/parse failure); `planner._build_dated_objects` falls back to the clear-s
 zero-wind stub on `None`, so a plan is always produced. The leaf never reaches back into the hub.
 - **NWS (no API key; `User-Agent` required — `constants.NWS_USER_AGENT`).** Two-call flow:
   `GET /points/{lat},{lon}` → `properties.forecastGridData` URL (launch point = office **MTR**,
-  grid **91,52**), then `GET` that gridpoint doc. Fields are time-series with a `uom`:
+  grid **91,52** when written, **90,66** when re-checked on 2026-11-06, so never hard-code
+  it), then `GET` that gridpoint doc. Fields are time-series with a `uom`:
   `skyCover` (percent), `windSpeed`/`windGust` (**km/h — `_to_ms` ÷3.6 → m/s**),
   `windDirection` (deg). `visibility` (metres) is **sometimes absent** → `get_weather` fills
   `DEFAULT_VISIBILITY_m`. `_value_at_time` picks the latest interval whose `validTime` start ≤ T
@@ -1550,6 +1756,7 @@ this step entirely — wind is neither a preference nor a gate — so D narrows 
   path in that function already exists and is unused.
 
 ### E. `validator.py` — legality/feasibility gating (SIDELINED AND NARROWED)
+**Taken into Step F on 2026-11-06 (F-6),** with the endurance question below decided.
 `validator.py` holds only a docstring, and that docstring describes the **cancelled** RTH
 gate — read it as history. What remains for E:
 - **Legality** — Part 107 and friends: **altitude ceiling** (the default is 609.6 m /
@@ -1557,6 +1764,10 @@ gate — read it as history. What remains for E:
   the ceiling the mission is *authorized* for, never a hard-coded 400 ft);
   **daylight / civil twilight** (use `CurrentSunState.elevation`); **VLOS**; **airspace
   authorization**; **over-water operations**.
+- **✅ Decided 2026-11-06: an unflyable plan is refused, with its reasons.** A route longer
+  than the battery, invalid input, geometry the vehicle can't fly and a legality failure all
+  refuse; a requested grid too big is refused, naming the closest that fits. The question
+  as it stood, kept as history:
 - **⚠️ OPEN DECISION — does battery/endurance feasibility stay a gate?** Constraint 4
   removes *weather-driven* gating, and the user's stated priority is that "legality and
   safety are still our priority." A route longer than the battery is not a weather problem
@@ -1581,8 +1792,9 @@ gate — read it as history. What remains for E:
   legal-to-fly, glint-only ranking). V2 replaces those one at a time: **Steps A (date/time),
   B (live NWS weather), C-1 (along-track mount) and J (JSON `.plan` output, completed
   2026-09-30) and K (S3 adoption, closed 2026-11-03 without the BlackSwift writer) are
-  done**. Remaining, in execution order: **F** (mission configurability), **G** (aircraft configurability), **C-2 re-scoped**
-  (wind reporting), **D** (sun/cloud ranking), **E** (legality).
+  done**. Remaining, in execution order: **F** (mission and aircraft configurability, with
+  E's legality checks; design settled 2026-11-06), **C-2 re-scoped** (wind reporting),
+  **D** (sun/cloud ranking).
 - Many constants still carry `V1_` prefixes but hold V2 values (e.g.
   `V1_DEFAULT_SENSOR_OFF_NADIR_deg` is 30, the V2C angle). The prefix records where the
   constant was introduced, not which version's value it holds — don't infer currency from it.
